@@ -1,8 +1,7 @@
 import 'package:laconic/src/db.dart';
-import 'package:logging/logging.dart';
 
 class QueryBuilder {
-  DB database;
+  DB db;
   String table;
   String _columns = '*';
   String _groupBy = '';
@@ -18,7 +17,7 @@ class QueryBuilder {
   String _values = '';
   String _where = '';
 
-  QueryBuilder.from({required this.database, required this.table});
+  QueryBuilder.from({required this.db, required this.table});
 
   /// Retrieve the average of the values of a given column.
   Future<double> avg(String column) async {
@@ -26,7 +25,7 @@ class QueryBuilder {
     _setColumn(column);
     _setAggraegate(Aggregate.avg);
     _buildSql();
-    var results = await database.select(_sql);
+    var results = await db.select(_sql);
     return results[0]['AVG($column)'];
   }
 
@@ -40,9 +39,7 @@ class QueryBuilder {
     }
     _values = clauses.join('), (');
     _buildSql();
-    final logger = Logger('QueryBuilder');
-    logger.info(_sql);
-    var affectedRows = await database.insert(_sql);
+    var affectedRows = await db.insert(_sql);
     return affectedRows;
   }
 
@@ -52,7 +49,7 @@ class QueryBuilder {
     _setColumns(['*']);
     _setAggraegate(Aggregate.count);
     _buildSql();
-    var results = await database.select(_sql);
+    var results = await db.select(_sql);
     return results[0]['COUNT(*)'];
   }
 
@@ -60,7 +57,7 @@ class QueryBuilder {
   Future<int> delete() async {
     _setStatement(Operator.delete);
     _buildSql();
-    var affectedRows = await database.delete(_sql);
+    var affectedRows = await db.delete(_sql);
     return affectedRows;
   }
 
@@ -69,7 +66,7 @@ class QueryBuilder {
     _setStatement(Operator.get);
     _setLimit(1);
     _buildSql();
-    var results = await database.select(_sql);
+    var results = await db.select(_sql);
     if (results.isNotEmpty) {
       return results[0];
     } else {
@@ -81,7 +78,7 @@ class QueryBuilder {
   Future<List<Map<String, dynamic>>> get() async {
     _setStatement(Operator.get);
     _buildSql();
-    var results = await database.select(_sql);
+    var results = await db.select(_sql);
     return results;
   }
 
@@ -127,7 +124,7 @@ class QueryBuilder {
     _setColumns(value.keys.toList());
     _values = value.values.join(', ');
     _buildSql();
-    var affectedRows = await database.insert(_sql);
+    var affectedRows = await db.insert(_sql);
     return affectedRows;
   }
 
@@ -149,7 +146,7 @@ class QueryBuilder {
     _setColumn(column);
     _setAggraegate(Aggregate.max);
     _buildSql();
-    var results = await database.select(_sql);
+    var results = await db.select(_sql);
     return results[0]['MAX($column)'];
   }
 
@@ -159,7 +156,7 @@ class QueryBuilder {
     _setColumn(column);
     _setAggraegate(Aggregate.min);
     _buildSql();
-    var results = await database.select(_sql);
+    var results = await db.select(_sql);
     return results[0]['MIN($column)'];
   }
 
@@ -250,7 +247,7 @@ class QueryBuilder {
   Future<Map<String, dynamic>> sole() async {
     _setStatement(Operator.get);
     _buildSql();
-    var results = await database.select(_sql);
+    var results = await db.select(_sql);
     if (results.isNotEmpty && results.length == 1) {
       return results[0];
     } else {
@@ -264,7 +261,7 @@ class QueryBuilder {
     _setColumn(column);
     _setAggraegate(Aggregate.sum);
     _buildSql();
-    var results = await database.select(_sql);
+    var results = await db.select(_sql);
     return results[0]['SUM($column)'];
   }
 
@@ -299,7 +296,7 @@ class QueryBuilder {
       }
     });
     _buildSql();
-    var affectedRows = await database.update(_sql);
+    var affectedRows = await db.update(_sql);
     return affectedRows;
   }
 

@@ -49,7 +49,7 @@ class DB {
 
   /// Get a query builder of the specified table.
   QueryBuilder table(String table) {
-    return QueryBuilder.from(database: this, table: table);
+    return QueryBuilder.from(db: this, table: table);
   }
 
   /// Run a raw, unprepared query against the PDO connection.
