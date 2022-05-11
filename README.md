@@ -1,39 +1,35 @@
-<!-- 
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# laconic
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/guides/libraries/writing-package-pages). 
-
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-library-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/developing-packages). 
--->
-
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
+A laravel like sql query builder for mysql designed to be flexible, portable and easy to use.
 
 ## Features
 
-TODO: List what your package can do. Maybe include images, gifs, or videos.
+This is a dart library inspired by laravel's query builder and has some alike interface to handle database.
 
 ## Getting started
 
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+```dart
+flutter pub add laconic
+```
 
 ## Usage
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder. 
-
 ```dart
-const like = 'sample';
+import 'package:laconic/laconic.dart';
+
+void main() async {
+  final db = DB(
+    host: 'host',
+    port: 3306,
+    database: 'your database',
+    username: 'username',
+    password: 'password',
+  );
+  await db.table('example_table).where('id', 1).sole();
+}
+
 ```
 
 ## Additional information
 
-TODO: Tell users more about the package: where to find more information, how to 
-contribute to the package, how to file issues, what response they can expect 
-from the package authors, and more.
+This library is still [WIP], api may have break changes in the future. Use this at your own risk if you decide to use in your product environment.

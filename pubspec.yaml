@@ -1,18 +1,14 @@
 name: laconic
-description: A starting point for Dart libraries or applications.
-version: 1.0.0
-# homepage: https://www.example.com
+description: A laravel like sql query builder for mysql designed to be flexible, portable and easy to use.
+version: 0.0.1
+homepage: https://laconic.antdf.xyz
 
 environment:
-  sdk: '>=2.15.1 <3.0.0'
-
-
-# dependencies:
-#   path: ^1.8.0
+  sdk: ">=2.15.1 <3.0.0"
 
 dev_dependencies:
   lints: ^1.0.0
   test: ^1.16.0
-dependencies: 
-  logging: ^1.0.2
+
+dependencies:
   mysql1: ^0.19.2

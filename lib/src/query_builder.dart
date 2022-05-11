@@ -1,8 +1,8 @@
-import 'package:laconic/src/database.dart';
+import 'package:laconic/src/db.dart';
 import 'package:logging/logging.dart';
 
 class QueryBuilder {
-  Database database;
+  DB database;
   String table;
   String _columns = '*';
   String _groupBy = '';

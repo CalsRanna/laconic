@@ -1,7 +1,7 @@
 import 'package:laconic/src/query_builder.dart';
 import 'package:mysql1/mysql1.dart';
 
-class Database {
+class DB {
   String database;
   String driver;
   String host;
@@ -9,7 +9,7 @@ class Database {
   int port;
   String username;
 
-  Database({
+  DB({
     required this.database,
     this.driver = 'mysql',
     this.host = 'localhost',
