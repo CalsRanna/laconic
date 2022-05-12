@@ -309,22 +309,14 @@ class QueryBuilder {
   ///   queryBuilder.where('id', '=', 1);
   /// ```
   /// When operator is null means the default operator is equal.
-  QueryBuilder where(String column, dynamic value, [dynamic operator]) {
+  QueryBuilder where(
+      {required String column, String? comparator, dynamic value}) {
     String clause = '';
-    if (operator != null) {
-      assert(value is Operator, 'Value must be an operator.');
-      var _operators = {Comparator.equal: '=', Comparator.like: 'LIKE'};
-      var _values = {
-        Comparator.equal: operator is String ? "'$operator'" : '$operator',
-        Comparator.like: operator is String ? "'%$operator%'" : '%$operator%',
-      };
-      clause = '$column ${_operators[value]} ${_values[operator]}';
-    } else {
-      if (value is Comparator || value == null) {
-      } else {
-        var _value = value is String ? "'$value'" : '$value';
-        clause = '$column = $_value';
-      }
+    String _comparator = comparator ?? '=';
+    String? _value = value?.toString();
+
+    if (_value != null) {
+      clause = '$column $_comparator $_value';
     }
 
     if (_where == "") {
