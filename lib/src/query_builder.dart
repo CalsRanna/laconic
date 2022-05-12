@@ -78,6 +78,7 @@ class QueryBuilder {
   Future<List<Map<String, dynamic>>> get() async {
     _setStatement(Operator.get);
     _buildSql();
+    print(_sql);
     var results = await db.select(_sql);
     return results;
   }
@@ -309,21 +310,29 @@ class QueryBuilder {
   /// ```
   /// When operator is null means the default operator is equal.
   QueryBuilder where(String column, dynamic value, [dynamic operator]) {
-    String clause = '$column = $value';
-    if (value.runtimeType == String) {
-      clause = "$column = '$value'";
-    }
+    String clause = '';
     if (operator != null) {
-      clause = "$column $value $operator";
-      if (operator.runtimeType == String) {
-        clause = "$column $value '$operator'";
+      assert(value is Operator, 'Value must be an operator.');
+      var _operators = {Comparator.equal: '=', Comparator.like: 'LIKE'};
+      var _values = {
+        Comparator.equal: operator is String ? "'$operator'" : '$operator',
+        Comparator.like: operator is String ? "'%$operator%'" : '%$operator%',
+      };
+      clause = '$column ${_operators[value]} ${_values[operator]}';
+    } else {
+      if (value is Comparator || value == null) {
+      } else {
+        var _value = value is String ? "'$value'" : '$value';
+        clause = '$column = $_value';
       }
     }
+
     if (_where == "") {
       _where = clause;
     } else {
       _where = "$_where AND $clause";
     }
+
     return this;
   }
 
@@ -438,5 +447,7 @@ class QueryBuilder {
 }
 
 enum Aggregate { avg, count, max, min, sum }
+
+enum Comparator { equal, lessThan, moreThan, like }
 
 enum Operator { get, insert, update, delete, first, count, min, max, sum, avg }
