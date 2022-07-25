@@ -1,7 +1,7 @@
-import 'package:laconic/src/db.dart';
+import 'package:laconic/src/database.dart';
 
 class QueryBuilder {
-  DB db;
+  Database db;
   String table;
   String _columns = '*';
   String _groupBy = '';
@@ -26,11 +26,11 @@ class QueryBuilder {
     _setAggraegate(Aggregate.avg);
     _buildSql();
     var results = await db.select(_sql);
-    return results[0]['AVG($column)'];
+    return results[0]['AVG($column)'] as double;
   }
 
   /// Insert new records into the database.
-  Future<int> batchInsert(List<Map<String, dynamic>> values) async {
+  Future<void> batchInsert(List<Map<String, dynamic>> values) async {
     _setStatement(Operator.insert);
     _setColumns(values[0].keys.toList());
     List<String> clauses = [];
@@ -39,8 +39,7 @@ class QueryBuilder {
     }
     _values = clauses.join('), (');
     _buildSql();
-    var affectedRows = await db.insert(_sql);
-    return affectedRows;
+    await db.insert(_sql);
   }
 
   /// Retrieve the "count" result of the query.
@@ -50,19 +49,18 @@ class QueryBuilder {
     _setAggraegate(Aggregate.count);
     _buildSql();
     var results = await db.select(_sql);
-    return results[0]['COUNT(*)'];
+    return results[0]['COUNT(*)'] as int;
   }
 
   /// Delete records from the database.
-  Future<int> delete() async {
+  Future<void> delete() async {
     _setStatement(Operator.delete);
     _buildSql();
-    var affectedRows = await db.delete(_sql);
-    return affectedRows;
+    await db.delete(_sql);
   }
 
   /// Execute the query and get the first result.
-  Future<Map<String, dynamic>> first() async {
+  Future<Map<String, Object?>> first() async {
     _setStatement(Operator.get);
     _setLimit(1);
     _buildSql();
@@ -75,7 +73,7 @@ class QueryBuilder {
   }
 
   /// Execute the query as a "select" statement.
-  Future<List<Map<String, dynamic>>> get() async {
+  Future<List<Map<String, Object?>>> get() async {
     _setStatement(Operator.get);
     _buildSql();
     print(_sql);
@@ -120,13 +118,12 @@ class QueryBuilder {
   }
 
   /// Insert a new record into the database.
-  Future<int> insert(Map<String, dynamic> value) async {
+  Future<void> insert(Map<String, dynamic> value) async {
     _setStatement(Operator.insert);
     _setColumns(value.keys.toList());
     _values = value.values.join(', ');
     _buildSql();
-    var affectedRows = await db.insert(_sql);
-    return affectedRows;
+    await db.insert(_sql);
   }
 
   /// Add a left join to the query.
@@ -142,7 +139,7 @@ class QueryBuilder {
   }
 
   /// Retrieve the maximum value of a given column.
-  Future<int> max(String column) async {
+  Future<dynamic> max(String column) async {
     _setStatement(Operator.get);
     _setColumn(column);
     _setAggraegate(Aggregate.max);
@@ -152,7 +149,7 @@ class QueryBuilder {
   }
 
   /// Retrieve the minimum value of a given column.
-  Future<int> min(String column) async {
+  Future<dynamic> min(String column) async {
     _setStatement(Operator.get);
     _setColumn(column);
     _setAggraegate(Aggregate.min);
@@ -263,7 +260,7 @@ class QueryBuilder {
     _setAggraegate(Aggregate.sum);
     _buildSql();
     var results = await db.select(_sql);
-    return results[0]['SUM($column)'];
+    return results[0]['SUM($column)'] as double;
   }
 
   /// Alias to set the "limit" value of the query.
@@ -279,7 +276,7 @@ class QueryBuilder {
   }
 
   /// Update records in the database.
-  Future<int> update(Map<String, dynamic> value) async {
+  Future<void> update(Map<String, dynamic> value) async {
     _setStatement(Operator.update);
     _setColumns(value.keys.toList());
     _values = value.values.join(', ');
@@ -297,8 +294,7 @@ class QueryBuilder {
       }
     });
     _buildSql();
-    var affectedRows = await db.update(_sql);
-    return affectedRows;
+    await db.update(_sql);
   }
 
   /// Add a basic where clause to the query.

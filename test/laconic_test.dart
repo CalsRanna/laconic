@@ -3,7 +3,7 @@ import 'package:test/test.dart';
 
 void main() {
   group('A group of tests', () {
-    final db = DB(
+    final db = Database(
       host: '127.0.0.1',
       port: 3333,
       database: 'mysql',
