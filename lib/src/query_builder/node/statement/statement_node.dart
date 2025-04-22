@@ -1,11 +1,11 @@
-import 'package:laconic/src/query_builder/node/from_node.dart';
+import 'package:laconic/src/query_builder/node/clause/from_clause_node.dart';
 import 'package:laconic/src/query_builder/node/node.dart';
-import 'package:laconic/src/query_builder/node/where_node.dart';
+import 'package:laconic/src/query_builder/node/clause/where_clause_node.dart';
 import 'package:laconic/src/query_builder/visitor/visitor.dart';
 
 abstract class StatementNode extends ASTNode {
-  FromNode fromClause;
-  WhereNode whereClause = WhereNode();
+  FromClauseNode fromClause;
+  WhereClauseNode whereClause = WhereClauseNode();
   int? limit;
   int? offset;
 

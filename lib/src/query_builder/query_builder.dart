@@ -5,13 +5,13 @@ import 'package:laconic/src/query_builder/node/expression/column_node.dart';
 import 'package:laconic/src/query_builder/node/expression/comparison_node.dart';
 import 'package:laconic/src/query_builder/node/expression/literal_node.dart';
 import 'package:laconic/src/query_builder/node/expression/logical_operation_node.dart';
-import 'package:laconic/src/query_builder/node/from_node.dart';
-import 'package:laconic/src/query_builder/node/order_by/ordering_node.dart';
-import 'package:laconic/src/query_builder/node/set/assignment_node.dart';
-import 'package:laconic/src/query_builder/node/set/set_clause_node.dart';
+import 'package:laconic/src/query_builder/node/clause/from_clause_node.dart';
+import 'package:laconic/src/query_builder/node/ordering_node.dart';
+import 'package:laconic/src/query_builder/node/assignment_node.dart';
+import 'package:laconic/src/query_builder/node/clause/set_clause_node.dart';
 import 'package:laconic/src/query_builder/node/statement/delete_node.dart';
 import 'package:laconic/src/query_builder/node/statement/insert_node.dart';
-import 'package:laconic/src/query_builder/node/statement/query_node.dart';
+import 'package:laconic/src/query_builder/node/statement/select_node.dart';
 import 'package:laconic/src/query_builder/node/statement/statement_node.dart';
 import 'package:laconic/src/query_builder/node/statement/update_node.dart';
 import 'package:laconic/src/query_builder/visitor/mysql_visitor.dart';
@@ -28,8 +28,8 @@ class QueryBuilder {
 
   QueryBuilder({required Laconic laconic, required String table})
     : _laconic = laconic,
-      _statementNode = QueryNode(table) {
-    if (_statementNode is QueryNode) {
+      _statementNode = SelectNode(table) {
+    if (_statementNode is SelectNode) {
       _statementNode.selectClause.columns.add(ColumnNode('*'));
     }
   }
@@ -47,7 +47,7 @@ class QueryBuilder {
 
   Future<void> delete() async {
     var deleteNode = DeleteNode(
-      fromClause: FromNode(_statementNode.fromClause.table),
+      fromClause: FromClauseNode(_statementNode.fromClause.table),
       whereClause: _statementNode.whereClause,
     );
     var deleteVisitor = _createVisitor();
@@ -80,7 +80,7 @@ class QueryBuilder {
 
   Future<void> insert(Map<String, Object?> data) async {
     var insertNode = InsertNode(
-      fromClause: FromNode(_statementNode.fromClause.table),
+      fromClause: FromClauseNode(_statementNode.fromClause.table),
       columns: data.keys.map((key) => ColumnNode(key)).toList(),
       values: data.values.map((value) => LiteralNode(value)).toList(),
     );
@@ -102,7 +102,7 @@ class QueryBuilder {
   }
 
   QueryBuilder orderBy(String column, {String direction = 'asc'}) {
-    if (_statementNode is! QueryNode) {
+    if (_statementNode is! SelectNode) {
       throw LaconicException('order by is only supported for select queries');
     }
     _statementNode.orderByClause.orderings.add(
@@ -139,7 +139,7 @@ class QueryBuilder {
   }
 
   QueryBuilder select(List<String>? columns) {
-    if (_statementNode is! QueryNode) {
+    if (_statementNode is! SelectNode) {
       throw LaconicException('select is only supported for select queries');
     }
     _statementNode.selectClause.columns.clear();
@@ -174,7 +174,7 @@ class QueryBuilder {
       );
     });
     var updateNode = UpdateNode(
-      fromClause: FromNode(_statementNode.fromClause.table),
+      fromClause: FromClauseNode(_statementNode.fromClause.table),
       setClause: setClause,
       whereClause: _statementNode.whereClause,
     );

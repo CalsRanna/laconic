@@ -2,17 +2,17 @@ import 'package:laconic/src/query_builder/node/expression/column_node.dart';
 import 'package:laconic/src/query_builder/node/expression/comparison_node.dart';
 import 'package:laconic/src/query_builder/node/expression/literal_node.dart';
 import 'package:laconic/src/query_builder/node/expression/logical_operation_node.dart';
-import 'package:laconic/src/query_builder/node/from_node.dart';
-import 'package:laconic/src/query_builder/node/order_by/order_by_node.dart';
-import 'package:laconic/src/query_builder/node/order_by/ordering_node.dart';
-import 'package:laconic/src/query_builder/node/select_node.dart';
-import 'package:laconic/src/query_builder/node/set/assignment_node.dart';
-import 'package:laconic/src/query_builder/node/set/set_clause_node.dart';
+import 'package:laconic/src/query_builder/node/clause/from_clause_node.dart';
+import 'package:laconic/src/query_builder/node/clause/order_by_clause_node.dart';
+import 'package:laconic/src/query_builder/node/ordering_node.dart';
+import 'package:laconic/src/query_builder/node/clause/select_clause_node.dart';
+import 'package:laconic/src/query_builder/node/assignment_node.dart';
+import 'package:laconic/src/query_builder/node/clause/set_clause_node.dart';
 import 'package:laconic/src/query_builder/node/statement/delete_node.dart';
 import 'package:laconic/src/query_builder/node/statement/insert_node.dart';
-import 'package:laconic/src/query_builder/node/statement/query_node.dart';
+import 'package:laconic/src/query_builder/node/statement/select_node.dart';
 import 'package:laconic/src/query_builder/node/statement/update_node.dart';
-import 'package:laconic/src/query_builder/node/where_node.dart';
+import 'package:laconic/src/query_builder/node/clause/where_clause_node.dart';
 import 'package:laconic/src/query_builder/visitor/visitor.dart';
 
 class SqliteVisitor extends SQLVisitor {
@@ -65,7 +65,7 @@ class SqliteVisitor extends SQLVisitor {
   }
 
   @override
-  void visitFrom(FromNode node) {
+  void visitFrom(FromClauseNode node) {
     _buffer.write(node.table);
   }
 
@@ -115,7 +115,7 @@ class SqliteVisitor extends SQLVisitor {
   }
 
   @override
-  void visitOrderBy(OrderByNode node) {
+  void visitOrderBy(OrderByClauseNode node) {
     _buffer.write(' order by ');
     for (var i = 0; i < node.orderings.length; i++) {
       node.orderings[i].accept(this);
@@ -132,7 +132,7 @@ class SqliteVisitor extends SQLVisitor {
   }
 
   @override
-  void visitQuery(QueryNode node) {
+  void visitQuery(SelectNode node) {
     _reset();
     node.selectClause.accept(this);
     _buffer.write(' from ');
@@ -156,7 +156,7 @@ class SqliteVisitor extends SQLVisitor {
   }
 
   @override
-  void visitSelect(SelectNode node) {
+  void visitSelect(SelectClauseNode node) {
     _buffer.write('select ');
     if (node.columns.isEmpty) {
       _buffer.write('*');
@@ -194,7 +194,7 @@ class SqliteVisitor extends SQLVisitor {
   }
 
   @override
-  void visitWhere(WhereNode node) {
+  void visitWhere(WhereClauseNode node) {
     if (node.condition != null) {
       node.condition!.accept(this);
     }

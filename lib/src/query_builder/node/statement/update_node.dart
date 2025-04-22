@@ -1,6 +1,6 @@
-import 'package:laconic/src/query_builder/node/set/set_clause_node.dart';
+import 'package:laconic/src/query_builder/node/clause/set_clause_node.dart';
 import 'package:laconic/src/query_builder/node/statement/statement_node.dart';
-import 'package:laconic/src/query_builder/node/where_node.dart';
+import 'package:laconic/src/query_builder/node/clause/where_clause_node.dart';
 import 'package:laconic/src/query_builder/visitor/visitor.dart';
 
 class UpdateNode extends StatementNode {
@@ -9,7 +9,7 @@ class UpdateNode extends StatementNode {
   UpdateNode({
     required super.fromClause,
     required this.setClause,
-    WhereNode? whereClause,
+    WhereClauseNode? whereClause,
   }) {
     if (whereClause != null) {
       this.whereClause = whereClause;
