@@ -2,7 +2,7 @@ import 'package:laconic/laconic.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('Group of tests on sqlite:', () {
+  group('Group sqlite:', () {
     var config = SqliteConfig('laconic.db');
     final laconic = Laconic.sqlite(config);
     final table = 'user';
@@ -43,7 +43,7 @@ void main() {
       'insert into $table (id, name, age, gender) values (4, "Tom", 25, "male")',
       () async {
         await laconic.statement(
-          'insert into $table (id, name, age, gender) values (?,?,?,?)',
+          'insert into $table (id, name, age, gender) values (?, ?, ?, ?)',
           [4, 'Tom', 25, 'male'],
         );
         var users = await laconic.select('select * from $table');
@@ -56,7 +56,9 @@ void main() {
         'Jones',
         1,
       ]);
-      var users = await laconic.select('select * from $table where id =?', [1]);
+      var users = await laconic.select('select * from $table where id = ?', [
+        1,
+      ]);
       expect(users.length, 1);
       expect(users.first['name'], 'Jones');
       expect(users.first['age'], 25);
