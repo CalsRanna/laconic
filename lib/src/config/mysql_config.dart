@@ -1,8 +1,5 @@
-import 'package:laconic/src/driver.dart';
-
 class MysqlConfig {
   final String database;
-  final LaconicDriver driver;
   final String host;
   final String password;
   final int port;
@@ -14,5 +11,5 @@ class MysqlConfig {
     required this.password,
     this.port = 3306,
     this.username = 'root',
-  }) : driver = LaconicDriver.mysql;
+  });
 }

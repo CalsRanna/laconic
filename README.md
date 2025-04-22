@@ -27,43 +27,23 @@ dart pub add laconic
 import 'package:laconic/laconic.dart';
 
 void main() async {
-  // Example for MySQL
-  final mysqlDb = DB(
-    host: 'your_mysql_host', // e.g., '127.0.0.1'
+  // Mysql and query builder
+  var mysqlConfig = MysqlConfig(
+    database: 'laconic',
+    host: '127.0.0.1',
+    password: 'root',
     port: 3306,
-    database: 'your_database_name',
-    username: 'your_username',
-    password: 'your_password',
+    username: 'root',
   );
+  var mysqlLaconic = Laconic.mysql(mysqlConfig);
+  await mysqlLaconic.table('users').where('id', 1).first();
 
-  // Fetch a single row where id = 1
-  try {
-    var result = await mysqlDb.table('example_table').where('id', 1).first();
-    if (result != null) {
-      print('Found record: $result');
-    } else {
-      print('Record not found.');
-    }
-  } catch (e) {
-    print('Error executing query: $e');
-  }
-
-  // Example for SQLite
-  var sqliteConfig = SqliteConfig('your_database_file.db'); // e.g., 'laconic.db'
-  final sqliteDb = Laconic.sqlite(sqliteConfig);
-
-  // Fetch the first record where id = 1 from the 'users' table
-  try {
-    var user = await sqliteDb.table('users').where('id', 1).first();
-    if (user != null) {
-      print('Found user: $user');
-    } else {
-      print('User not found.');
-    }
-  } catch (e) {
-    print('Error executing SQLite query: $e');
-  }
+  // Sqlite and query builder
+  var config = SqliteConfig('laconic.db');
+  final sqliteLaconic = Laconic.sqlite(config);
+  await sqliteLaconic.table('users').where('id', 1).first();
 }
+
 ```
 
 ## Additional Information

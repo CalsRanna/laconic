@@ -1,29 +1,19 @@
 import 'package:laconic/laconic.dart';
 
 void main() async {
-  // final db = DB(
-  //   host: '127.0.0.1',
-  //   port: 3306,
-  //   database: 'acore_world',
-  //   username: 'root',
-  //   password: 'root',
-  // );
-  // var builder = QueryBuilder.from(db: db, table: 'creature_template');
-  // builder = builder
-  //     .where(column: 'entry', value: null)
-  //     .where(column: 'name', comparator: 'like', value: null)
-  //     .where(column: 'subname', comparator: 'like', value: null)
-  //     .limit(10);
-
-  // // var creatures = <CreatureTemplate>[];
-  // // for (int i = 0; i < rows.length; i++) {
-  // //   creatures.add(CreatureTemplate.fromJson(rows[i]));
-  // // }
-  // print(builder.toSql());
-  // print(builder.get());
+  // Mysql and query builder
+  var mysqlConfig = MysqlConfig(
+    database: 'laconic',
+    host: '127.0.0.1',
+    password: 'root',
+    port: 3306,
+    username: 'root',
+  );
+  var mysqlLaconic = Laconic.mysql(mysqlConfig);
+  await mysqlLaconic.table('users').where('id', 1).first();
 
   // Sqlite and query builder
   var config = SqliteConfig('laconic.db');
-  final laconic = Laconic.sqlite(config);
-  await laconic.table('users').where('id', 1).first();
+  final sqliteLaconic = Laconic.sqlite(config);
+  await sqliteLaconic.table('users').where('id', 1).first();
 }

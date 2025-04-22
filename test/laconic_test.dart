@@ -42,7 +42,7 @@ void main() {
     test(
       'insert into $table (id, name, age, gender) values (4, "Tom", 25, "male")',
       () async {
-        await laconic.insert(
+        await laconic.statement(
           'insert into $table (id, name, age, gender) values (?,?,?,?)',
           [4, 'Tom', 25, 'male'],
         );
@@ -52,7 +52,7 @@ void main() {
     );
 
     test('update users set name = "Jones" where id = 1', () async {
-      await laconic.update('update $table set name = ? where id = ?', [
+      await laconic.statement('update $table set name = ? where id = ?', [
         'Jones',
         1,
       ]);
@@ -63,7 +63,7 @@ void main() {
     });
 
     test('delete from users where id = 1', () async {
-      await laconic.delete('delete from $table where id = ?', [1]);
+      await laconic.statement('delete from $table where id = ?', [1]);
       var users = await laconic.select('select * from $table');
       expect(users.length, 2);
     });
