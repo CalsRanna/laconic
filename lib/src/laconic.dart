@@ -12,20 +12,20 @@ class Laconic {
   final MysqlConfig? mysqlConfig;
   final SqliteConfig? sqliteConfig;
 
-  MySQLConnection? _connection;
+  MySQLConnectionPool? _pool;
   Database? _database;
 
   Laconic({required this.driver, this.mysqlConfig, this.sqliteConfig})
     : assert(
-        mysqlConfig == null && sqliteConfig == null,
+        mysqlConfig != null || sqliteConfig != null,
         'mysqlConfig and mysqlConfig can not be both null',
       ),
       assert(
-        driver == LaconicDriver.mysql && mysqlConfig == null,
+        driver != LaconicDriver.mysql || mysqlConfig != null,
         'mysqlConfig can not be null while laconic driver is mysql',
       ),
       assert(
-        driver == LaconicDriver.sqlite && sqliteConfig == null,
+        driver != LaconicDriver.sqlite || sqliteConfig != null,
         'sqliteConfig can not be null while laconic driver is sqlite',
       );
 
@@ -37,14 +37,15 @@ class Laconic {
     : driver = LaconicDriver.sqlite,
       mysqlConfig = null;
 
-  /// Run a delete statement against the database.
-  Future<void> delete(String sql, [List<Object?> params = const []]) async {
-    await _execute(sql, params);
-  }
-
-  /// Run an insert statement against the database.
-  Future<void> insert(String sql, [List<Object?> params = const []]) async {
-    await _execute(sql, params);
+  Future<void> close() async {
+    if (_pool != null) {
+      await _pool!.close();
+      _pool = null;
+    }
+    if (_database != null) {
+      _database!.dispose();
+      _database = null;
+    }
   }
 
   /// Run a select statement against the database.
@@ -56,7 +57,7 @@ class Laconic {
     return rows;
   }
 
-  /// Execute an SQL statement and return the boolean result.
+  /// Execute an SQL statement.
   Future<void> statement(String sql, [List<Object?> params = const []]) async {
     await _execute(sql, params);
   }
@@ -66,51 +67,35 @@ class Laconic {
     return QueryBuilder(laconic: this, table: table);
   }
 
-  /// Run a raw, unprepared query against the PDO connection.
-  Future<void> unprepared(String sql) async {
-    await _execute(sql);
-  }
-
-  /// Run an update statement against the database.
-  Future<void> update(String sql, [List<Object?> params = const []]) async {
-    await _execute(sql, params);
-  }
-
   Future<List<LaconicResult>> _execute(
     String sql, [
     List<Object?> params = const [],
   ]) async {
-    print(sql);
     if (driver == LaconicDriver.mysql) {
-      _connection ??= await MySQLConnection.createConnection(
+      _pool ??= MySQLConnectionPool(
         databaseName: mysqlConfig!.database,
         host: mysqlConfig!.host,
+        maxConnections: 10,
         password: mysqlConfig!.password,
         port: mysqlConfig!.port,
         userName: mysqlConfig!.username,
       );
-      await _connection!.connect();
       try {
-        var stmt = await _connection!.prepare(sql);
+        var stmt = await _pool!.prepare(sql);
         var results = await stmt.execute(params);
-        await _connection!.close();
-        _connection = null;
+        await stmt.deallocate();
         return results.rows.map(LaconicResult.fromResultSetRow).toList();
       } catch (error) {
-        await _connection!.close();
-        _connection = null;
         throw LaconicException(error.toString());
       }
     } else {
       _database ??= sqlite3.open(sqliteConfig!.path);
       try {
-        var results = _database!.select(sql, params);
-        _database!.dispose();
-        _database = null;
+        var stmt = _database!.prepare(sql);
+        var results = stmt.select(params);
+        stmt.dispose();
         return results.map(LaconicResult.fromRow).toList();
       } catch (error) {
-        _database!.dispose();
-        _database = null;
         throw LaconicException(error.toString());
       }
     }

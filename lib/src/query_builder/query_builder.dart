@@ -42,7 +42,7 @@ class QueryBuilder {
     deleteNode.accept(deleteVisitor);
     _bindings = deleteVisitor.bindings;
     _sql = deleteVisitor.sql;
-    await _laconic.delete(deleteVisitor.sql, deleteVisitor.bindings);
+    await _laconic.statement(deleteVisitor.sql, deleteVisitor.bindings);
   }
 
   Future<LaconicResult> first() async {
@@ -76,7 +76,7 @@ class QueryBuilder {
     insertNode.accept(insertVisitor);
     _bindings = insertVisitor.bindings;
     _sql = insertVisitor.sql;
-    await _laconic.insert(insertVisitor.sql, insertVisitor.bindings);
+    await _laconic.statement(insertVisitor.sql, insertVisitor.bindings);
   }
 
   QueryBuilder limit(int limit) {
@@ -170,7 +170,7 @@ class QueryBuilder {
     updateNode.accept(updateVisitor);
     _bindings = updateVisitor.bindings;
     _sql = updateVisitor.sql;
-    await _laconic.update(updateVisitor.sql, updateVisitor.bindings);
+    await _laconic.statement(updateVisitor.sql, updateVisitor.bindings);
   }
 
   QueryBuilder where(String column, Object? value, {String comparator = '='}) {
