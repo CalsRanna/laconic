@@ -1,4 +1,4 @@
-import 'package:laconic/src/query_builder/node/assignment_node.dart';
+import 'package:laconic/src/query_builder/node/set/assignment_node.dart';
 import 'package:laconic/src/query_builder/node/node.dart';
 import 'package:laconic/src/query_builder/visitor/visitor.dart';
 
