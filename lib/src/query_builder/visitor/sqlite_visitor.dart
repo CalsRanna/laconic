@@ -136,7 +136,7 @@ class SqliteVisitor extends SqlVisitor {
     }
 
     if (node.offset != null) {
-      _buffer.write(' offset?');
+      _buffer.write(' offset ?');
       _bindings.add(node.offset);
     }
   }
