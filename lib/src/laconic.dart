@@ -4,7 +4,7 @@ import 'package:laconic/src/driver.dart';
 import 'package:laconic/src/exception.dart';
 import 'package:laconic/src/query_builder/query_builder.dart';
 import 'package:laconic/src/result.dart';
-import 'package:mysql1/mysql1.dart';
+import 'package:mysql_client/mysql_client.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 class Laconic {
@@ -12,7 +12,7 @@ class Laconic {
   final MysqlConfig? mysqlConfig;
   final SqliteConfig? sqliteConfig;
 
-  MySqlConnection? _connection;
+  MySQLConnection? _connection;
   Database? _database;
 
   Laconic({required this.driver, this.mysqlConfig, this.sqliteConfig})
@@ -82,19 +82,20 @@ class Laconic {
   ]) async {
     print(sql);
     if (driver == LaconicDriver.mysql) {
-      var setting = ConnectionSettings(
-        db: mysqlConfig!.database,
+      _connection ??= await MySQLConnection.createConnection(
+        databaseName: mysqlConfig!.database,
         host: mysqlConfig!.host,
         password: mysqlConfig!.password,
         port: mysqlConfig!.port,
-        user: mysqlConfig!.username,
+        userName: mysqlConfig!.username,
       );
-      _connection ??= await MySqlConnection.connect(setting);
+      await _connection!.connect();
       try {
-        Results results = await _connection!.query(sql, params);
+        var stmt = await _connection!.prepare(sql);
+        var results = await stmt.execute(params);
         await _connection!.close();
         _connection = null;
-        return results.map(LaconicResult.fromResultRow).toList();
+        return results.rows.map(LaconicResult.fromResultSetRow).toList();
       } catch (error) {
         await _connection!.close();
         _connection = null;

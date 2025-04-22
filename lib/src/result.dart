@@ -1,4 +1,4 @@
-import 'package:mysql1/mysql1.dart';
+import 'package:mysql_client/mysql_client.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 class LaconicResult {
@@ -11,9 +11,9 @@ class LaconicResult {
     : columns = map.keys.toList(),
       values = map.values.toList();
 
-  LaconicResult.fromResultRow(ResultRow row)
-    : columns = row.fields.keys.toList(),
-      values = row.fields.values.toList();
+  LaconicResult.fromResultSetRow(ResultSetRow row)
+    : columns = row.typedAssoc().keys.toList(),
+      values = row.typedAssoc().values.toList();
 
   LaconicResult.fromRow(Row row) : columns = row.keys, values = row.values;
 

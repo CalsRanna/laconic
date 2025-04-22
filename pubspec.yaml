@@ -11,5 +11,5 @@ dev_dependencies:
   test: ^1.25.15
 
 dependencies:
-  mysql1: ^0.20.0
+  mysql_client: ^0.0.27
   sqlite3: ^2.7.5
