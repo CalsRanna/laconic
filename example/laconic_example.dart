@@ -3,7 +3,7 @@ import 'package:laconic/laconic.dart';
 void main() async {
   // final db = DB(
   //   host: '127.0.0.1',
-  //   port: 33060,
+  //   port: 3306,
   //   database: 'acore_world',
   //   username: 'root',
   //   password: 'root',
@@ -22,7 +22,8 @@ void main() async {
   // print(builder.toSql());
   // print(builder.get());
 
-  final db = Database.sqlite(path: 'laconic.db');
-
-  await db.table('book_sources').where(column: 'id', value: 1).get();
+  // Sqlite and query builder
+  var config = SqliteConfig('laconic.db');
+  final laconic = Laconic.sqlite(config);
+  await laconic.table('users').where('id', 1).first();
 }

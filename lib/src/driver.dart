@@ -1,0 +1,1 @@
+enum LaconicDriver { mysql, sqlite }
