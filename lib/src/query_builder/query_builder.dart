@@ -1,7 +1,19 @@
 import 'package:laconic/src/driver.dart';
 import 'package:laconic/src/exception.dart';
 import 'package:laconic/src/laconic.dart';
-import 'package:laconic/src/query_builder/ast_node.dart';
+import 'package:laconic/src/query_builder/node/expression/column_node.dart';
+import 'package:laconic/src/query_builder/node/expression/comparison_node.dart';
+import 'package:laconic/src/query_builder/node/expression/literal_node.dart';
+import 'package:laconic/src/query_builder/node/expression/logical_operation_node.dart';
+import 'package:laconic/src/query_builder/node/from_node.dart';
+import 'package:laconic/src/query_builder/node/order_by/ordering_node.dart';
+import 'package:laconic/src/query_builder/node/set/assignment_node.dart';
+import 'package:laconic/src/query_builder/node/set/set_clause_node.dart';
+import 'package:laconic/src/query_builder/node/statement/delete_node.dart';
+import 'package:laconic/src/query_builder/node/statement/insert_node.dart';
+import 'package:laconic/src/query_builder/node/statement/query_node.dart';
+import 'package:laconic/src/query_builder/node/statement/statement_node.dart';
+import 'package:laconic/src/query_builder/node/statement/update_node.dart';
 import 'package:laconic/src/query_builder/visitor/mysql_visitor.dart';
 import 'package:laconic/src/query_builder/visitor/sqlite_visitor.dart';
 import 'package:laconic/src/query_builder/visitor/visitor.dart';
@@ -94,7 +106,7 @@ class QueryBuilder {
       throw LaconicException('order by is only supported for select queries');
     }
     _statementNode.orderByClause.orderings.add(
-      Ordering(ColumnNode(column), direction),
+      OrderingNode(ColumnNode(column), direction),
     );
     return this;
   }
@@ -196,7 +208,7 @@ class QueryBuilder {
     return this;
   }
 
-  SqlVisitor _createVisitor() {
+  SQLVisitor _createVisitor() {
     if (_laconic.driver == LaconicDriver.sqlite) {
       return SqliteVisitor();
     } else {

@@ -1,7 +1,21 @@
-import 'package:laconic/src/query_builder/ast_node.dart';
+import 'package:laconic/src/query_builder/node/expression/column_node.dart';
+import 'package:laconic/src/query_builder/node/expression/comparison_node.dart';
+import 'package:laconic/src/query_builder/node/expression/literal_node.dart';
+import 'package:laconic/src/query_builder/node/expression/logical_operation_node.dart';
+import 'package:laconic/src/query_builder/node/from_node.dart';
+import 'package:laconic/src/query_builder/node/order_by/order_by_node.dart';
+import 'package:laconic/src/query_builder/node/order_by/ordering_node.dart';
+import 'package:laconic/src/query_builder/node/select_node.dart';
+import 'package:laconic/src/query_builder/node/set/assignment_node.dart';
+import 'package:laconic/src/query_builder/node/set/set_clause_node.dart';
+import 'package:laconic/src/query_builder/node/statement/delete_node.dart';
+import 'package:laconic/src/query_builder/node/statement/insert_node.dart';
+import 'package:laconic/src/query_builder/node/statement/query_node.dart';
+import 'package:laconic/src/query_builder/node/statement/update_node.dart';
+import 'package:laconic/src/query_builder/node/where_node.dart';
 import 'package:laconic/src/query_builder/visitor/visitor.dart';
 
-class SqliteVisitor extends SqlVisitor {
+class SqliteVisitor extends SQLVisitor {
   final _buffer = StringBuffer();
   final _bindings = <Object?>[];
 
@@ -112,7 +126,7 @@ class SqliteVisitor extends SqlVisitor {
   }
 
   @override
-  void visitOrdering(Ordering ordering) {
+  void visitOrdering(OrderingNode ordering) {
     ordering.expression.accept(this);
     _buffer.write(' ${ordering.direction}');
   }
