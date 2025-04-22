@@ -1,6 +1,6 @@
 name: laconic
 description: A laravel like sql query builder for mysql designed to be flexible, portable and easy to use.
-version: 0.0.1
+version: 1.0.0+9
 homepage: https://laconic.antdf.xyz
 
 environment:
