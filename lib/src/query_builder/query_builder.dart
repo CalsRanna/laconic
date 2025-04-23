@@ -8,7 +8,6 @@ import 'package:laconic/src/query_builder/node/clause/join_clause_node.dart';
 import 'package:laconic/src/query_builder/node/clause/set_clause_node.dart';
 import 'package:laconic/src/query_builder/node/expression/column_node.dart';
 import 'package:laconic/src/query_builder/node/expression/comparison_node.dart';
-import 'package:laconic/src/query_builder/node/expression/expression_node.dart';
 import 'package:laconic/src/query_builder/node/expression/literal_node.dart';
 import 'package:laconic/src/query_builder/node/expression/logical_operation_node.dart';
 import 'package:laconic/src/query_builder/node/ordering_node.dart';
@@ -48,6 +47,18 @@ class QueryBuilder {
     return sql;
   }
 
+  Future<int> count() async {
+    var selectVisitor = _createVisitor();
+    _statementNode.accept(selectVisitor);
+    _bindings = selectVisitor.bindings;
+    _sql = selectVisitor.sql;
+    var results = await _laconic.select(
+      selectVisitor.sql,
+      selectVisitor.bindings,
+    );
+    return results.length;
+  }
+
   Future<void> delete() async {
     var deleteNode = DeleteNode(
       fromClause: FromClauseNode(_statementNode.fromClause.table),
@@ -65,12 +76,12 @@ class QueryBuilder {
     _statementNode.accept(selectVisitor);
     _bindings = selectVisitor.bindings;
     _sql = selectVisitor.sql;
-    var result = await _laconic.select(
+    var results = await _laconic.select(
       selectVisitor.sql,
       selectVisitor.bindings,
     );
-    if (result.isEmpty) throw LaconicException('No record found');
-    return result.first;
+    if (results.isEmpty) throw LaconicException('No record found');
+    return results.first;
   }
 
   Future<List<LaconicResult>> get() async {
@@ -94,16 +105,13 @@ class QueryBuilder {
     await _laconic.statement(insertVisitor.sql, insertVisitor.bindings);
   }
 
-  QueryBuilder join(
-    String targetTable,
-    void Function(JoinBuilder builder) callback,
-  ) {
+  QueryBuilder join(String targetTable, void Function(JoinBuilder) builder) {
     if (_statementNode is! SelectNode) {
       throw LaconicException('join is only supported for select queries');
     }
     var joinBuilder = JoinBuilder();
-    callback(joinBuilder);
-    ExpressionNode condition = joinBuilder.condition;
+    builder.call(joinBuilder);
+    var condition = joinBuilder.condition;
     var joinClause = JoinClauseNode(targetTable, condition: condition);
     _statementNode.joinClauses.add(joinClause);
     return this;

@@ -99,8 +99,7 @@ class SqliteVisitor extends SQLVisitor {
 
   @override
   void visitJoin(JoinClauseNode node) {
-    _reset();
-    _buffer.write(' join ${node.targetTable} on');
+    _buffer.write(' join ${node.targetTable} on ');
     node.condition.accept(this);
   }
 
@@ -145,6 +144,11 @@ class SqliteVisitor extends SQLVisitor {
     node.selectClause.accept(this);
     _buffer.write(' from ');
     node.fromClause.accept(this);
+    if (node.joinClauses.isNotEmpty) {
+      for (var joinClause in node.joinClauses) {
+        joinClause.accept(this);
+      }
+    }
     if (node.whereClause.condition != null) {
       _buffer.write(' where ');
       node.whereClause.condition!.accept(this);
