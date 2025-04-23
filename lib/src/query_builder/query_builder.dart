@@ -1,14 +1,17 @@
 import 'package:laconic/src/driver.dart';
 import 'package:laconic/src/exception.dart';
 import 'package:laconic/src/laconic.dart';
+import 'package:laconic/src/query_builder/node/assignment_node.dart';
+import 'package:laconic/src/query_builder/node/builder/join_builder.dart';
+import 'package:laconic/src/query_builder/node/clause/from_clause_node.dart';
+import 'package:laconic/src/query_builder/node/clause/join_clause_node.dart';
+import 'package:laconic/src/query_builder/node/clause/set_clause_node.dart';
 import 'package:laconic/src/query_builder/node/expression/column_node.dart';
 import 'package:laconic/src/query_builder/node/expression/comparison_node.dart';
+import 'package:laconic/src/query_builder/node/expression/expression_node.dart';
 import 'package:laconic/src/query_builder/node/expression/literal_node.dart';
 import 'package:laconic/src/query_builder/node/expression/logical_operation_node.dart';
-import 'package:laconic/src/query_builder/node/clause/from_clause_node.dart';
 import 'package:laconic/src/query_builder/node/ordering_node.dart';
-import 'package:laconic/src/query_builder/node/assignment_node.dart';
-import 'package:laconic/src/query_builder/node/clause/set_clause_node.dart';
 import 'package:laconic/src/query_builder/node/statement/delete_node.dart';
 import 'package:laconic/src/query_builder/node/statement/insert_node.dart';
 import 'package:laconic/src/query_builder/node/statement/select_node.dart';
@@ -89,6 +92,21 @@ class QueryBuilder {
     _bindings = insertVisitor.bindings;
     _sql = insertVisitor.sql;
     await _laconic.statement(insertVisitor.sql, insertVisitor.bindings);
+  }
+
+  QueryBuilder join(
+    String targetTable,
+    void Function(JoinBuilder builder) callback,
+  ) {
+    if (_statementNode is! SelectNode) {
+      throw LaconicException('join is only supported for select queries');
+    }
+    var joinBuilder = JoinBuilder();
+    callback(joinBuilder);
+    ExpressionNode condition = joinBuilder.condition;
+    var joinClause = JoinClauseNode(targetTable, condition: condition);
+    _statementNode.joinClauses.add(joinClause);
+    return this;
   }
 
   QueryBuilder limit(int limit) {

@@ -187,6 +187,26 @@ List<LaconicResult> first5Users = await laconic.table('users').limit(5).get();
 List<LaconicResult> usersPage2 = await laconic.table('users').offset(5).limit(5).get();
 ```
 
+**连接表 (`join`):**
+
+使用 `join` 方法可以连接其他表。你需要提供目标表名和一个回调函数来定义连接条件。
+
+```dart
+// 查询用户及其对应的帖子标题
+List<LaconicResult> usersWithPosts = await laconic.table('users')
+    .select(['users.name', 'posts.title'])
+    .join('posts', (builder) {
+      // 定义 ON 条件 users.id = posts.user_id
+      builder.on('users.id', 'posts.user_id');
+      // 可以链式调用 .on() 添加更多 AND 条件
+      // builder.on('users.status', 'posts.status'); 
+    })
+    .where('users.status', 'active')
+    .get();
+```
+*注意：建议使用表名限定列名避免歧义。*
+*注意：当前 `join` 默认执行 `INNER JOIN`。回调函数中的多个 `on` 条件会使用 `AND` 连接。*
+
 ### 5. 关闭连接 (Closing the Connection)
 
 当你的应用不再需要数据库连接时，应该关闭它以释放资源。
@@ -200,4 +220,3 @@ await laconic.close();
 *   这个库目前仍处于开发阶段 (WIP)。API 在未来可能会发生不兼容的更改。如果你决定在生产环境中使用，请自行承担风险。
 *   请参考 `example/` 目录获取更多使用示例。
 *   欢迎提出 Issue 和 Pull Request！
-        

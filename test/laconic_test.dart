@@ -107,4 +107,8 @@ void main() {
       expect(users.length, 2);
     });
   });
+
+  group('Group mysql:', () {
+    test('join()', () async {});
+  });
 }
