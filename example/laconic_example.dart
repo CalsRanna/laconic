@@ -38,4 +38,5 @@ void main() async {
   });
   await laconic.table(table).where('id', 1).update({'name': 'Jones'});
   await laconic.table(table).where('id', 1).delete();
+  await laconic.close();
 }
