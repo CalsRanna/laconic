@@ -8,6 +8,6 @@ class WhereClauseNode extends ClauseNode {
   @override
   void accept(SQLVisitor visitor) {
     if (condition == null) return;
-    visitor.visitWhere(this);
+    visitor.visitWhereClause(this);
   }
 }

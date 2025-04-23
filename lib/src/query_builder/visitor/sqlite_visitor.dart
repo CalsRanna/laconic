@@ -66,7 +66,7 @@ class SqliteVisitor extends SQLVisitor {
   }
 
   @override
-  void visitFrom(FromClauseNode node) {
+  void visitFromClause(FromClauseNode node) {
     _buffer.write(node.table);
   }
 
@@ -98,7 +98,7 @@ class SqliteVisitor extends SQLVisitor {
   }
 
   @override
-  void visitJoin(JoinClauseNode node) {
+  void visitJoinClause(JoinClauseNode node) {
     _buffer.write(' join ${node.targetTable} on ');
     node.condition.accept(this);
   }
@@ -122,7 +122,7 @@ class SqliteVisitor extends SQLVisitor {
   }
 
   @override
-  void visitOrderBy(OrderByClauseNode node) {
+  void visitOrderByClause(OrderByClauseNode node) {
     _buffer.write(' order by ');
     for (var i = 0; i < node.orderings.length; i++) {
       node.orderings[i].accept(this);
@@ -139,7 +139,7 @@ class SqliteVisitor extends SQLVisitor {
   }
 
   @override
-  void visitQuery(SelectNode node) {
+  void visitSelect(SelectNode node) {
     _reset();
     node.selectClause.accept(this);
     _buffer.write(' from ');
@@ -168,7 +168,7 @@ class SqliteVisitor extends SQLVisitor {
   }
 
   @override
-  void visitSelect(SelectClauseNode node) {
+  void visitSelectClause(SelectClauseNode node) {
     _buffer.write('select ');
     if (node.columns.isEmpty) {
       _buffer.write('*');
@@ -206,7 +206,7 @@ class SqliteVisitor extends SQLVisitor {
   }
 
   @override
-  void visitWhere(WhereClauseNode node) {
+  void visitWhereClause(WhereClauseNode node) {
     if (node.condition != null) {
       node.condition!.accept(this);
     }

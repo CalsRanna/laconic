@@ -28,27 +28,27 @@ abstract class SQLVisitor {
 
   void visitDelete(DeleteNode node);
 
-  void visitFrom(FromClauseNode node);
+  void visitFromClause(FromClauseNode node);
 
   void visitInsert(InsertNode node);
 
-  void visitJoin(JoinClauseNode node);
+  void visitJoinClause(JoinClauseNode node);
 
   void visitLiteral(LiteralNode node);
 
   void visitLogicalOperation(LogicalOperationNode node);
 
-  void visitOrderBy(OrderByClauseNode node);
+  void visitOrderByClause(OrderByClauseNode node);
 
   void visitOrdering(OrderingNode ordering);
 
-  void visitQuery(SelectNode node);
+  void visitSelect(SelectNode node);
 
-  void visitSelect(SelectClauseNode node);
+  void visitSelectClause(SelectClauseNode node);
 
   void visitSetClause(SetClauseNode node);
 
   void visitUpdate(UpdateNode node);
 
-  void visitWhere(WhereClauseNode node);
+  void visitWhereClause(WhereClauseNode node);
 }

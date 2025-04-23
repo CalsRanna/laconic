@@ -6,5 +6,5 @@ class OrderByClauseNode extends ClauseNode {
   List<OrderingNode> orderings = [];
 
   @override
-  void accept(SQLVisitor visitor) => visitor.visitOrderBy(this);
+  void accept(SQLVisitor visitor) => visitor.visitOrderByClause(this);
 }

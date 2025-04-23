@@ -6,5 +6,5 @@ class FromClauseNode extends ClauseNode {
   FromClauseNode(this.table);
 
   @override
-  void accept(SQLVisitor visitor) => visitor.visitFrom(this);
+  void accept(SQLVisitor visitor) => visitor.visitFromClause(this);
 }

@@ -6,5 +6,5 @@ class SelectClauseNode extends ClauseNode {
   List<ColumnNode> columns = [];
 
   @override
-  void accept(SQLVisitor visitor) => visitor.visitSelect(this);
+  void accept(SQLVisitor visitor) => visitor.visitSelectClause(this);
 }

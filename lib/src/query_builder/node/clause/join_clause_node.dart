@@ -9,5 +9,5 @@ class JoinClauseNode extends ClauseNode {
   JoinClauseNode(this.targetTable, {required this.condition});
 
   @override
-  void accept(SQLVisitor visitor) => visitor.visitJoin(this);
+  void accept(SQLVisitor visitor) => visitor.visitJoinClause(this);
 }

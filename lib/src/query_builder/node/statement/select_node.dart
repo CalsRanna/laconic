@@ -13,5 +13,5 @@ class SelectNode extends StatementNode {
   SelectNode(String table) : super(fromClause: FromClauseNode(table));
 
   @override
-  void accept(SQLVisitor visitor) => visitor.visitQuery(this);
+  void accept(SQLVisitor visitor) => visitor.visitSelect(this);
 }
