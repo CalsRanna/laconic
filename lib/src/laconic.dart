@@ -29,13 +29,15 @@ class Laconic {
         'sqliteConfig can not be null while laconic driver is sqlite',
       );
 
-  Laconic.mysql(this.mysqlConfig)
+  Laconic.mysql(MysqlConfig config)
     : driver = LaconicDriver.mysql,
+      mysqlConfig = config,
       sqliteConfig = null;
 
-  Laconic.sqlite(this.sqliteConfig)
+  Laconic.sqlite(SqliteConfig config)
     : driver = LaconicDriver.sqlite,
-      mysqlConfig = null;
+      mysqlConfig = null,
+      sqliteConfig = config;
 
   Future<void> close() async {
     if (_pool != null) {
