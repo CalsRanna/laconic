@@ -75,6 +75,30 @@ class Laconic {
     return QueryBuilder(laconic: this, table: table);
   }
 
+  Future<T> transaction<T>(Future<T> Function() action) async {
+    if (driver == LaconicDriver.mysql) {
+      await _execute('start transaction');
+      try {
+        final result = await action();
+        await _execute('commit');
+        return result;
+      } catch (error) {
+        await _execute('rollback');
+        throw LaconicException(error.toString());
+      }
+    } else {
+      await _execute('begin transaction');
+      try {
+        final result = await action();
+        await _execute('commit');
+        return result;
+      } catch (error) {
+        await _execute('rollback');
+        throw LaconicException(error.toString());
+      }
+    }
+  }
+
   Future<List<LaconicResult>> _execute(
     String sql, [
     List<Object?> params = const [],

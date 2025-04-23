@@ -206,13 +206,44 @@ List<LaconicResult> usersWithPosts = await laconic.table('users')
     .get();
 ```
 
-#### 注意
+#### 注意事项
 
-> 建议使用表名限定列名避免歧义。
->
-> 当前 `join` 默认执行 `INNER JOIN`。回调函数中的多个 `on` 条件会使用 `AND` 连接。
+- 建议使用表名限定列名避免歧义。
+- 当前 `join` 默认执行 `INNER JOIN`。回调函数中的多个 `on` 条件会使用 `AND` 连接。
 
-### 5. 关闭连接 (Closing the Connection)
+### 5. 事务支持 (Transaction)
+
+Laconic 支持数据库事务，允许你将一组数据库操作作为一个原子单元执行。
+
+如果事务中的任意操作失败，所有更改都会被自动回滚，保证数据一致性。
+
+#### 适用场景
+
+- 需要保证多条 SQL 语句要么全部成功、要么全部失败时（如银行转账、批量写入等）。
+
+#### 用法
+
+你可以通过 `laconic.transaction` 方法将需要在同一事务中执行的操作包裹起来。
+
+```dart
+await laconic.transaction(() async {
+  await laconic.table('users').insert({'id': 7, 'name': 'Eve'});
+  await laconic.table('accounts').where('user_id', 7).update({'balance': 100});
+  // 如果这里抛出异常，以上所有更改都会自动回滚
+});
+```
+
+如果 `action` 回调内所有操作都成功，事务会自动提交。
+
+如果有任何异常抛出，事务会自动回滚。
+
+#### 注意事项
+
+- 支持 MySQL 和 SQLite 两种数据库，底层会自动选择合适的事务语法。
+- 事务回调 (`action`) 可以是异步操作。
+
+
+### 6. 关闭连接 (Closing the Connection)
 
 当你的应用不再需要数据库连接时，应该关闭它以释放资源。
 
