@@ -25,9 +25,6 @@ class QueryBuilder {
   final Laconic _laconic;
   final StatementNode _statementNode;
 
-  List<Object?> _bindings = [];
-  String _sql = '';
-
   QueryBuilder({required Laconic laconic, required String table})
     : _laconic = laconic,
       _statementNode = SelectNode(table) {
@@ -36,22 +33,9 @@ class QueryBuilder {
     }
   }
 
-  /// Only used to display the executed sql, may not be the real sql
-  String get executedSql {
-    var sql = _sql;
-    for (var binding in _bindings) {
-      var value = binding.toString();
-      if (binding is String) value = "'$value'";
-      sql = sql.replaceFirst('?', value);
-    }
-    return sql;
-  }
-
   Future<int> count() async {
     var selectVisitor = _createVisitor();
     _statementNode.accept(selectVisitor);
-    _bindings = selectVisitor.bindings;
-    _sql = selectVisitor.sql;
     var results = await _laconic.select(
       selectVisitor.sql,
       selectVisitor.bindings,
@@ -66,16 +50,12 @@ class QueryBuilder {
     );
     var deleteVisitor = _createVisitor();
     deleteNode.accept(deleteVisitor);
-    _bindings = deleteVisitor.bindings;
-    _sql = deleteVisitor.sql;
     await _laconic.statement(deleteVisitor.sql, deleteVisitor.bindings);
   }
 
   Future<LaconicResult> first() async {
     var selectVisitor = _createVisitor();
     _statementNode.accept(selectVisitor);
-    _bindings = selectVisitor.bindings;
-    _sql = selectVisitor.sql;
     var results = await _laconic.select(
       selectVisitor.sql,
       selectVisitor.bindings,
@@ -87,8 +67,6 @@ class QueryBuilder {
   Future<List<LaconicResult>> get() async {
     var selectVisitor = _createVisitor();
     _statementNode.accept(selectVisitor);
-    _bindings = selectVisitor.bindings;
-    _sql = selectVisitor.sql;
     return await _laconic.select(selectVisitor.sql, selectVisitor.bindings);
   }
 
@@ -100,8 +78,6 @@ class QueryBuilder {
     );
     var insertVisitor = _createVisitor();
     insertNode.accept(insertVisitor);
-    _bindings = insertVisitor.bindings;
-    _sql = insertVisitor.sql;
     await _laconic.statement(insertVisitor.sql, insertVisitor.bindings);
   }
 
@@ -182,8 +158,6 @@ class QueryBuilder {
   Future<LaconicResult> sole() async {
     var selectVisitor = _createVisitor();
     _statementNode.accept(selectVisitor);
-    _bindings = selectVisitor.bindings;
-    _sql = selectVisitor.sql;
     var result = await _laconic.select(
       selectVisitor.sql,
       selectVisitor.bindings,
@@ -206,8 +180,6 @@ class QueryBuilder {
     );
     var updateVisitor = _createVisitor();
     updateNode.accept(updateVisitor);
-    _bindings = updateVisitor.bindings;
-    _sql = updateVisitor.sql;
     await _laconic.statement(updateVisitor.sql, updateVisitor.bindings);
   }
 

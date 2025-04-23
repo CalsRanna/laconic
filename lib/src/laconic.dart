@@ -2,6 +2,7 @@ import 'package:laconic/src/config/mysql_config.dart';
 import 'package:laconic/src/config/sqlite_config.dart';
 import 'package:laconic/src/driver.dart';
 import 'package:laconic/src/exception.dart';
+import 'package:laconic/src/query.dart';
 import 'package:laconic/src/query_builder/query_builder.dart';
 import 'package:laconic/src/result.dart';
 import 'package:mysql_client/mysql_client.dart';
@@ -9,32 +10,37 @@ import 'package:sqlite3/sqlite3.dart';
 
 class Laconic {
   final LaconicDriver driver;
+  final void Function(LaconicQuery)? listen;
   final MysqlConfig? mysqlConfig;
   final SqliteConfig? sqliteConfig;
 
   MySQLConnectionPool? _pool;
   Database? _database;
 
-  Laconic({required this.driver, this.mysqlConfig, this.sqliteConfig})
-    : assert(
-        mysqlConfig != null || sqliteConfig != null,
-        'mysqlConfig and mysqlConfig can not be both null',
-      ),
-      assert(
-        driver != LaconicDriver.mysql || mysqlConfig != null,
-        'mysqlConfig can not be null while laconic driver is mysql',
-      ),
-      assert(
-        driver != LaconicDriver.sqlite || sqliteConfig != null,
-        'sqliteConfig can not be null while laconic driver is sqlite',
-      );
+  Laconic({
+    required this.driver,
+    this.listen,
+    this.mysqlConfig,
+    this.sqliteConfig,
+  }) : assert(
+         mysqlConfig != null || sqliteConfig != null,
+         'mysqlConfig and mysqlConfig can not be both null',
+       ),
+       assert(
+         driver != LaconicDriver.mysql || mysqlConfig != null,
+         'mysqlConfig can not be null while laconic driver is mysql',
+       ),
+       assert(
+         driver != LaconicDriver.sqlite || sqliteConfig != null,
+         'sqliteConfig can not be null while laconic driver is sqlite',
+       );
 
-  Laconic.mysql(MysqlConfig config)
+  Laconic.mysql(MysqlConfig config, {this.listen})
     : driver = LaconicDriver.mysql,
       mysqlConfig = config,
       sqliteConfig = null;
 
-  Laconic.sqlite(SqliteConfig config)
+  Laconic.sqlite(SqliteConfig config, {this.listen})
     : driver = LaconicDriver.sqlite,
       mysqlConfig = null,
       sqliteConfig = config;
@@ -73,6 +79,7 @@ class Laconic {
     String sql, [
     List<Object?> params = const [],
   ]) async {
+    listen?.call(LaconicQuery(bindings: params, sql: sql));
     if (driver == LaconicDriver.mysql) {
       _pool ??= MySQLConnectionPool(
         databaseName: mysqlConfig!.database,

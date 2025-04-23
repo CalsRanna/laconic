@@ -205,8 +205,12 @@ List<LaconicResult> usersWithPosts = await laconic.table('users')
     .where('users.status', 'active')
     .get();
 ```
-*注意：建议使用表名限定列名避免歧义。*
-*注意：当前 `join` 默认执行 `INNER JOIN`。回调函数中的多个 `on` 条件会使用 `AND` 连接。*
+
+#### 注意
+
+> 建议使用表名限定列名避免歧义。
+>
+> 当前 `join` 默认执行 `INNER JOIN`。回调函数中的多个 `on` 条件会使用 `AND` 连接。
 
 ### 5. 关闭连接 (Closing the Connection)
 
@@ -215,6 +219,29 @@ List<LaconicResult> usersWithPosts = await laconic.table('users')
 ```dart
 await laconic.close();
 ```
+
+## 查询监听 （Query Listener）
+
+Laconic 支持通过 listen 回调监听所有即将执行的 SQL 语句及其参数。这对于调试、日志记录、SQL 审计等场景非常有用。
+
+### 用法示例
+
+```dart
+var laconic = Laconic.sqlite(
+  SqliteConfig('path/to/your/database.db'),
+  listen: (query) {
+    // 你可以在这里记录日志、做SQL分析等
+  },
+);
+```
+
+每当你调用 select、statement 等方法时，listen 回调都会被触发，参数为 LaconicQuery 对象，包含绑定参数、 SQL 字符串和执行时间戳。
+
+### 典型应用场景
+
+* 调试：实时输出所有执行的 SQL，方便排查问题。
+* 日志记录：将 SQL 及参数写入日志文件，便于后期审计。
+* 安全审查：对即将执行的 SQL 进行分析和过滤，防止危险操作。
 
 ## 附加信息 (Additional Information)
 

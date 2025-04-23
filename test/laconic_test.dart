@@ -13,33 +13,15 @@ void main() {
       await laconic.statement('drop table if exists $commentTable');
       await laconic.statement('drop table if exists $postTable');
       await laconic.statement('drop table if exists $userTable');
-      await laconic.statement('''
-        create table $userTable (
-          id integer primary key,
-          name varchar(255),
-          age int,
-          gender varchar(255)
-        )
-      ''');
-      await laconic.statement('''
-        create table $postTable (
-          post_id integer primary key autoincrement,
-          user_id int not null,
-          title varchar(255),
-          content text,
-          foreign key (user_id) references $userTable(id) on delete cascade
-        )
-      ''');
-      await laconic.statement('''
-        create table $commentTable (
-          comment_id integer primary key autoincrement,
-          post_id int not null,
-          user_id int not null, -- User who made the comment
-          comment_text text,
-          foreign key (post_id) references $postTable(post_id) on delete cascade,
-          foreign key (user_id) references $userTable(id) on delete cascade
-        )
-      ''');
+      await laconic.statement(
+        'create table $userTable (id integer primary key, name varchar(255), age int, gender varchar(255))',
+      );
+      await laconic.statement(
+        'create table $postTable (post_id integer primary key autoincrement, user_id int not null, title varchar(255), content text, foreign key (user_id) references $userTable(id) on delete cascade)',
+      );
+      await laconic.statement(
+        'create table $commentTable (comment_id integer primary key autoincrement, post_id int not null, user_id int not null, comment_text text, foreign key (post_id) references $postTable(post_id) on delete cascade, foreign key (user_id) references $userTable(id) on delete cascade)',
+      );
       await laconic.statement(
         'insert into $userTable (id, name, age, gender) values (?, ?, ?, ?)',
         [1, "John", 25, "male"],
@@ -158,12 +140,9 @@ void main() {
     test(
       'select u.name, p.title from users u join posts p on u.id = p.user_id order by u.name, p.title',
       () async {
-        final results = await laconic.select('''
-        select u.name, p.title
-        from $userTable u
-        join $postTable p on u.id = p.user_id
-        order by u.name, p.title
-      ''');
+        final results = await laconic.select(
+          'select u.name, p.title from $userTable u join $postTable p on u.id = p.user_id order by u.name, p.title',
+        );
         expect(results.length, 3);
         expect(results[0]['name'], 'Jane');
         expect(results[0]['title'], 'Jane\'s Insights');
