@@ -11,6 +11,7 @@
     *   支持 `where`, `orWhere` 条件子句。
     *   支持 `orderBy` 排序。
     *   支持 `limit` 和 `offset` 分页。
+    *   支持 `join` 连接。
 *   **原始 SQL 执行 (Raw SQL Execution):** 允许执行原始的 SQL 查询和语句。
 *   **配置简单 (Simple Configuration):** 使用专门的配置类 (`MysqlConfig`, `SqliteConfig`) 进行数据库连接设置。
 *   **结果处理 (Result Handling):** 查询结果以 `LaconicResult` 对象列表返回，方便访问列数据。
