@@ -31,6 +31,8 @@ dependencies:
 dart pub add laconic
 ```
 
+> 如果要在 Flutter 项目中使用，需要确保 `pubspec.yaml` 中包含 `sqlite3_flutter_libs` 依赖。
+
 ## 用法 (Usage)
 
 ### 1. 导入包 (Import the package)
