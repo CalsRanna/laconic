@@ -82,19 +82,20 @@ class SqliteVisitor extends SQLVisitor {
         _buffer.write(', ');
       }
     }
-    _buffer.write(') values (');
-    for (var i = 0; i < node.values.length; i++) {
-      if (node.values[i] is LiteralNode) {
-        _buffer.write('?');
-        _bindings.add((node.values[i] as LiteralNode).value);
-      } else {
-        node.values[i].accept(this);
+    _buffer.write(') values ');
+    for (var row in node.values) {
+      _buffer.write('(');
+      for (var i = 0; i < row.length; i++) {
+        row[i].accept(this);
+        if (i < row.length - 1) {
+          _buffer.write(', ');
+        }
       }
-      if (i < node.values.length - 1) {
+      _buffer.write(')');
+      if (node.values.indexOf(row) < node.values.length - 1) {
         _buffer.write(', ');
       }
     }
-    _buffer.write(')');
   }
 
   @override

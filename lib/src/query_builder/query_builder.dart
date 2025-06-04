@@ -70,11 +70,19 @@ class QueryBuilder {
     return await _laconic.select(selectVisitor.sql, selectVisitor.bindings);
   }
 
-  Future<void> insert(Map<String, Object?> data) async {
+  Future<void> insert(List<Map<String, Object?>> data) async {
+    if (data.isEmpty) {
+      throw LaconicException('can not insert an empty list of data');
+    }
+    var columns = data.first.keys.map((key) => ColumnNode(key)).toList();
+    var values =
+        data.map((row) {
+          return data.first.keys.map((key) => LiteralNode(row[key])).toList();
+        }).toList();
     var insertNode = InsertNode(
       fromClause: FromClauseNode(_statementNode.fromClause.table),
-      columns: data.keys.map((key) => ColumnNode(key)).toList(),
-      values: data.values.map((value) => LiteralNode(value)).toList(),
+      columns: columns,
+      values: values,
     );
     var insertVisitor = _createVisitor();
     insertNode.accept(insertVisitor);

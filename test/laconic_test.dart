@@ -34,36 +34,28 @@ void main() {
         'insert into $userTable (id, name, age, gender) values (?, ?, ?, ?)',
         [3, "Jack", 35, "male"],
       );
-      await laconic.table(postTable).insert({
-        'user_id': 1,
-        'title': 'John\'s First Thoughts',
-        'content': 'Content one.',
-      });
-      await laconic.table(postTable).insert({
-        'user_id': 1,
-        'title': 'John\'s Second Thoughts',
-        'content': 'Content two.',
-      });
-      await laconic.table(postTable).insert({
-        'user_id': 2,
-        'title': 'Jane\'s Insights',
-        'content': 'Insightful content.',
-      });
-      await laconic.table(commentTable).insert({
-        'post_id': 1,
-        'user_id': 2,
-        'comment_text': 'Interesting post, John!',
-      });
-      await laconic.table(commentTable).insert({
-        'post_id': 1,
-        'user_id': 1,
-        'comment_text': 'Thanks Jane!',
-      });
-      await laconic.table(commentTable).insert({
-        'post_id': 2,
-        'user_id': 1,
-        'comment_text': 'Great insights, Jane!',
-      });
+      await laconic.table(postTable).insert([
+        {
+          'user_id': 1,
+          'title': 'John\'s First Thoughts',
+          'content': 'Content one.',
+        },
+        {
+          'user_id': 1,
+          'title': 'John\'s Second Thoughts',
+          'content': 'Content two.',
+        },
+        {
+          'user_id': 2,
+          'title': 'Jane\'s Insights',
+          'content': 'Insightful content.',
+        },
+      ]);
+      await laconic.table(commentTable).insert([
+        {'post_id': 1, 'user_id': 2, 'comment_text': 'Interesting post, John!'},
+        {'post_id': 1, 'user_id': 1, 'comment_text': 'Thanks Jane!'},
+        {'post_id': 2, 'user_id': 1, 'comment_text': 'Great insights, Jane!'},
+      ]);
     });
 
     tearDownAll(() async {
@@ -166,12 +158,9 @@ void main() {
     test(
       'table(users).insert({"id": 4, "name": "Tom", "age": 25, "gender": "male"})',
       () async {
-        await laconic.table(userTable).insert({
-          'id': 4,
-          'name': 'Tom',
-          'age': 25,
-          'gender': 'male',
-        });
+        await laconic.table(userTable).insert([
+          {'id': 4, 'name': 'Tom', 'age': 25, 'gender': 'male'},
+        ]);
         var countResult = await laconic.select(
           'select count(*) as count from $userTable',
         );
@@ -189,12 +178,9 @@ void main() {
     });
 
     test('table(users).where("id", 99).delete()', () async {
-      await laconic.table(userTable).insert({
-        'id': 99,
-        'name': 'Temp User',
-        'age': 40,
-        'gender': 'other',
-      });
+      await laconic.table(userTable).insert([
+        {'id': 99, 'name': 'Temp User', 'age': 40, 'gender': 'other'},
+      ]);
       var countBefore = (await laconic.table(userTable).count());
       await laconic.table(userTable).where('id', 99).delete();
       var countAfter = (await laconic.table(userTable).count());

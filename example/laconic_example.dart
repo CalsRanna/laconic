@@ -37,12 +37,9 @@ void main() async {
       ''');
   await laconic.table(userTable).get();
   await laconic.table(userTable).where('id', 1).first();
-  await laconic.table(userTable).insert({
-    'id': 4,
-    'name': 'Tom',
-    'age': 25,
-    'gender': 'male',
-  });
+  await laconic.table(userTable).insert([
+    {'id': 4, 'name': 'Tom', 'age': 25, 'gender': 'male'},
+  ]);
   await laconic.table(userTable).where('id', 1).update({'name': 'Jones'});
   await laconic.table(userTable).where('id', 1).delete();
   await laconic

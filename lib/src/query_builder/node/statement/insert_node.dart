@@ -5,7 +5,7 @@ import 'package:laconic/src/query_builder/visitor/visitor.dart';
 
 class InsertNode extends StatementNode {
   final List<ColumnNode> columns;
-  final List<ExpressionNode> values;
+  final List<List<ExpressionNode>> values;
   InsertNode({
     required super.fromClause,
     required this.columns,
