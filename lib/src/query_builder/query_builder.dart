@@ -1,224 +1,262 @@
-import 'package:laconic/src/driver.dart';
 import 'package:laconic/src/exception.dart';
 import 'package:laconic/src/laconic.dart';
-import 'package:laconic/src/query_builder/node/assignment_node.dart';
-import 'package:laconic/src/query_builder/node/builder/join_builder.dart';
-import 'package:laconic/src/query_builder/node/clause/from_clause_node.dart';
-import 'package:laconic/src/query_builder/node/clause/join_clause_node.dart';
-import 'package:laconic/src/query_builder/node/clause/set_clause_node.dart';
-import 'package:laconic/src/query_builder/node/expression/column_node.dart';
-import 'package:laconic/src/query_builder/node/expression/comparison_node.dart';
-import 'package:laconic/src/query_builder/node/expression/literal_node.dart';
-import 'package:laconic/src/query_builder/node/expression/logical_operation_node.dart';
-import 'package:laconic/src/query_builder/node/ordering_node.dart';
-import 'package:laconic/src/query_builder/node/statement/delete_node.dart';
-import 'package:laconic/src/query_builder/node/statement/insert_node.dart';
-import 'package:laconic/src/query_builder/node/statement/select_node.dart';
-import 'package:laconic/src/query_builder/node/statement/statement_node.dart';
-import 'package:laconic/src/query_builder/node/statement/update_node.dart';
-import 'package:laconic/src/query_builder/visitor/mysql_visitor.dart';
-import 'package:laconic/src/query_builder/visitor/sqlite_visitor.dart';
-import 'package:laconic/src/query_builder/visitor/visitor.dart';
+import 'package:laconic/src/query_builder/grammar/grammar.dart';
+import 'package:laconic/src/query_builder/grammar/sql_grammar.dart';
 import 'package:laconic/src/result.dart';
 
+/// Fluent query builder for constructing and executing database queries.
 class QueryBuilder {
   final Laconic _laconic;
-  final StatementNode _statementNode;
+  final Grammar _grammar;
 
+  /// The table name for the query.
+  final String _table;
+
+  /// The columns to select.
+  List<String> _columns = ['*'];
+
+  /// The WHERE conditions.
+  final List<Map<String, dynamic>> _wheres = [];
+
+  /// The JOIN clauses.
+  final List<Map<String, dynamic>> _joins = [];
+
+  /// The ORDER BY clauses.
+  final List<Map<String, dynamic>> _orders = [];
+
+  /// The LIMIT value.
+  int? _limit;
+
+  /// The OFFSET value.
+  int? _offset;
+
+  /// Creates a new query builder instance.
   QueryBuilder({required Laconic laconic, required String table})
-    : _laconic = laconic,
-      _statementNode = SelectNode(table) {
-    if (_statementNode is SelectNode) {
-      _statementNode.selectClause.columns.add(ColumnNode('*'));
-    }
-  }
+      : _laconic = laconic,
+        _table = table,
+        _grammar = SqlGrammar();
 
+  /// Returns the count of records matching the query.
   Future<int> count() async {
-    var selectVisitor = _createVisitor();
-    _statementNode.accept(selectVisitor);
-    var results = await _laconic.select(
-      selectVisitor.sql,
-      selectVisitor.bindings,
+    final compiled = _grammar.compileSelect(
+      table: _table,
+      columns: _columns,
+      wheres: _wheres,
+      joins: _joins,
+      orders: _orders,
+      limit: _limit,
+      offset: _offset,
     );
+
+    final results = await _laconic.select(compiled.sql, compiled.bindings);
     return results.length;
   }
 
+  /// Deletes records matching the query.
   Future<void> delete() async {
-    var deleteNode = DeleteNode(
-      fromClause: FromClauseNode(_statementNode.fromClause.table),
-      whereClause: _statementNode.whereClause,
+    final compiled = _grammar.compileDelete(
+      table: _table,
+      wheres: _wheres,
     );
-    var deleteVisitor = _createVisitor();
-    deleteNode.accept(deleteVisitor);
-    await _laconic.statement(deleteVisitor.sql, deleteVisitor.bindings);
+
+    await _laconic.statement(compiled.sql, compiled.bindings);
   }
 
+  /// Returns the first record matching the query.
+  ///
+  /// Throws [LaconicException] if no record is found.
   Future<LaconicResult> first() async {
-    var selectVisitor = _createVisitor();
-    _statementNode.accept(selectVisitor);
-    var results = await _laconic.select(
-      selectVisitor.sql,
-      selectVisitor.bindings,
+    final compiled = _grammar.compileSelect(
+      table: _table,
+      columns: _columns,
+      wheres: _wheres,
+      joins: _joins,
+      orders: _orders,
+      limit: _limit,
+      offset: _offset,
     );
-    if (results.isEmpty) throw LaconicException('No record found');
+
+    final results = await _laconic.select(compiled.sql, compiled.bindings);
+
+    if (results.isEmpty) {
+      throw LaconicException('No record found');
+    }
+
     return results.first;
   }
 
+  /// Returns all records matching the query.
   Future<List<LaconicResult>> get() async {
-    var selectVisitor = _createVisitor();
-    _statementNode.accept(selectVisitor);
-    return await _laconic.select(selectVisitor.sql, selectVisitor.bindings);
+    final compiled = _grammar.compileSelect(
+      table: _table,
+      columns: _columns,
+      wheres: _wheres,
+      joins: _joins,
+      orders: _orders,
+      limit: _limit,
+      offset: _offset,
+    );
+
+    return await _laconic.select(compiled.sql, compiled.bindings);
   }
 
+  /// Inserts records into the database.
+  ///
+  /// [data] must be a non-empty list of maps where each map represents a row.
+  /// All maps must have the same keys.
   Future<void> insert(List<Map<String, Object?>> data) async {
     if (data.isEmpty) {
-      throw LaconicException('can not insert an empty list of data');
+      throw LaconicException('Cannot insert an empty list of data');
     }
-    var columns = data.first.keys.map((key) => ColumnNode(key)).toList();
-    var values =
-        data.map((row) {
-          return data.first.keys.map((key) => LiteralNode(row[key])).toList();
-        }).toList();
-    var insertNode = InsertNode(
-      fromClause: FromClauseNode(_statementNode.fromClause.table),
-      columns: columns,
-      values: values,
+
+    final compiled = _grammar.compileInsert(
+      table: _table,
+      data: data,
     );
-    var insertVisitor = _createVisitor();
-    insertNode.accept(insertVisitor);
-    await _laconic.statement(insertVisitor.sql, insertVisitor.bindings);
+
+    await _laconic.statement(compiled.sql, compiled.bindings);
   }
 
-  QueryBuilder join(String targetTable, void Function(JoinBuilder) builder) {
-    if (_statementNode is! SelectNode) {
-      throw LaconicException('join is only supported for select queries');
-    }
-    var joinBuilder = JoinBuilder();
-    builder.call(joinBuilder);
-    var condition = joinBuilder.condition;
-    var joinClause = JoinClauseNode(targetTable, condition: condition);
-    _statementNode.joinClauses.add(joinClause);
+  /// Adds a JOIN clause to the query.
+  ///
+  /// [targetTable] is the table to join.
+  /// [leftColumn] is the column from the left table.
+  /// [rightColumn] is the column from the right table.
+  /// [operator] is the comparison operator (defaults to '=').
+  ///
+  /// Example:
+  /// ```dart
+  /// query.join('posts p', 'u.id', 'p.user_id')
+  /// ```
+  ///
+  /// For multiple join conditions, you can chain multiple calls or use
+  /// the closure-based version with [joinAdvanced].
+  QueryBuilder join(
+    String targetTable,
+    String leftColumn,
+    String rightColumn, {
+    String operator = '=',
+  }) {
+    _joins.add({
+      'table': targetTable,
+      'conditions': [
+        {
+          'left': leftColumn,
+          'operator': operator,
+          'right': rightColumn,
+          'boolean': 'and',
+        }
+      ],
+    });
+
     return this;
   }
 
+  /// Sets the LIMIT for the query.
   QueryBuilder limit(int limit) {
-    _statementNode.limit = limit;
+    _limit = limit;
     return this;
   }
 
+  /// Sets the OFFSET for the query.
   QueryBuilder offset(int offset) {
-    _statementNode.offset = offset;
+    _offset = offset;
     return this;
   }
 
+  /// Adds an ORDER BY clause to the query.
+  ///
+  /// [column] is the column name to order by.
+  /// [direction] must be 'asc' or 'desc' (defaults to 'asc').
   QueryBuilder orderBy(String column, {String direction = 'asc'}) {
-    if (_statementNode is! SelectNode) {
-      throw LaconicException('order by is only supported for select queries');
-    }
-    _statementNode.orderByClause.orderings.add(
-      OrderingNode(ColumnNode(column), direction),
-    );
+    _orders.add({
+      'column': column,
+      'direction': direction,
+    });
     return this;
   }
 
+  /// Adds an OR WHERE condition to the query.
+  ///
+  /// [column] is the column name.
+  /// [value] is the value to compare.
+  /// [comparator] is the comparison operator (defaults to '=').
   QueryBuilder orWhere(
     String column,
     Object? value, {
     String comparator = '=',
   }) {
-    var newCondition = ComparisonNode(
-      ColumnNode(column),
-      comparator,
-      LiteralNode(value),
-    );
-    var currentCondition = _statementNode.whereClause.condition;
-    if (currentCondition == null) {
-      _statementNode.whereClause.condition = newCondition;
-    } else {
-      if (currentCondition is LogicalOperationNode &&
-          currentCondition.operator == 'or') {
-        currentCondition.operands.add(newCondition);
-      } else {
-        _statementNode.whereClause.condition = LogicalOperationNode('or', [
-          currentCondition,
-          newCondition,
-        ]);
-      }
-    }
-    return this;
-  }
-
-  QueryBuilder select(List<String>? columns) {
-    if (_statementNode is! SelectNode) {
-      throw LaconicException('select is only supported for select queries');
-    }
-    _statementNode.selectClause.columns.clear();
-    if (columns == null || columns.isEmpty) {
-      _statementNode.selectClause.columns.add(ColumnNode('*'));
-    } else {
-      for (var column in columns) {
-        _statementNode.selectClause.columns.add(ColumnNode(column));
-      }
-    }
-    return this;
-  }
-
-  Future<LaconicResult> sole() async {
-    var selectVisitor = _createVisitor();
-    _statementNode.accept(selectVisitor);
-    var result = await _laconic.select(
-      selectVisitor.sql,
-      selectVisitor.bindings,
-    );
-    if (result.isEmpty) throw LaconicException('No record found');
-    return result.first;
-  }
-
-  Future<void> update(Map<String, Object?> data) async {
-    var setClause = SetClauseNode();
-    data.forEach((key, value) {
-      setClause.assignments.add(
-        AssignmentNode(ColumnNode(key), LiteralNode(value)),
-      );
+    _wheres.add({
+      'type': 'basic',
+      'column': column,
+      'operator': comparator,
+      'value': value,
+      'boolean': 'or',
     });
-    var updateNode = UpdateNode(
-      fromClause: FromClauseNode(_statementNode.fromClause.table),
-      setClause: setClause,
-      whereClause: _statementNode.whereClause,
-    );
-    var updateVisitor = _createVisitor();
-    updateNode.accept(updateVisitor);
-    await _laconic.statement(updateVisitor.sql, updateVisitor.bindings);
+    return this;
   }
 
-  QueryBuilder where(String column, Object? value, {String comparator = '='}) {
-    var newCondition = ComparisonNode(
-      ColumnNode(column),
-      comparator,
-      LiteralNode(value),
-    );
-    var currentCondition = _statementNode.whereClause.condition;
-    if (currentCondition == null) {
-      _statementNode.whereClause.condition = newCondition;
+  /// Specifies the columns to select.
+  ///
+  /// If [columns] is null or empty, selects all columns (*).
+  QueryBuilder select(List<String>? columns) {
+    if (columns == null || columns.isEmpty) {
+      _columns = ['*'];
     } else {
-      if (currentCondition is LogicalOperationNode &&
-          currentCondition.operator == 'and') {
-        currentCondition.operands.add(newCondition);
-      } else {
-        _statementNode.whereClause.condition = LogicalOperationNode('and', [
-          currentCondition,
-          newCondition,
-        ]);
-      }
+      _columns = columns;
     }
     return this;
   }
 
-  SQLVisitor _createVisitor() {
-    if (_laconic.driver == LaconicDriver.sqlite) {
-      return SqliteVisitor();
-    } else {
-      return MysqlVisitor();
+  /// Returns a single record matching the query.
+  ///
+  /// Throws [LaconicException] if no record is found.
+  Future<LaconicResult> sole() async {
+    final compiled = _grammar.compileSelect(
+      table: _table,
+      columns: _columns,
+      wheres: _wheres,
+      joins: _joins,
+      orders: _orders,
+      limit: _limit,
+      offset: _offset,
+    );
+
+    final results = await _laconic.select(compiled.sql, compiled.bindings);
+
+    if (results.isEmpty) {
+      throw LaconicException('No record found');
     }
+
+    return results.first;
+  }
+
+  /// Updates records matching the query.
+  ///
+  /// [data] is a map of column-value pairs to update.
+  Future<void> update(Map<String, Object?> data) async {
+    final compiled = _grammar.compileUpdate(
+      table: _table,
+      data: data,
+      wheres: _wheres,
+    );
+
+    await _laconic.statement(compiled.sql, compiled.bindings);
+  }
+
+  /// Adds a WHERE condition to the query.
+  ///
+  /// [column] is the column name.
+  /// [value] is the value to compare.
+  /// [comparator] is the comparison operator (defaults to '=').
+  QueryBuilder where(String column, Object? value, {String comparator = '='}) {
+    _wheres.add({
+      'type': 'basic',
+      'column': column,
+      'operator': comparator,
+      'value': value,
+      'boolean': 'and',
+    });
+    return this;
   }
 }

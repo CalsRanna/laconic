@@ -1,0 +1,59 @@
+import 'package:laconic/src/query_builder/grammar/compiled_query.dart';
+
+/// Abstract base class for SQL grammar implementations.
+///
+/// Grammar classes are responsible for compiling query components into
+/// database-specific SQL strings with parameter bindings.
+abstract class Grammar {
+  /// Compiles a SELECT query.
+  ///
+  /// Parameters:
+  /// - [table]: The table name
+  /// - [columns]: List of column names to select
+  /// - [wheres]: List of WHERE conditions
+  /// - [joins]: List of JOIN clauses
+  /// - [orders]: List of ORDER BY clauses
+  /// - [limit]: Optional LIMIT value
+  /// - [offset]: Optional OFFSET value
+  CompiledQuery compileSelect({
+    required String table,
+    required List<String> columns,
+    required List<Map<String, dynamic>> wheres,
+    required List<Map<String, dynamic>> joins,
+    required List<Map<String, dynamic>> orders,
+    int? limit,
+    int? offset,
+  });
+
+  /// Compiles an INSERT query.
+  ///
+  /// Parameters:
+  /// - [table]: The table name
+  /// - [data]: List of maps representing rows to insert
+  CompiledQuery compileInsert({
+    required String table,
+    required List<Map<String, Object?>> data,
+  });
+
+  /// Compiles an UPDATE query.
+  ///
+  /// Parameters:
+  /// - [table]: The table name
+  /// - [data]: Map of column-value pairs to update
+  /// - [wheres]: List of WHERE conditions
+  CompiledQuery compileUpdate({
+    required String table,
+    required Map<String, Object?> data,
+    required List<Map<String, dynamic>> wheres,
+  });
+
+  /// Compiles a DELETE query.
+  ///
+  /// Parameters:
+  /// - [table]: The table name
+  /// - [wheres]: List of WHERE conditions
+  CompiledQuery compileDelete({
+    required String table,
+    required List<Map<String, dynamic>> wheres,
+  });
+}

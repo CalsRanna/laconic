@@ -188,19 +188,15 @@ void main() {
     });
 
     test(
-      '.table("users u").select(["u.name", "p.title"]).join("posts p",(builder) => builder.on("u.id", "p.user_id")).orderBy("u.name").orderBy("p.title")',
+      '.table("users u").select(["u.name", "p.title"]).join("posts p", "u.id", "p.user_id").orderBy("u.name").orderBy("p.title")',
       () async {
-        var results =
-            await laconic
-                .table('$userTable u')
-                .select(['u.name', 'p.title'])
-                .join(
-                  '$postTable p',
-                  (builder) => builder.on('u.id', 'p.user_id'),
-                )
-                .orderBy('u.name')
-                .orderBy('p.title')
-                .get();
+        var results = await laconic
+            .table('$userTable u')
+            .select(['u.name', 'p.title'])
+            .join('$postTable p', 'u.id', 'p.user_id')
+            .orderBy('u.name')
+            .orderBy('p.title')
+            .get();
         expect(results.length, 3);
         expect(results[0]['name'], 'Jane');
         expect(results[0]['title'], 'Jane\'s Insights');

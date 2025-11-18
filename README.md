@@ -1,283 +1,317 @@
 # Laconic
 
-一个受 Laravel 启发的 Dart SQL 查询构建器，支持 MySQL 和 SQLite，旨在提供灵活、可移植且易于使用的数据库交互方式。
+A Laravel-like SQL query builder for Dart, designed to be flexible, portable, and easy to use. Laconic provides an elegant fluent interface for building and executing database queries across MySQL and SQLite.
 
-## 特性 (Features)
+## Features
 
-*   **流式接口 (Fluent Interface):** 提供类似于 Laravel 查询构建器的链式调用方法。
-*   **多数据库支持 (Multi-DB Support):** 目前支持 MySQL 和 SQLite。
-*   **查询构建 (Query Building):**
-    *   支持 `select`, `insert`, `update`, `delete` 语句。
-    *   支持 `where`, `orWhere` 条件子句。
-    *   支持 `orderBy` 排序。
-    *   支持 `limit` 和 `offset` 分页。
-    *   支持 `join` 连接。
-*   **原始 SQL 执行 (Raw SQL Execution):** 允许执行原始的 SQL 查询和语句。
-*   **配置简单 (Simple Configuration):** 使用专门的配置类 (`MysqlConfig`, `SqliteConfig`) 进行数据库连接设置。
-*   **结果处理 (Result Handling):** 查询结果以 `LaconicResult` 对象列表返回，方便访问列数据。
+- **Fluent Query Builder API**: Chain methods to build complex queries elegantly
+- **Multiple Database Support**: Works with both MySQL and SQLite
+- **Transaction Support**: Built-in transaction management for both databases
+- **Query Listener**: Debug and log SQL queries with ease
+- **Type-Safe**: Leverages Dart's type system for safer query building
+- **Laravel-Inspired**: Familiar API for developers coming from Laravel/PHP
 
-## 开始使用 (Getting Started)
+## Dependencies
 
-将此包添加到你的 `pubspec.yaml` 文件中：
+**Important**: This project requires Flutter SDK to be installed on your system before development.
+
+## Installation
+
+Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  laconic: ^latest # 请替换为所需的版本号
+  laconic: ^1.0.0
 ```
 
-或者使用命令行安装：
+Then run:
 
 ```bash
-dart pub add laconic
+dart pub get
 ```
 
-> 如果要在 Flutter 项目中使用，需要确保 `pubspec.yaml` 中包含 `sqlite3_flutter_libs` 依赖。
+## Quick Start
 
-## 用法 (Usage)
-
-### 1. 导入包 (Import the package)
+### MySQL Setup
 
 ```dart
 import 'package:laconic/laconic.dart';
-```
 
-### 2. 连接数据库 (Connecting to the Database)
+void main() async {
+  var config = MysqlConfig(
+    database: 'laconic',
+    host: '127.0.0.1',
+    password: 'root',
+    port: 3306,
+    username: 'root',
+  );
 
-你需要先创建一个 `Laconic` 实例，并根据你的数据库类型提供相应的配置。
+  var laconic = Laconic.mysql(config);
 
-**MySQL:**
+  // Your queries here
+  var users = await laconic.table('users').get();
 
-```dart
-var mysqlConfig = MysqlConfig(
-  database: 'laconic_test', // 数据库名
-  host: '127.0.0.1',      // 主机地址
-  password: 'password',     // 密码
-  port: 3306,             // 端口
-  username: 'root',         // 用户名
-);
-var laconic = Laconic.mysql(mysqlConfig);
-```
-
-**SQLite:**
-
-```dart
-var sqliteConfig = SqliteConfig('path/to/your/database.db'); // SQLite 文件路径
-var laconic = Laconic.sqlite(sqliteConfig);
-```
-
-### 3. 执行原始 SQL 查询 (Executing Raw SQL Queries)
-
-你可以直接执行 SQL 字符串。
-
-**执行 SELECT 查询:**
-
-```dart
-// 查询所有用户
-List<LaconicResult> allUsers = await laconic.select('select * from users');
-
-// 带参数查询
-List<LaconicResult> userById = await laconic.select('select * from users where id = ?', [1]);
-
-// 遍历结果
-for (var user in userById) {
-  print('User ID: ${user['id']}, Name: ${user['name']}');
+  await laconic.close();
 }
 ```
 
-**执行 INSERT, UPDATE, DELETE 语句:**
+### SQLite Setup
 
 ```dart
-// 插入数据
+import 'package:laconic/laconic.dart';
+
+void main() async {
+  var config = SqliteConfig('laconic.db');
+  var laconic = Laconic.sqlite(config);
+
+  // Your queries here
+  var users = await laconic.table('users').get();
+
+  await laconic.close();
+}
+```
+
+## Usage
+
+### Raw SQL Queries
+
+Execute raw SQL queries with parameter binding:
+
+```dart
+// Select query
+var users = await laconic.select('SELECT * FROM users WHERE id = ?', [1]);
+
+// Insert
 await laconic.statement(
-  'insert into users (id, name, age, gender) values (?, ?, ?, ?)',
-  [5, 'Alice', 30, 'female'],
+  'INSERT INTO users (name, age) VALUES (?, ?)',
+  ['John', 25],
 );
 
-// 更新数据
-await laconic.statement('update users set name = ? where id = ?', ['Bob', 5]);
+// Update
+await laconic.statement(
+  'UPDATE users SET name = ? WHERE id = ?',
+  ['Jane', 1],
+);
 
-// 删除数据
-await laconic.statement('delete from users where id = ?', [5]);
+// Delete
+await laconic.statement('DELETE FROM users WHERE id = ?', [1]);
 ```
 
-### 4. 使用查询构建器 (Using the Query Builder)
+### Query Builder
 
-查询构建器提供了一种更结构化和安全的方式来构建 SQL 查询。
-
-**获取多条记录 (`get`):**
+#### Basic Queries
 
 ```dart
-List<LaconicResult> users = await laconic.table('users').get();
-List<LaconicResult> activeUsers = await laconic.table('users').where('status', 'active').get();
-```
+// Select all
+var users = await laconic.table('users').get();
 
-**获取单条记录 (`first`):**
+// Select with where clause
+var user = await laconic.table('users')
+    .where('id', 1)
+    .first();
 
-```dart
-try {
-  LaconicResult user = await laconic.table('users').where('id', 1).first();
-  print('First user name: ${user['name']}');
-} on LaconicException catch (e) {
-  print('User not found: $e');
-}
-```
+// Select specific columns
+var users = await laconic.table('users')
+    .select(['name', 'email'])
+    .get();
 
-**查询特定列 (`select`):**
-
-```dart
-List<LaconicResult> userNames = await laconic.table('users').select(['name', 'email']).get();
-```
-
-**使用 `where` 子句:**
-
-```dart
-// 等于
-List<LaconicResult> usersAge25 = await laconic.table('users').where('age', 25).get();
-
-// 其他比较符
-List<LaconicResult> usersOlderThan30 = await laconic.table('users').where('age', 30, comparator: '>').get();
-```
-
-**使用 `orWhere` 子句:**
-
-```dart
-List<LaconicResult> specificUsers = await laconic.table('users')
+// Multiple where conditions (AND)
+var users = await laconic.table('users')
+    .where('age', 18, comparator: '>')
     .where('status', 'active')
-    .orWhere('name', 'Admin')
+    .get();
+
+// Or where conditions
+var users = await laconic.table('users')
+    .where('role', 'admin')
+    .orWhere('role', 'moderator')
     .get();
 ```
 
-**插入记录 (`insert`):**
+#### Ordering and Limiting
 
 ```dart
-await laconic.table('users').insert({
-  'id': 6,
-  'name': 'Charlie',
-  'age': 28,
-  'gender': 'male',
-});
-```
+// Order by
+var users = await laconic.table('users')
+    .orderBy('created_at', direction: 'desc')
+    .get();
 
-**更新记录 (`update`):**
-
-```dart
-await laconic.table('users').where('id', 6).update({'age': 29});
-```
-
-**删除记录 (`delete`):**
-
-```dart
-await laconic.table('users').where('id', 6).delete();
-```
-
-**排序 (`orderBy`):**
-
-```dart
-// 按年龄升序
-List<LaconicResult> usersByAgeAsc = await laconic.table('users').orderBy('age').get();
-
-// 按姓名降序
-List<LaconicResult> usersByNameDesc = await laconic.table('users').orderBy('name', direction: 'desc').get();
-```
-
-**限制和偏移 (`limit`, `offset`):**
-
-```dart
-// 获取前 5 条记录
-List<LaconicResult> first5Users = await laconic.table('users').limit(5).get();
-
-// 获取第 6 到第 10 条记录 (跳过前 5 条)
-List<LaconicResult> usersPage2 = await laconic.table('users').offset(5).limit(5).get();
-```
-
-**连接表 (`join`):**
-
-使用 `join` 方法可以连接其他表。你需要提供目标表名和一个回调函数来定义连接条件。
-
-```dart
-// 查询用户及其对应的帖子标题
-List<LaconicResult> usersWithPosts = await laconic.table('users')
-    .select(['users.name', 'posts.title'])
-    .join('posts', (builder) {
-      // 定义 ON 条件 users.id = posts.user_id
-      builder.on('users.id', 'posts.user_id');
-      // 可以链式调用 .on() 添加更多 AND 条件
-      // builder.on('users.status', 'posts.status'); 
-    })
-    .where('users.status', 'active')
+// Limit and offset
+var users = await laconic.table('users')
+    .limit(10)
+    .offset(20)
     .get();
 ```
 
-#### 注意事项
+#### Joins
 
-- 建议使用表名限定列名避免歧义。
-- 当前 `join` 默认执行 `INNER JOIN`。回调函数中的多个 `on` 条件会使用 `AND` 连接。
+```dart
+var results = await laconic
+    .table('users u')
+    .select(['u.name', 'p.title'])
+    .join('posts p', (builder) => builder.on('u.id', 'p.user_id'))
+    .orderBy('u.name')
+    .get();
+```
 
-### 5. 事务支持 (Transaction)
+#### Insert
 
-Laconic 支持数据库事务，允许你将一组数据库操作作为一个原子单元执行。
+```dart
+// Insert single record
+await laconic.table('users').insert([
+  {'name': 'John', 'age': 25, 'email': 'john@example.com'},
+]);
 
-如果事务中的任意操作失败，所有更改都会被自动回滚，保证数据一致性。
+// Insert multiple records
+await laconic.table('users').insert([
+  {'name': 'John', 'age': 25},
+  {'name': 'Jane', 'age': 30},
+  {'name': 'Bob', 'age': 35},
+]);
+```
 
-#### 适用场景
+#### Update
 
-- 需要保证多条 SQL 语句要么全部成功、要么全部失败时（如银行转账、批量写入等）。
+```dart
+await laconic.table('users')
+    .where('id', 1)
+    .update({'name': 'Jane', 'age': 26});
+```
 
-#### 用法
+#### Delete
 
-你可以通过 `laconic.transaction` 方法将需要在同一事务中执行的操作包裹起来。
+```dart
+await laconic.table('users')
+    .where('id', 1)
+    .delete();
+```
+
+#### Aggregates
+
+```dart
+// Count records
+var count = await laconic.table('users').count();
+
+// Get first record (throws if not found)
+var user = await laconic.table('users')
+    .where('id', 1)
+    .first();
+
+// Get single record
+var user = await laconic.table('users')
+    .where('email', 'user@example.com')
+    .sole();
+```
+
+### Transactions
 
 ```dart
 await laconic.transaction(() async {
-  await laconic.table('users').insert({'id': 7, 'name': 'Eve'});
-  await laconic.table('accounts').where('user_id', 7).update({'balance': 100});
-  // 如果这里抛出异常，以上所有更改都会自动回滚
+  await laconic.table('users').insert([
+    {'name': 'John', 'balance': 100},
+  ]);
+
+  await laconic.table('transactions').insert([
+    {'user_id': 1, 'amount': 50},
+  ]);
+
+  // If any exception occurs, the transaction will be rolled back
+  // Otherwise, it will be committed
 });
 ```
 
-如果 `action` 回调内所有操作都成功，事务会自动提交。
+### Query Listener
 
-如果有任何异常抛出，事务会自动回滚。
-
-#### 注意事项
-
-- 支持 MySQL 和 SQLite 两种数据库，底层会自动选择合适的事务语法。
-- 事务回调 (`action`) 可以是异步操作。
-
-
-### 6. 关闭连接 (Closing the Connection)
-
-当你的应用不再需要数据库连接时，应该关闭它以释放资源。
-
-```dart
-await laconic.close();
-```
-
-## 查询监听 （Query Listener）
-
-Laconic 支持通过 listen 回调监听所有即将执行的 SQL 语句及其参数。这对于调试、日志记录、SQL 审计等场景非常有用。
-
-### 用法示例
+Debug your queries by listening to all SQL executions:
 
 ```dart
 var laconic = Laconic.sqlite(
-  SqliteConfig('path/to/your/database.db'),
+  config,
   listen: (query) {
-    // 你可以在这里记录日志、做SQL分析等
+    print('SQL: ${query.sql}');
+    print('Bindings: ${query.bindings}');
   },
 );
 ```
 
-每当你调用 select、statement 等方法时，listen 回调都会被触发，参数为 LaconicQuery 对象，包含绑定参数、 SQL 字符串和执行时间戳。
+## API Reference
 
-### 典型应用场景
+### Laconic Class
 
-* 调试：实时输出所有执行的 SQL，方便排查问题。
-* 日志记录：将 SQL 及参数写入日志文件，便于后期审计。
-* 安全审查：对即将执行的 SQL 进行分析和过滤，防止危险操作。
+Main class for database connections and query execution.
 
-## 附加信息 (Additional Information)
+- `Laconic.mysql(MysqlConfig config, {Function(LaconicQuery)? listen})` - Create MySQL connection
+- `Laconic.sqlite(SqliteConfig config, {Function(LaconicQuery)? listen})` - Create SQLite connection
+- `table(String table)` - Get a query builder for the specified table
+- `select(String sql, [List<Object?> params])` - Execute a SELECT query
+- `statement(String sql, [List<Object?> params])` - Execute an SQL statement
+- `transaction<T>(Future<T> Function() action)` - Execute queries in a transaction
+- `close()` - Close the database connection
 
-*   这个库目前仍处于开发阶段 (WIP)。API 在未来可能会发生不兼容的更改。如果你决定在生产环境中使用，请自行承担风险。
-*   请参考 `example/` 目录获取更多使用示例。
-*   欢迎提出 Issue 和 Pull Request！
+### QueryBuilder Class
+
+Fluent interface for building queries.
+
+**Query Building:**
+- `select(List<String>? columns)` - Specify columns to select
+- `where(String column, Object? value, {String comparator = '='})` - Add WHERE condition
+- `orWhere(String column, Object? value, {String comparator = '='})` - Add OR WHERE condition
+- `join(String targetTable, void Function(JoinBuilder) builder)` - Add JOIN clause
+- `orderBy(String column, {String direction = 'asc'})` - Add ORDER BY clause
+- `limit(int limit)` - Add LIMIT clause
+- `offset(int offset)` - Add OFFSET clause
+
+**Query Execution:**
+- `get()` - Execute query and return all results
+- `first()` - Get first result (throws if not found)
+- `sole()` - Get single result
+- `count()` - Count matching records
+- `insert(List<Map<String, Object?>> data)` - Insert records
+- `update(Map<String, Object?> data)` - Update records
+- `delete()` - Delete records
+
+## Testing
+
+Run the test suite:
+
+```bash
+# Run all tests
+dart test
+
+# Run specific test file
+dart test test/laconic_test.dart
+
+# Run specific test by name
+dart test --name "select * from users"
+```
+
+## Development
+
+```bash
+# Install dependencies
+dart pub get
+
+# Run static analysis
+dart analyze
+
+# Format code
+dart format .
+```
+
+## Architecture
+
+Laconic uses the Visitor pattern for query building:
+
+1. **Node Layer**: Abstract Syntax Tree (AST) nodes represent query parts
+2. **Visitor Layer**: Database-specific visitors convert AST to SQL
+3. **Driver Layer**: MySQL and SQLite connections and execution
+
+For detailed architecture documentation, see [CLAUDE.md](CLAUDE.md).
+
+## License
+
+See [LICENSE](LICENSE) file for details.
+
+## Homepage
+
+Visit [https://laconic.antdf.xyz](https://laconic.antdf.xyz) for more information.

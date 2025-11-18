@@ -45,7 +45,7 @@ void main() async {
   await laconic
       .table('$userTable u')
       .select(['u.name', 'p.title'])
-      .join('$postTable p', (builder) => builder.on('u.id', 'p.user_id'))
+      .join('$postTable p', 'u.id', 'p.user_id')
       .orderBy('u.name')
       .orderBy('p.title')
       .get();
