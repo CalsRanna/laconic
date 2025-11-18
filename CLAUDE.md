@@ -2,120 +2,154 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 项目概述
+## Project Overview
 
-Laconic 是一个类似 Laravel 的 SQL 查询构建器库，用 Dart 编写，支持 MySQL 和 SQLite 数据库。它提供了链式 API 来构建和执行 SQL 查询。
+Laconic is a Laravel-style SQL query builder for Dart, supporting MySQL and SQLite databases. It provides a fluent, chainable API for building and executing database queries.
 
-**依赖说明**: 本项目依赖 Flutter SDK。确保系统已安装 Flutter 环境后再进行开发。
+## Common Commands
 
-## 常用命令
-
-### 依赖管理
+### Testing
 ```bash
-# 安装依赖（需要先安装 Flutter SDK）
-dart pub get
-```
-
-### 测试
-```bash
-# 运行所有测试
+# Run all tests
 dart test
 
-# 运行单个测试文件
+# Run specific test file
 dart test test/laconic_test.dart
 
-# 运行特定测试（使用 --name 参数匹配测试名称）
-dart test --name "select * from users"
+# Run specific test by name
+dart test --name "test_name"
 ```
 
-### 代码分析
+### Code Analysis
 ```bash
-# 运行静态分析
+# Run static analysis
 dart analyze
 
-# 格式化代码
-dart format .
-
-# 格式化特定文件
-dart format lib/src/query_builder/query_builder.dart
+# Apply automatic fixes
+dart fix --apply
 ```
 
-## 核心架构
+### Dependency Management
+```bash
+# Get dependencies
+dart pub get
 
-### 1. Grammar 模式（受 Laravel 启发）
-
-核心查询构建使用 Grammar 模式，与 Laravel 的实现类似：
-- **QueryBuilder 层**: 存储查询组件（`lib/src/query_builder/query_builder.dart`）
-  - 直接存储查询的各个部分（columns, wheres, joins, orders 等）
-  - 提供流式 API 方法来构建查询
-- **Grammar 层**: 将查询组件编译为数据库特定的 SQL（`lib/src/query_builder/grammar/`）
-  - `Grammar`: 抽象基类，定义编译接口
-  - `SqlGrammar`: SQL 实现（用于 MySQL 和 SQLite）
-  - `CompiledQuery`: 封装编译后的 SQL 和绑定参数
-- **JoinClause**: 辅助类，用于构建 JOIN 条件
-
-### 2. 查询构建流程
-
-1. `Laconic.table(name)` → 创建 `QueryBuilder` 实例
-2. 链式方法调用 → 存储查询组件到内部数据结构（例如 `.where()`, `.join()`, `.orderBy()`）
-3. 终端方法调用 → Grammar 编译组件为 SQL 和绑定参数
-4. 执行 SQL → 通过 `Laconic._execute()` 使用相应的数据库驱动
-
-### 3. 数据库驱动层
-
-- `LaconicDriver`: 枚举类型（`mysql`, `sqlite`）
-- `Laconic`: 主类，管理数据库连接和查询执行
-  - MySQL: 使用 `MySQLConnectionPool`（来自 `mysql_client` 包）
-  - SQLite: 使用 `Database`（来自 `sqlite3` 包）
-- 配置类: `MysqlConfig`, `SqliteConfig`
-
-### 4. 关键特性
-
-- **事务支持**: `Laconic.transaction()` 方法支持 MySQL 和 SQLite
-- **查询监听**: 通过 `listen` 回调可以记录所有执行的 SQL（用于调试）
-- **结果封装**: `LaconicResult` 类封装查询结果，支持从不同驱动转换
-
-## 代码修改注意事项
-
-### 添加新的 SQL 特性
-
-1. 在 `QueryBuilder` 中添加字段存储新的查询组件
-2. 在 `QueryBuilder` 中添加链式方法来设置该组件
-3. 在 `Grammar.compileSelect()` 或其他编译方法中添加编译逻辑
-4. 在 `SqlGrammar` 中实现具体的 SQL 生成逻辑
-5. 在 `test/laconic_test.dart` 中添加测试用例
-
-示例：添加 `DISTINCT` 支持
-```dart
-// 1. 在 QueryBuilder 中添加字段
-bool _distinct = false;
-
-// 2. 添加方法
-QueryBuilder distinct() {
-  _distinct = true;
-  return this;
-}
-
-// 3. 在 SqlGrammar.compileSelect() 中
-buffer.write(_distinct ? 'select distinct ' : 'select ');
+# Update dependencies
+dart pub upgrade
 ```
 
-### 添加新的数据库驱动
+### Run Example
+```bash
+dart run example/laconic_example.dart
+```
 
-1. 在 `LaconicDriver` 枚举中添加新驱动
-2. 创建配置类（参考 `MysqlConfig`, `SqliteConfig`）
-3. 在 `lib/src/query_builder/grammar/` 中创建新的 Grammar 类（如果 SQL 方言不同）
-4. 在 `Laconic._execute()` 中添加驱动分支
-5. 在 `QueryBuilder` 构造函数中根据驱动选择合适的 Grammar
+## Architecture Overview
 
-### 设计原则
+### Core Component Hierarchy
 
-- **简单优于复杂**: 使用直接的数据结构而非复杂的抽象
-- **与 Laravel 保持一致**: 功能和 API 设计应参考 Laravel Query Builder
-- **避免过度工程**: 只在真正需要时才添加抽象层
+1. **Laconic (lib/src/laconic.dart)** - Main entry point
+   - Manages database connections (MySQL connection pool / SQLite database instance)
+   - Provides low-level execution methods: `select()`, `statement()`, `insertAndGetId()`
+   - Creates QueryBuilder instances via `table()`
+   - Supports transactions via `transaction()`
+   - Optional query listener via `listen` parameter for logging/debugging
 
-## 代码风格
+2. **QueryBuilder (lib/src/query_builder/query_builder.dart)** - Fluent query builder
+   - Uses Grammar pattern to convert method chains into SQL
+   - Does NOT manipulate string concatenation directly; builds internal data structures
+   - All WHERE/JOIN/ORDER clauses stored in lists, compiled lazily
+   - Calls Grammar compilation methods when executing queries
 
-- 使用 `package:lints/recommended.yaml` 规则集
-- 所有公共 API 应该有文档注释
-- 使用 `dart format` 保持代码格式一致
+3. **Grammar System (lib/src/query_builder/grammar/)** - SQL generation core
+   - **Grammar (abstract)**: Defines SQL compilation interface
+   - **SqlGrammar**: Common implementation for SQLite and MySQL
+   - **CompiledQuery**: Compilation result containing SQL string and bindings
+   - Responsibility: Convert QueryBuilder's internal data structures into concrete SQL and parameter bindings
+
+4. **JoinClause (lib/src/query_builder/join_clause.dart)** - JOIN condition builder
+   - Separate class for complex JOIN conditions
+   - Supports multiple condition types: `on()`, `orOn()`, `where()`, `orWhere()`
+   - Mirrors Laravel's JOIN builder design
+
+### Key Design Patterns
+
+#### Grammar Pattern (Recent Refactoring)
+- **Replaced**: Previous AST (abstract syntax tree) approach
+- **Benefits**: Simpler, more flexible, easier to extend
+- QueryBuilder collects query components (wheres, joins, orders, etc.)
+- Grammar is responsible for compiling these components into database-specific SQL
+- All SQL generation logic centralized in Grammar classes
+
+#### Parameter Binding
+- All queries use parameterized bindings (`?`) to prevent SQL injection
+- Grammar collects binding values during compilation
+- MySQL uses prepared statements
+- SQLite uses parameterized `prepare()` and `execute()`
+
+#### Connection Management
+- **MySQL**: Uses connection pool (`MySQLConnectionPool`), lazy-loaded
+- **SQLite**: Single database instance, lazy-opened
+- Connections remain open until explicit `close()` call
+
+### WHERE Clause Type System
+
+QueryBuilder supports multiple WHERE types, each stored internally as a specific map structure:
+
+- `basic`: Basic comparison (`where('column', value)`)
+- `column`: Column-to-column comparison (`whereColumn('col1', 'col2')`)
+- `in`: IN clauses (`whereIn()`, `whereNotIn()`)
+- `null`: NULL checks (`whereNull()`, `whereNotNull()`)
+- `between`: BETWEEN clauses (`whereBetween()`, `whereNotBetween()`)
+- `betweenColumns`: Column-to-column BETWEEN (`whereBetweenColumns()`)
+- `all`: All columns must match (`whereAll()`)
+- `any`: Any column can match (`whereAny()`)
+- `none`: No columns should match (`whereNone()`)
+
+### JOIN Condition Types
+
+JoinClause supports two condition types:
+- `on`: Column-to-column comparison (no parameter binding)
+- `where`: Column-to-value comparison (requires parameter binding)
+
+## Important Code Conventions
+
+### Adding New WHERE Types
+1. Add public method in QueryBuilder
+2. Add WHERE condition to `_wheres` list with appropriate type identifier
+3. Add compilation logic in SqlGrammar's `_compileWheres()`
+4. If `increment()`/`decrement()` needs support, update their `_compileWheres()` helper method
+5. Add tests in `test/laconic_test.dart`
+
+### Adding New Grammar Implementation (e.g., PostgreSQL)
+1. Create new class extending `Grammar`
+2. Implement all abstract methods: `compileSelect()`, `compileInsert()`, `compileUpdate()`, `compileDelete()`
+3. Override compilation helper methods if SQL syntax differs
+4. Select Grammar in QueryBuilder constructor based on driver
+
+### Error Handling
+- Database errors wrapped in `LaconicException`
+- QueryBuilder methods throw `LaconicException` on invalid input
+- Example: `first()` throws on no results, `value()` returns `null`
+
+## Testing Strategy
+
+Test file `test/laconic_test.dart` uses a real SQLite database:
+- `setUpAll()` for each test group creates tables and inserts data
+- `tearDownAll()` for each test group closes connections
+- Tests cover all QueryBuilder methods and WHERE types
+- Includes edge case tests (empty lists, null values, etc.)
+
+### Running Phase-Specific Tests
+Tests are organized by phases:
+- Phase 1: Basic WHERE methods (whereIn, whereNull, whereBetween, etc.)
+- Phase 2: Aggregate functions and helpers (avg, sum, exists, pluck, etc.)
+- Phase 3: Advanced methods (addSelect, when, whereColumn, whereAll/Any/None, etc.)
+- Advanced JOIN tests (orOn, where, orWhere in JOINs)
+
+## Dependency Requirements
+
+**Important**: This package requires Flutter dependencies. If used in a pure Dart project, some functionality may not work properly. See README.md for details.
+
+Main dependencies:
+- `mysql_client`: MySQL connectivity
+- `sqlite3`: SQLite support
