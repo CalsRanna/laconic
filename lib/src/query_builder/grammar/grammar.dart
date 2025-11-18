@@ -13,6 +13,9 @@ abstract class Grammar {
   /// - [wheres]: List of WHERE conditions
   /// - [joins]: List of JOIN clauses
   /// - [orders]: List of ORDER BY clauses
+  /// - [groups]: List of GROUP BY columns
+  /// - [havings]: List of HAVING conditions
+  /// - [distinct]: Whether to select distinct records
   /// - [limit]: Optional LIMIT value
   /// - [offset]: Optional OFFSET value
   CompiledQuery compileSelect({
@@ -21,6 +24,9 @@ abstract class Grammar {
     required List<Map<String, dynamic>> wheres,
     required List<Map<String, dynamic>> joins,
     required List<Map<String, dynamic>> orders,
+    required List<String> groups,
+    required List<Map<String, dynamic>> havings,
+    required bool distinct,
     int? limit,
     int? offset,
   });

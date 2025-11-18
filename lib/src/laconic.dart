@@ -70,6 +70,47 @@ class Laconic {
     await _execute(sql, params);
   }
 
+  /// Execute an INSERT statement and return the last inserted ID.
+  Future<int> insertAndGetId(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async {
+    listen?.call(LaconicQuery(bindings: params, sql: sql));
+
+    if (driver == LaconicDriver.mysql) {
+      _pool ??= MySQLConnectionPool(
+        databaseName: mysqlConfig!.database,
+        host: mysqlConfig!.host,
+        maxConnections: 10,
+        password: mysqlConfig!.password,
+        port: mysqlConfig!.port,
+        userName: mysqlConfig!.username,
+      );
+      try {
+        var stmt = await _pool!.prepare(sql);
+        var results = await stmt.execute(params);
+        await stmt.deallocate();
+        // MySQL returns lastInsertId from the result
+        return results.lastInsertID.toInt();
+      } catch (error) {
+        throw LaconicException(error.toString());
+      }
+    } else {
+      // SQLite
+      _database ??= sqlite3.open(sqliteConfig!.path);
+      try {
+        var stmt = _database!.prepare(sql);
+        stmt.execute(params);
+        stmt.dispose();
+        // Get the last inserted row ID
+        final result = _database!.select('SELECT last_insert_rowid() as id');
+        return result.first['id'] as int;
+      } catch (error) {
+        throw LaconicException(error.toString());
+      }
+    }
+  }
+
   /// Get a query builder of the specified table.
   QueryBuilder table(String table) {
     return QueryBuilder(laconic: this, table: table);
