@@ -1,4 +1,4 @@
-## 1.1.0
+## 1.0.1
 
 ### Features
 - **PostgreSQL Support** - Add full PostgreSQL database support
