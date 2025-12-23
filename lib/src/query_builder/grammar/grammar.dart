@@ -62,4 +62,20 @@ abstract class Grammar {
     required String table,
     required List<Map<String, dynamic>> wheres,
   });
+
+  /// Compiles an INSERT query that returns the inserted ID.
+  ///
+  /// For PostgreSQL, this adds a RETURNING clause.
+  /// For MySQL/SQLite, this is identical to compileInsert() as they
+  /// use lastInsertId to get the ID.
+  ///
+  /// Parameters:
+  /// - [table]: The table name
+  /// - [data]: Map representing the row to insert
+  /// - [idColumn]: The name of the ID column (default: 'id')
+  CompiledQuery compileInsertGetId({
+    required String table,
+    required Map<String, Object?> data,
+    String idColumn = 'id',
+  });
 }

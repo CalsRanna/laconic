@@ -1,4 +1,5 @@
 export 'src/config/mysql_config.dart';
+export 'src/config/postgresql_config.dart';
 export 'src/config/sqlite_config.dart';
 export 'src/driver.dart';
 export 'src/exception.dart';

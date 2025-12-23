@@ -1,6 +1,8 @@
+import 'package:laconic/src/driver.dart';
 import 'package:laconic/src/exception.dart';
 import 'package:laconic/src/laconic.dart';
 import 'package:laconic/src/query_builder/grammar/grammar.dart';
+import 'package:laconic/src/query_builder/grammar/postgresql_grammar.dart';
 import 'package:laconic/src/query_builder/grammar/sql_grammar.dart';
 import 'package:laconic/src/query_builder/join_clause.dart';
 import 'package:laconic/src/result.dart';
@@ -42,9 +44,20 @@ class QueryBuilder {
 
   /// Creates a new query builder instance.
   QueryBuilder({required Laconic laconic, required String table})
-      : _laconic = laconic,
-        _table = table,
-        _grammar = SqlGrammar();
+    : _laconic = laconic,
+      _table = table,
+      _grammar = _selectGrammar(laconic.driver);
+
+  /// Selects the appropriate Grammar based on the database driver.
+  static Grammar _selectGrammar(LaconicDriver driver) {
+    switch (driver) {
+      case LaconicDriver.mysql:
+      case LaconicDriver.sqlite:
+        return SqlGrammar();
+      case LaconicDriver.postgresql:
+        return PostgresqlGrammar();
+    }
+  }
 
   /// Returns the count of records matching the query.
   Future<int> count() async {
@@ -67,10 +80,7 @@ class QueryBuilder {
 
   /// Deletes records matching the query.
   Future<void> delete() async {
-    final compiled = _grammar.compileDelete(
-      table: _table,
-      wheres: _wheres,
-    );
+    final compiled = _grammar.compileDelete(table: _table, wheres: _wheres);
 
     await _laconic.statement(compiled.sql, compiled.bindings);
   }
@@ -128,10 +138,7 @@ class QueryBuilder {
       throw LaconicException('Cannot insert an empty list of data');
     }
 
-    final compiled = _grammar.compileInsert(
-      table: _table,
-      data: data,
-    );
+    final compiled = _grammar.compileInsert(table: _table, data: data);
 
     await _laconic.statement(compiled.sql, compiled.bindings);
   }
@@ -145,10 +152,7 @@ class QueryBuilder {
   /// final id = await query.insertGetId({'email': 'john@example.com', 'votes': 0})
   /// ```
   Future<int> insertGetId(Map<String, Object?> data) async {
-    final compiled = _grammar.compileInsert(
-      table: _table,
-      data: [data], // Wrap single row in list
-    );
+    final compiled = _grammar.compileInsertGetId(table: _table, data: data);
 
     return await _laconic.insertAndGetId(compiled.sql, compiled.bindings);
   }
@@ -181,10 +185,7 @@ class QueryBuilder {
     final joinClause = JoinClause();
     builder(joinClause);
 
-    _joins.add({
-      'table': targetTable,
-      'conditions': joinClause.conditions,
-    });
+    _joins.add({'table': targetTable, 'conditions': joinClause.conditions});
 
     return this;
   }
@@ -206,10 +207,7 @@ class QueryBuilder {
   /// [column] is the column name to order by.
   /// [direction] must be 'asc' or 'desc' (defaults to 'asc').
   QueryBuilder orderBy(String column, {String direction = 'asc'}) {
-    _orders.add({
-      'column': column,
-      'direction': direction,
-    });
+    _orders.add({'column': column, 'direction': direction});
     return this;
   }
 
@@ -356,7 +354,11 @@ class QueryBuilder {
   /// query.whereColumn('first_name', 'last_name')
   /// query.whereColumn('updated_at', 'created_at', operator: '>')
   /// ```
-  QueryBuilder whereColumn(String first, String second, {String operator = '='}) {
+  QueryBuilder whereColumn(
+    String first,
+    String second, {
+    String operator = '=',
+  }) {
     _wheres.add({
       'type': 'column',
       'first': first,
@@ -377,7 +379,11 @@ class QueryBuilder {
   /// ```dart
   /// query.whereAll(['title', 'content'], '%Laravel%', operator: 'like')
   /// ```
-  QueryBuilder whereAll(List<String> columns, Object? value, {String operator = '='}) {
+  QueryBuilder whereAll(
+    List<String> columns,
+    Object? value, {
+    String operator = '=',
+  }) {
     _wheres.add({
       'type': 'all',
       'columns': columns,
@@ -398,7 +404,11 @@ class QueryBuilder {
   /// ```dart
   /// query.whereAny(['name', 'email', 'phone'], 'Example%', operator: 'like')
   /// ```
-  QueryBuilder whereAny(List<String> columns, Object? value, {String operator = '='}) {
+  QueryBuilder whereAny(
+    List<String> columns,
+    Object? value, {
+    String operator = '=',
+  }) {
     _wheres.add({
       'type': 'any',
       'columns': columns,
@@ -419,7 +429,11 @@ class QueryBuilder {
   /// ```dart
   /// query.whereNone(['title', 'lyrics', 'tags'], '%explicit%', operator: 'like')
   /// ```
-  QueryBuilder whereNone(List<String> columns, Object? value, {String operator = '='}) {
+  QueryBuilder whereNone(
+    List<String> columns,
+    Object? value, {
+    String operator = '=',
+  }) {
     _wheres.add({
       'type': 'none',
       'columns': columns,
@@ -516,7 +530,11 @@ class QueryBuilder {
   /// ```dart
   /// query.whereBetween('votes', min: 1, max: 100)
   /// ```
-  QueryBuilder whereBetween(String column, {required Object? min, required Object? max}) {
+  QueryBuilder whereBetween(
+    String column, {
+    required Object? min,
+    required Object? max,
+  }) {
     _wheres.add({
       'type': 'between',
       'column': column,
@@ -537,7 +555,11 @@ class QueryBuilder {
   /// ```dart
   /// query.whereNotBetween('votes', min: 1, max: 100)
   /// ```
-  QueryBuilder whereNotBetween(String column, {required Object? min, required Object? max}) {
+  QueryBuilder whereNotBetween(
+    String column, {
+    required Object? min,
+    required Object? max,
+  }) {
     _wheres.add({
       'type': 'between',
       'column': column,
@@ -558,7 +580,11 @@ class QueryBuilder {
   /// ```dart
   /// query.whereBetweenColumns('weight', minColumn: 'minimum_allowed_weight', maxColumn: 'maximum_allowed_weight')
   /// ```
-  QueryBuilder whereBetweenColumns(String column, {required String minColumn, required String maxColumn}) {
+  QueryBuilder whereBetweenColumns(
+    String column, {
+    required String minColumn,
+    required String maxColumn,
+  }) {
     _wheres.add({
       'type': 'betweenColumns',
       'column': column,
@@ -579,7 +605,11 @@ class QueryBuilder {
   /// ```dart
   /// query.whereNotBetweenColumns('weight', minColumn: 'minimum_allowed_weight', maxColumn: 'maximum_allowed_weight')
   /// ```
-  QueryBuilder whereNotBetweenColumns(String column, {required String minColumn, required String maxColumn}) {
+  QueryBuilder whereNotBetweenColumns(
+    String column, {
+    required String minColumn,
+    required String maxColumn,
+  }) {
     _wheres.add({
       'type': 'betweenColumns',
       'column': column,
@@ -920,7 +950,9 @@ class QueryBuilder {
         parts.add('$boolean${where['column']} ${where['operator']} ?');
         bindings.add(where['value']);
       } else if (type == 'column') {
-        parts.add('$boolean${where['first']} ${where['operator']} ${where['second']}');
+        parts.add(
+          '$boolean${where['first']} ${where['operator']} ${where['second']}',
+        );
       } else if (type == 'in') {
         final column = where['column'];
         final values = where['values'] as List<Object?>;
@@ -951,12 +983,16 @@ class QueryBuilder {
         final betweenColumns = where['betweenColumns'] as List<String>;
         final not = where['not'] as bool;
         final betweenKeyword = not ? 'not between' : 'between';
-        parts.add('$boolean$column $betweenKeyword ${betweenColumns[0]} and ${betweenColumns[1]}');
+        parts.add(
+          '$boolean$column $betweenKeyword ${betweenColumns[0]} and ${betweenColumns[1]}',
+        );
       } else if (type == 'all') {
         final columns = where['columns'] as List<String>;
         final operator = where['operator'];
         final value = where['value'];
-        final conditions = columns.map((col) => '$col $operator ?').join(' and ');
+        final conditions = columns
+            .map((col) => '$col $operator ?')
+            .join(' and ');
         parts.add('$boolean($conditions)');
         for (var j = 0; j < columns.length; j++) {
           bindings.add(value);
@@ -965,7 +1001,9 @@ class QueryBuilder {
         final columns = where['columns'] as List<String>;
         final operator = where['operator'];
         final value = where['value'];
-        final conditions = columns.map((col) => '$col $operator ?').join(' or ');
+        final conditions = columns
+            .map((col) => '$col $operator ?')
+            .join(' or ');
         parts.add('$boolean($conditions)');
         for (var j = 0; j < columns.length; j++) {
           bindings.add(value);
@@ -974,7 +1012,9 @@ class QueryBuilder {
         final columns = where['columns'] as List<String>;
         final operator = where['operator'];
         final value = where['value'];
-        final conditions = columns.map((col) => '$col $operator ?').join(' or ');
+        final conditions = columns
+            .map((col) => '$col $operator ?')
+            .join(' or ');
         parts.add('${boolean}not ($conditions)');
         for (var j = 0; j < columns.length; j++) {
           bindings.add(value);

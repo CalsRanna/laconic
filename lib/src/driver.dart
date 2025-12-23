@@ -1,1 +1,1 @@
-enum LaconicDriver { mysql, sqlite }
+enum LaconicDriver { mysql, sqlite, postgresql }

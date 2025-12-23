@@ -1,4 +1,5 @@
 import 'package:laconic/src/config/mysql_config.dart';
+import 'package:laconic/src/config/postgresql_config.dart';
 import 'package:laconic/src/config/sqlite_config.dart';
 import 'package:laconic/src/driver.dart';
 import 'package:laconic/src/exception.dart';
@@ -6,6 +7,7 @@ import 'package:laconic/src/query.dart';
 import 'package:laconic/src/query_builder/query_builder.dart';
 import 'package:laconic/src/result.dart';
 import 'package:mysql_client/mysql_client.dart';
+import 'package:postgres/postgres.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 class Laconic {
@@ -13,18 +15,23 @@ class Laconic {
   final void Function(LaconicQuery)? listen;
   final MysqlConfig? mysqlConfig;
   final SqliteConfig? sqliteConfig;
+  final PostgresqlConfig? postgresqlConfig;
 
   MySQLConnectionPool? _pool;
   Database? _database;
+  Pool? _pgPool;
 
   Laconic({
     required this.driver,
     this.listen,
     this.mysqlConfig,
     this.sqliteConfig,
+    this.postgresqlConfig,
   }) : assert(
-         mysqlConfig != null || sqliteConfig != null,
-         'mysqlConfig and mysqlConfig can not be both null',
+         mysqlConfig != null ||
+             sqliteConfig != null ||
+             postgresqlConfig != null,
+         'At least one database config must be provided',
        ),
        assert(
          driver != LaconicDriver.mysql || mysqlConfig != null,
@@ -33,17 +40,29 @@ class Laconic {
        assert(
          driver != LaconicDriver.sqlite || sqliteConfig != null,
          'sqliteConfig can not be null while laconic driver is sqlite',
+       ),
+       assert(
+         driver != LaconicDriver.postgresql || postgresqlConfig != null,
+         'postgresqlConfig can not be null while laconic driver is postgresql',
        );
 
   Laconic.mysql(MysqlConfig config, {this.listen})
     : driver = LaconicDriver.mysql,
       mysqlConfig = config,
-      sqliteConfig = null;
+      sqliteConfig = null,
+      postgresqlConfig = null;
 
   Laconic.sqlite(SqliteConfig config, {this.listen})
     : driver = LaconicDriver.sqlite,
       mysqlConfig = null,
-      sqliteConfig = config;
+      sqliteConfig = config,
+      postgresqlConfig = null;
+
+  Laconic.postgresql(PostgresqlConfig config, {this.listen})
+    : driver = LaconicDriver.postgresql,
+      mysqlConfig = null,
+      sqliteConfig = null,
+      postgresqlConfig = config;
 
   Future<void> close() async {
     if (_pool != null) {
@@ -53,6 +72,10 @@ class Laconic {
     if (_database != null) {
       _database!.dispose();
       _database = null;
+    }
+    if (_pgPool != null) {
+      await _pgPool!.close();
+      _pgPool = null;
     }
   }
 
@@ -95,7 +118,7 @@ class Laconic {
       } catch (error) {
         throw LaconicException(error.toString());
       }
-    } else {
+    } else if (driver == LaconicDriver.sqlite) {
       // SQLite
       _database ??= sqlite3.open(sqliteConfig!.path);
       try {
@@ -108,6 +131,43 @@ class Laconic {
       } catch (error) {
         throw LaconicException(error.toString());
       }
+    } else {
+      // PostgreSQL: Use RETURNING id from the query
+      _pgPool ??= Pool.withEndpoints(
+        [
+          Endpoint(
+            host: postgresqlConfig!.host,
+            database: postgresqlConfig!.database,
+            username: postgresqlConfig!.username,
+            password: postgresqlConfig!.password,
+            port: postgresqlConfig!.port,
+          ),
+        ],
+        settings: PoolSettings(
+          maxConnectionCount: 10,
+          sslMode: postgresqlConfig!.useSsl ? SslMode.require : SslMode.disable,
+        ),
+      );
+      try {
+        final result = await _pgPool!.execute(sql, parameters: params);
+        // PostgreSQL RETURNING id returns the result
+        final firstRow = result.first;
+        final columnMap = <String, Object?>{};
+        final columns = result.schema.columns;
+        for (var i = 0; i < columns.length; i++) {
+          final colName = columns[i].columnName;
+          if (colName != null) {
+            columnMap[colName] = firstRow[i];
+          }
+        }
+        final idValue = columnMap['id'];
+        if (idValue == null) {
+          throw LaconicException('Failed to get inserted ID');
+        }
+        return idValue as int;
+      } catch (error) {
+        throw LaconicException(error.toString());
+      }
     }
   }
 
@@ -117,26 +177,37 @@ class Laconic {
   }
 
   Future<T> transaction<T>(Future<T> Function() action) async {
-    if (driver == LaconicDriver.mysql) {
-      await _execute('start transaction');
-      try {
-        final result = await action();
-        await _execute('commit');
-        return result;
-      } catch (error) {
-        await _execute('rollback');
-        throw LaconicException(error.toString());
-      }
-    } else {
-      await _execute('begin transaction');
-      try {
-        final result = await action();
-        await _execute('commit');
-        return result;
-      } catch (error) {
-        await _execute('rollback');
-        throw LaconicException(error.toString());
-      }
+    switch (driver) {
+      case LaconicDriver.mysql:
+        await _execute('start transaction');
+        try {
+          final result = await action();
+          await _execute('commit');
+          return result;
+        } catch (error) {
+          await _execute('rollback');
+          throw LaconicException(error.toString());
+        }
+      case LaconicDriver.sqlite:
+        await _execute('begin transaction');
+        try {
+          final result = await action();
+          await _execute('commit');
+          return result;
+        } catch (error) {
+          await _execute('rollback');
+          throw LaconicException(error.toString());
+        }
+      case LaconicDriver.postgresql:
+        await _execute('begin');
+        try {
+          final result = await action();
+          await _execute('commit');
+          return result;
+        } catch (error) {
+          await _execute('rollback');
+          throw LaconicException(error.toString());
+        }
     }
   }
 
@@ -155,20 +226,73 @@ class Laconic {
         userName: mysqlConfig!.username,
       );
       try {
-        var stmt = await _pool!.prepare(sql);
-        var results = await stmt.execute(params);
-        await stmt.deallocate();
+        // Use direct execute for MySQL (works for both DML and DDL)
+        // Convert ? placeholders to :p0, :p1, etc. for named parameters
+        String convertedSql = sql;
+        Map<String, dynamic>? namedParams;
+        if (params.isNotEmpty) {
+          for (var i = 0; i < params.length; i++) {
+            convertedSql = convertedSql.replaceFirst('?', ':p$i', 0);
+          }
+          namedParams = Map.fromIterables(
+            List.generate(params.length, (i) => 'p$i'),
+            params,
+          );
+        }
+        var results = await _pool!.execute(convertedSql, namedParams);
         return results.rows.map(LaconicResult.fromResultSetRow).toList();
       } catch (error) {
         throw LaconicException(error.toString());
       }
-    } else {
+    } else if (driver == LaconicDriver.sqlite) {
       _database ??= sqlite3.open(sqliteConfig!.path);
       try {
         var stmt = _database!.prepare(sql);
         var results = stmt.select(params);
         stmt.dispose();
         return results.map(LaconicResult.fromRow).toList();
+      } catch (error) {
+        throw LaconicException(error.toString());
+      }
+    } else {
+      // PostgreSQL
+      _pgPool ??= Pool.withEndpoints(
+        [
+          Endpoint(
+            host: postgresqlConfig!.host,
+            database: postgresqlConfig!.database,
+            username: postgresqlConfig!.username,
+            password: postgresqlConfig!.password,
+            port: postgresqlConfig!.port,
+          ),
+        ],
+        settings: PoolSettings(
+          maxConnectionCount: 10,
+          sslMode: postgresqlConfig!.useSsl ? SslMode.require : SslMode.disable,
+        ),
+      );
+      try {
+        // Convert ? placeholders to $1, $2, etc. for PostgreSQL
+        String convertedSql = sql;
+        if (params.isNotEmpty) {
+          var index = 1;
+          convertedSql = convertedSql.replaceAllMapped(
+            RegExp(r'\?'),
+            (match) => '\$${index++}',
+          );
+        }
+        final result = await _pgPool!.execute(convertedSql, parameters: params);
+        return result.map((row) {
+          final columnMap = <String, Object?>{};
+          final columns = result.schema.columns;
+          for (var i = 0; i < columns.length; i++) {
+            final colName = columns[i].columnName;
+            if (colName != null) {
+              columnMap[colName] = row[i];
+            }
+          }
+          return LaconicResult.fromMap(columnMap);
+        }).toList();
       } catch (error) {
         throw LaconicException(error.toString());
       }

@@ -1,11 +1,12 @@
 import 'package:laconic/src/query_builder/grammar/compiled_query.dart';
 import 'package:laconic/src/query_builder/grammar/grammar.dart';
 
-/// SQL grammar implementation for SQLite and MySQL.
+/// PostgreSQL-specific SQL grammar.
 ///
-/// Since SQLite and MySQL share the same basic SQL syntax for common operations,
-/// this single implementation works for both databases.
-class SqlGrammar extends Grammar {
+/// Handles PostgreSQL-specific syntax differences:
+/// - Positional parameters ($1, $2, etc.)
+/// - RETURNING clause for insertGetId
+class PostgresqlGrammar extends Grammar {
   @override
   CompiledQuery compileSelect({
     required String table,
@@ -52,19 +53,16 @@ class SqlGrammar extends Grammar {
     }
 
     if (limit != null) {
-      buffer.write(' limit ?');
+      buffer.write(' limit \$${bindings.length + 1}');
       bindings.add(limit);
     }
 
     if (offset != null) {
-      buffer.write(' offset ?');
+      buffer.write(' offset \$${bindings.length + 1}');
       bindings.add(offset);
     }
 
-    return CompiledQuery(
-      sql: buffer.toString(),
-      bindings: bindings,
-    );
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
   }
 
   @override
@@ -85,8 +83,8 @@ class SqlGrammar extends Grammar {
       buffer.write('(');
       final row = data[i];
       for (var j = 0; j < columns.length; j++) {
-        buffer.write('?');
-        bindings.add(row[columns[j]]);
+        buffer.write('\$${bindings.length + 1}');
+        bindings.add(_prepareValue(row[columns[j]]));
         if (j < columns.length - 1) {
           buffer.write(', ');
         }
@@ -97,9 +95,20 @@ class SqlGrammar extends Grammar {
       }
     }
 
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
+  }
+
+  @override
+  CompiledQuery compileInsertGetId({
+    required String table,
+    required Map<String, Object?> data,
+    String idColumn = 'id',
+  }) {
+    final compiled = compileInsert(table: table, data: [data]);
+    // Add RETURNING clause for PostgreSQL
     return CompiledQuery(
-      sql: buffer.toString(),
-      bindings: bindings,
+      sql: '${compiled.sql} returning $idColumn',
+      bindings: compiled.bindings,
     );
   }
 
@@ -116,8 +125,8 @@ class SqlGrammar extends Grammar {
 
     final entries = data.entries.toList();
     for (var i = 0; i < entries.length; i++) {
-      buffer.write('${entries[i].key} = ?');
-      bindings.add(entries[i].value);
+      buffer.write('${entries[i].key} = \$${bindings.length + 1}');
+      bindings.add(_prepareValue(entries[i].value));
       if (i < entries.length - 1) {
         buffer.write(', ');
       }
@@ -128,10 +137,7 @@ class SqlGrammar extends Grammar {
       buffer.write(_compileWheres(wheres, bindings));
     }
 
-    return CompiledQuery(
-      sql: buffer.toString(),
-      bindings: bindings,
-    );
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
   }
 
   @override
@@ -149,21 +155,12 @@ class SqlGrammar extends Grammar {
       buffer.write(_compileWheres(wheres, bindings));
     }
 
-    return CompiledQuery(
-      sql: buffer.toString(),
-      bindings: bindings,
-    );
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
   }
 
-  @override
-  CompiledQuery compileInsertGetId({
-    required String table,
-    required Map<String, Object?> data,
-    String idColumn = 'id',
-  }) {
-    // For MySQL/SQLite, insertGetId is identical to insert
-    // They use lastInsertId to get the inserted ID
-    return compileInsert(table: table, data: [data]);
+  /// Prepares a value for PostgreSQL parameter binding.
+  Object? _prepareValue(Object? value) {
+    return value;
   }
 
   /// Compiles column names for SELECT clause.
@@ -199,15 +196,22 @@ class SqlGrammar extends Grammar {
     for (var i = 0; i < conditions.length; i++) {
       final condition = conditions[i];
       final boolean = i == 0 ? '' : ' ${condition['boolean']} ';
-      final type = condition['type'] ?? 'on'; // Default to 'on' for backward compatibility
+      final type = condition['type'] ?? 'on';
 
       if (type == 'on') {
         // ON clause: column = column
-        parts.add('$boolean${condition['left']} ${condition['operator']} ${condition['right']}');
+        parts.add(
+          '$boolean${condition['left']} '
+          '${condition['operator']} '
+          '${condition['right']}',
+        );
       } else if (type == 'where') {
-        // WHERE clause within JOIN: column = ?
-        parts.add('$boolean${condition['column']} ${condition['operator']} ?');
-        bindings.add(condition['value']);
+        // WHERE clause within JOIN: column = $1
+        parts.add(
+          '$boolean${condition['column']} '
+          '${condition['operator']} \$${bindings.length + 1}',
+        );
+        bindings.add(_prepareValue(condition['value']));
       }
     }
 
@@ -227,14 +231,21 @@ class SqlGrammar extends Grammar {
       final type = where['type'];
 
       if (type == 'basic') {
-        // WHERE column = ?
-        parts.add('$boolean${where['column']} ${where['operator']} ?');
-        bindings.add(where['value']);
+        // WHERE column = $1
+        parts.add(
+          '$boolean${where['column']} '
+          '${where['operator']} \$${bindings.length + 1}',
+        );
+        bindings.add(_prepareValue(where['value']));
       } else if (type == 'column') {
         // WHERE column1 = column2
-        parts.add('$boolean${where['first']} ${where['operator']} ${where['second']}');
+        parts.add(
+          '$boolean${where['first']} '
+          '${where['operator']} '
+          '${where['second']}',
+        );
       } else if (type == 'in') {
-        // WHERE column IN (?, ?, ?) or WHERE column NOT IN (?, ?, ?)
+        // WHERE column IN ($1, $2, $3) or WHERE column NOT IN ($1, $2, $3)
         final column = where['column'];
         final values = where['values'] as List<Object?>;
         final not = where['not'] as bool;
@@ -244,9 +255,12 @@ class SqlGrammar extends Grammar {
           // Handle empty IN clause - always false for IN, always true for NOT IN
           parts.add('$boolean${not ? '1 = 1' : '1 = 0'}');
         } else {
-          final placeholders = List.filled(values.length, '?').join(', ');
+          final placeholders = List.generate(
+            values.length,
+            (i) => '\$${bindings.length + i + 1}',
+          ).join(', ');
           parts.add('$boolean$column $inKeyword ($placeholders)');
-          bindings.addAll(values);
+          bindings.addAll(values.map(_prepareValue));
         }
       } else if (type == 'null') {
         // WHERE column IS NULL or WHERE column IS NOT NULL
@@ -255,50 +269,59 @@ class SqlGrammar extends Grammar {
         final nullKeyword = not ? 'is not null' : 'is null';
         parts.add('$boolean$column $nullKeyword');
       } else if (type == 'between') {
-        // WHERE column BETWEEN ? AND ? or WHERE column NOT BETWEEN ? AND ?
+        // WHERE column BETWEEN $1 AND $2 or WHERE column NOT BETWEEN $1 AND $2
         final column = where['column'];
         final values = where['values'] as List<Object?>;
         final not = where['not'] as bool;
         final betweenKeyword = not ? 'not between' : 'between';
-        parts.add('$boolean$column $betweenKeyword ? and ?');
-        bindings.addAll(values);
+        parts.add(
+          '$boolean$column $betweenKeyword \$${bindings.length + 1} and \$${bindings.length + 2}',
+        );
+        bindings.addAll(values.map(_prepareValue));
       } else if (type == 'betweenColumns') {
         // WHERE column BETWEEN column1 AND column2
         final column = where['column'];
         final betweenColumns = where['betweenColumns'] as List<String>;
         final not = where['not'] as bool;
         final betweenKeyword = not ? 'not between' : 'between';
-        parts.add('$boolean$column $betweenKeyword ${betweenColumns[0]} and ${betweenColumns[1]}');
+        parts.add(
+          '$boolean$column $betweenKeyword '
+          '${betweenColumns[0]} and '
+          '${betweenColumns[1]}',
+        );
       } else if (type == 'all') {
-        // WHERE (col1 = ? AND col2 = ? AND col3 = ?)
+        // WHERE (col1 = $1 AND col2 = $2 AND col3 = $3)
         final columns = where['columns'] as List<String>;
         final operator = where['operator'];
         final value = where['value'];
-        final conditions = columns.map((col) => '$col $operator ?').join(' and ');
-        parts.add('$boolean($conditions)');
+        final conditions = <String>[];
         for (var j = 0; j < columns.length; j++) {
-          bindings.add(value);
+          conditions.add('${columns[j]} $operator \$${bindings.length + 1}');
+          bindings.add(_prepareValue(value));
         }
+        parts.add('$boolean(${conditions.join(' and ')})');
       } else if (type == 'any') {
-        // WHERE (col1 = ? OR col2 = ? OR col3 = ?)
+        // WHERE (col1 = $1 OR col2 = $2 OR col3 = $3)
         final columns = where['columns'] as List<String>;
         final operator = where['operator'];
         final value = where['value'];
-        final conditions = columns.map((col) => '$col $operator ?').join(' or ');
-        parts.add('$boolean($conditions)');
+        final conditions = <String>[];
         for (var j = 0; j < columns.length; j++) {
-          bindings.add(value);
+          conditions.add('${columns[j]} $operator \$${bindings.length + 1}');
+          bindings.add(_prepareValue(value));
         }
+        parts.add('$boolean(${conditions.join(' or ')})');
       } else if (type == 'none') {
-        // WHERE NOT (col1 = ? OR col2 = ? OR col3 = ?)
+        // WHERE NOT (col1 = $1 OR col2 = $2 OR col3 = $3)
         final columns = where['columns'] as List<String>;
         final operator = where['operator'];
         final value = where['value'];
-        final conditions = columns.map((col) => '$col $operator ?').join(' or ');
-        parts.add('${boolean}not ($conditions)');
+        final conditions = <String>[];
         for (var j = 0; j < columns.length; j++) {
-          bindings.add(value);
+          conditions.add('${columns[j]} $operator \$${bindings.length + 1}');
+          bindings.add(_prepareValue(value));
         }
+        parts.add('${boolean}not (${conditions.join(' or ')})');
       } else if (type == 'nested') {
         final nested = _compileWheres(where['conditions'], bindings);
         parts.add('$boolean($nested)');
@@ -314,7 +337,10 @@ class SqlGrammar extends Grammar {
     buffer.write(' order by ');
 
     for (var i = 0; i < orders.length; i++) {
-      buffer.write('${orders[i]['column']} ${orders[i]['direction']}');
+      buffer.write(
+        '${orders[i]['column']} '
+        '${orders[i]['direction']}',
+      );
       if (i < orders.length - 1) {
         buffer.write(', ');
       }
@@ -338,8 +364,11 @@ class SqlGrammar extends Grammar {
     for (var i = 0; i < havings.length; i++) {
       final having = havings[i];
       final boolean = i == 0 ? '' : ' ${having['boolean']} ';
-      parts.add('$boolean${having['column']} ${having['operator']} ?');
-      bindings.add(having['value']);
+      parts.add(
+        '$boolean${having['column']} '
+        '${having['operator']} \$${bindings.length + 1}',
+      );
+      bindings.add(_prepareValue(having['value']));
     }
 
     return parts.join('');
