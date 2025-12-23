@@ -1,3 +1,26 @@
+## 1.1.0
+
+### Features
+- **PostgreSQL Support** - Add full PostgreSQL database support
+  - New `Laconic.postgresql(config)` constructor
+  - PostgreSQL-specific parameter binding (`$1, $2, $3...`)
+  - `RETURNING id` clause for `insertGetId()`
+  - Connection pooling with up to 10 concurrent connections
+  - SSL connection support
+
+### Architecture
+- Add `PostgresqlGrammar` class for PostgreSQL-specific SQL generation
+- Add `compileInsertGetId()` method to Grammar interface
+  - Separates INSERT and INSERT RETURNING logic
+  - PostgreSQL uses `RETURNING id` clause
+  - MySQL/SQLite use `lastInsertId` mechanism
+- Add `PostgresqlConfig` for PostgreSQL connection configuration
+
+### Testing
+- Add comprehensive PostgreSQL test suite (64 tests)
+- Unify test data structure across SQLite, MySQL, and PostgreSQL
+- All 187 tests passing across three databases
+
 ## 1.0.0+36
 
 ### Features

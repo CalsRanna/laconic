@@ -4,12 +4,12 @@
   <a href="README.md">简体中文</a> | <a href="README_EN.md">English</a>
 </p>
 
-A Laravel-style SQL query builder for Dart, supporting MySQL and SQLite databases. Provides a fluent, chainable API for elegant database queries.
+A Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and PostgreSQL databases. Provides a fluent, chainable API for elegant database queries.
 
 ## Features
 
 - **Laravel-style API** - Familiar query builder syntax
-- **Multi-database Support** - Support for MySQL and SQLite
+- **Multi-database Support** - Support for MySQL, SQLite, and PostgreSQL
 - **Chainable Methods** - Fluent query building experience
 - **Parameterized Queries** - Automatic SQL injection prevention
 - **Transaction Support** - Complete transaction management
@@ -59,6 +59,22 @@ import 'package:laconic/laconic.dart';
 
 var config = SqliteConfig('database.db');
 var laconic = Laconic.sqlite(config);
+```
+
+#### PostgreSQL
+
+```dart
+import 'package:laconic/laconic.dart';
+
+var config = PostgresqlConfig(
+  database: 'my_database',
+  host: '127.0.0.1',
+  port: 5432,
+  username: 'postgres',
+  password: 'password',
+);
+
+var laconic = Laconic.postgresql(config);
 ```
 
 ### Query Listener (for debugging)
@@ -416,6 +432,7 @@ await laconic.close();
 
 - `mysql_client: ^0.0.27` - MySQL connectivity
 - `sqlite3: ^2.7.5` - SQLite support
+- `postgres: ^3.5.5` - PostgreSQL support
 
 ## Testing
 

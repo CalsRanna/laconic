@@ -4,12 +4,12 @@
   <a href="README.md">简体中文</a> | <a href="README_EN.md">English</a>
 </p>
 
-一个为 Dart 设计的 Laravel 风格 SQL 查询构建器，支持 MySQL 和 SQLite 数据库。提供流畅的链式 API，让数据库查询变得简洁优雅。
+一个为 Dart 设计的 Laravel 风格 SQL 查询构建器，支持 MySQL、SQLite 和 PostgreSQL 数据库。提供流畅的链式 API，让数据库查询变得简洁优雅。
 
 ## 特性
 
 - **Laravel 风格 API** - 熟悉的查询构建器语法
-- **多数据库支持** - 支持 MySQL 和 SQLite
+- **多数据库支持** - 支持 MySQL、SQLite 和 PostgreSQL
 - **链式调用** - 流畅的查询构建体验
 - **参数化查询** - 自动防止 SQL 注入
 - **事务支持** - 完整的事务管理
@@ -57,6 +57,22 @@ import 'package:laconic/laconic.dart';
 
 var config = SqliteConfig('database.db');
 var laconic = Laconic.sqlite(config);
+```
+
+#### PostgreSQL
+
+```dart
+import 'package:laconic/laconic.dart';
+
+var config = PostgresqlConfig(
+  database: 'my_database',
+  host: '127.0.0.1',
+  port: 5432,
+  username: 'postgres',
+  password: 'password',
+);
+
+var laconic = Laconic.postgresql(config);
 ```
 
 ### 查询监听（调试用）
@@ -414,6 +430,7 @@ await laconic.close();
 
 - `mysql_client: ^0.0.27` - MySQL 连接
 - `sqlite3: ^2.7.5` - SQLite 支持
+- `postgres: ^3.5.5` - PostgreSQL 支持
 
 ## 测试
 
