@@ -1,3 +1,38 @@
+## 1.0.2
+
+### Features
+- **Complete JOIN Support** - Add all common JOIN types aligned with Laravel
+  - `leftJoin()` - LEFT JOIN queries
+  - `rightJoin()` - RIGHT JOIN queries
+  - `crossJoin()` - CROSS JOIN queries (cartesian product)
+- **Enhanced JoinClause** - Add 12 new condition methods for complex JOIN queries
+  - Column conditions: `whereColumn()`, `orWhereColumn()`
+  - NULL conditions: `whereNull()`, `orWhereNull()`, `whereNotNull()`, `orWhereNotNull()`
+  - IN conditions: `whereIn()`, `orWhereIn()`, `whereNotIn()`, `orWhereNotIn()`
+
+### Testing
+- Refactor test files for better organization
+  - `test/test_helper.dart` - Shared configuration, schema definitions, and test data
+  - `test/sqlite_test.dart` - SQLite-specific tests
+  - `test/mysql_test.dart` - MySQL-specific tests
+  - `test/postgresql_test.dart` - PostgreSQL-specific tests
+- Unified test data across all three databases
+- Total test count: 204 tests (all passing)
+
+### Documentation
+- **README restructure** - English is now the default, Chinese available as optional link
+  - `README.md` - English documentation (default)
+  - `README_ZH.md` - Chinese documentation
+- Update COMPARISON_REPORT.md with complete JOIN coverage analysis
+- Update CLAUDE.md with new architecture details and test structure
+- Add comprehensive JOIN examples in documentation
+
+### Statistics
+- Total methods: 57
+- Laravel coverage: ~75%
+- JOIN coverage: 82%
+- Test coverage: 204 test cases across 3 databases
+
 ## 1.0.1
 
 ### Features
