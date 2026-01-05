@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Laconic is a Laravel-style SQL query builder for Dart, supporting MySQL and SQLite databases. It provides a fluent, chainable API for building and executing database queries.
+Laconic is a Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and PostgreSQL databases. It provides a fluent, chainable API for building and executing database queries with 57 methods covering ~75% of Laravel Query Builder's core functionality.
 
 ## Common Commands
 
@@ -13,11 +13,19 @@ Laconic is a Laravel-style SQL query builder for Dart, supporting MySQL and SQLi
 # Run all tests
 dart test
 
-# Run specific test file
-dart test test/laconic_test.dart
+# Run specific database tests
+dart test test/sqlite_test.dart
+dart test test/mysql_test.dart
+dart test test/postgresql_test.dart
 
 # Run specific test by name
 dart test --name "test_name"
+
+# Start MySQL and PostgreSQL containers for testing
+docker-compose up -d
+
+# Stop containers
+docker-compose down
 ```
 
 ### Code Analysis
@@ -62,13 +70,18 @@ dart run example/laconic_example.dart
 
 3. **Grammar System (lib/src/query_builder/grammar/)** - SQL generation core
    - **Grammar (abstract)**: Defines SQL compilation interface
-   - **SqlGrammar**: Common implementation for SQLite and MySQL
+   - **SqlGrammar**: Implementation for SQLite and MySQL (uses `?` placeholders)
+   - **PostgresqlGrammar**: Implementation for PostgreSQL (uses `$1, $2, ...` placeholders)
    - **CompiledQuery**: Compilation result containing SQL string and bindings
    - Responsibility: Convert QueryBuilder's internal data structures into concrete SQL and parameter bindings
 
 4. **JoinClause (lib/src/query_builder/join_clause.dart)** - JOIN condition builder
    - Separate class for complex JOIN conditions
-   - Supports multiple condition types: `on()`, `orOn()`, `where()`, `orWhere()`
+   - Supports multiple condition types:
+     - Column conditions: `on()`, `orOn()`, `whereColumn()`, `orWhereColumn()`
+     - Value conditions: `where()`, `orWhere()`
+     - NULL conditions: `whereNull()`, `orWhereNull()`, `whereNotNull()`, `orWhereNotNull()`
+     - IN conditions: `whereIn()`, `orWhereIn()`, `whereNotIn()`, `orWhereNotIn()`
    - Mirrors Laravel's JOIN builder design
 
 ### Key Design Patterns
@@ -81,14 +94,15 @@ dart run example/laconic_example.dart
 - All SQL generation logic centralized in Grammar classes
 
 #### Parameter Binding
-- All queries use parameterized bindings (`?`) to prevent SQL injection
+- All queries use parameterized bindings to prevent SQL injection
 - Grammar collects binding values during compilation
-- MySQL uses prepared statements
-- SQLite uses parameterized `prepare()` and `execute()`
+- **MySQL/SQLite**: Uses `?` placeholders with prepared statements
+- **PostgreSQL**: Uses `$1, $2, ...` numbered placeholders
 
 #### Connection Management
 - **MySQL**: Uses connection pool (`MySQLConnectionPool`), lazy-loaded
 - **SQLite**: Single database instance, lazy-opened
+- **PostgreSQL**: Uses connection pool (`Pool`), lazy-loaded
 - Connections remain open until explicit `close()` call
 
 ### WHERE Clause Type System
@@ -105,11 +119,20 @@ QueryBuilder supports multiple WHERE types, each stored internally as a specific
 - `any`: Any column can match (`whereAny()`)
 - `none`: No columns should match (`whereNone()`)
 
-### JOIN Condition Types
+### JOIN Types and Condition System
 
-JoinClause supports two condition types:
+QueryBuilder supports multiple JOIN types:
+- `join()`: INNER JOIN
+- `leftJoin()`: LEFT JOIN
+- `rightJoin()`: RIGHT JOIN
+- `crossJoin()`: CROSS JOIN (no conditions)
+
+JoinClause supports multiple condition types:
 - `on`: Column-to-column comparison (no parameter binding)
+- `column`: Column-to-column comparison via `whereColumn()` (no parameter binding)
 - `where`: Column-to-value comparison (requires parameter binding)
+- `null`: NULL checks via `whereNull()`, `whereNotNull()`
+- `in`: IN clauses via `whereIn()`, `whereNotIn()`
 
 ## Important Code Conventions
 
@@ -117,14 +140,18 @@ JoinClause supports two condition types:
 1. Add public method in QueryBuilder
 2. Add WHERE condition to `_wheres` list with appropriate type identifier
 3. Add compilation logic in SqlGrammar's `_compileWheres()`
-4. If `increment()`/`decrement()` needs support, update their `_compileWheres()` helper method
-5. Add tests in `test/laconic_test.dart`
+4. Add compilation logic in PostgresqlGrammar's `_compileWheres()` (uses `$N` placeholders)
+5. If `increment()`/`decrement()` needs support, update their `_compileWheres()` helper method
+6. Add tests in all three test files: `test/sqlite_test.dart`, `test/mysql_test.dart`, `test/postgresql_test.dart`
 
-### Adding New Grammar Implementation (e.g., PostgreSQL)
-1. Create new class extending `Grammar`
+### Adding New Grammar Implementation
+PostgreSQL is already implemented. To add another database:
+1. Create new class extending `Grammar` in `lib/src/query_builder/grammar/`
 2. Implement all abstract methods: `compileSelect()`, `compileInsert()`, `compileUpdate()`, `compileDelete()`
-3. Override compilation helper methods if SQL syntax differs
-4. Select Grammar in QueryBuilder constructor based on driver
+3. Override compilation helper methods if SQL syntax differs (e.g., placeholder style, quoting)
+4. Add database connection class in `lib/src/laconic.dart`
+5. Add factory constructor in Laconic class (e.g., `Laconic.newdb(config)`)
+6. Create test file `test/newdb_test.dart` following existing patterns
 
 ### Error Handling
 - Database errors wrapped in `LaconicException`
@@ -133,18 +160,41 @@ JoinClause supports two condition types:
 
 ## Testing Strategy
 
-Test file `test/laconic_test.dart` uses a real SQLite database:
-- `setUpAll()` for each test group creates tables and inserts data
-- `tearDownAll()` for each test group closes connections
-- Tests cover all QueryBuilder methods and WHERE types
-- Includes edge case tests (empty lists, null values, etc.)
+Tests are organized by database type with shared test data:
 
-### Running Phase-Specific Tests
-Tests are organized by phases:
-- Phase 1: Basic WHERE methods (whereIn, whereNull, whereBetween, etc.)
-- Phase 2: Aggregate functions and helpers (avg, sum, exists, pluck, etc.)
-- Phase 3: Advanced methods (addSelect, when, whereColumn, whereAll/Any/None, etc.)
-- Advanced JOIN tests (orOn, where, orWhere in JOINs)
+### Test File Structure
+- `test/test_helper.dart` - Shared configuration, schema definitions, and test data
+- `test/sqlite_test.dart` - SQLite tests (uses local file `laconic.db`)
+- `test/mysql_test.dart` - MySQL tests (requires Docker container)
+- `test/postgresql_test.dart` - PostgreSQL tests (requires Docker container)
+
+### Test Data
+All three databases use identical test data defined in `test_helper.dart`:
+- 3 users (John, Jane, Jack)
+- 3 posts linked to users
+- 3 comments linked to posts and users
+
+### Running Tests
+```bash
+# SQLite only (no Docker required)
+dart test test/sqlite_test.dart
+
+# All databases (requires Docker)
+docker-compose up -d
+dart test
+docker-compose down
+```
+
+### Test Categories
+Each database test file covers:
+- Basic CRUD operations
+- WHERE conditions (whereIn, whereNull, whereBetween, etc.)
+- Aggregate functions (count, avg, sum, max, min)
+- Existence checks (exists, doesntExist)
+- Pluck and value extraction
+- Increment/decrement operations
+- Advanced WHERE methods (whereColumn, whereAll, whereAny, whereNone)
+- JOIN operations (join, leftJoin, crossJoin with various conditions)
 
 ## Dependency Requirements
 
@@ -153,3 +203,8 @@ Tests are organized by phases:
 Main dependencies:
 - `mysql_client`: MySQL connectivity
 - `sqlite3`: SQLite support
+- `postgres`: PostgreSQL connectivity
+
+Dev dependencies:
+- `test`: Testing framework
+- Docker (for MySQL/PostgreSQL tests)
