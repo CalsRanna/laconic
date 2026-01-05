@@ -120,4 +120,196 @@ class JoinClause {
     });
     return this;
   }
+
+  /// Adds a WHERE column comparison within the JOIN clause.
+  ///
+  /// [first] is the first column name.
+  /// [second] is the second column name.
+  /// [operator] is the comparison operator (defaults to '=').
+  ///
+  /// Example:
+  /// ```dart
+  /// query.join('posts p', (join) {
+  ///   join.on('u.id', 'p.user_id')
+  ///       .whereColumn('p.created_at', 'p.updated_at', operator: '>');
+  /// })
+  /// ```
+  JoinClause whereColumn(
+    String first,
+    String second, {
+    String operator = '=',
+  }) {
+    _conditions.add({
+      'type': 'column',
+      'first': first,
+      'operator': operator,
+      'second': second,
+      'boolean': 'and',
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE column comparison within the JOIN clause.
+  ///
+  /// [first] is the first column name.
+  /// [second] is the second column name.
+  /// [operator] is the comparison operator (defaults to '=').
+  JoinClause orWhereColumn(
+    String first,
+    String second, {
+    String operator = '=',
+  }) {
+    _conditions.add({
+      'type': 'column',
+      'first': first,
+      'operator': operator,
+      'second': second,
+      'boolean': 'or',
+    });
+    return this;
+  }
+
+  /// Adds a WHERE NULL condition within the JOIN clause.
+  ///
+  /// [column] is the column name to check for NULL.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.join('posts p', (join) {
+  ///   join.on('u.id', 'p.user_id')
+  ///       .whereNull('p.deleted_at');
+  /// })
+  /// ```
+  JoinClause whereNull(String column) {
+    _conditions.add({
+      'type': 'null',
+      'column': column,
+      'boolean': 'and',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE NULL condition within the JOIN clause.
+  ///
+  /// [column] is the column name to check for NULL.
+  JoinClause orWhereNull(String column) {
+    _conditions.add({
+      'type': 'null',
+      'column': column,
+      'boolean': 'or',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds a WHERE NOT NULL condition within the JOIN clause.
+  ///
+  /// [column] is the column name to check for NOT NULL.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.join('posts p', (join) {
+  ///   join.on('u.id', 'p.user_id')
+  ///       .whereNotNull('p.published_at');
+  /// })
+  /// ```
+  JoinClause whereNotNull(String column) {
+    _conditions.add({
+      'type': 'null',
+      'column': column,
+      'boolean': 'and',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE NOT NULL condition within the JOIN clause.
+  ///
+  /// [column] is the column name to check for NOT NULL.
+  JoinClause orWhereNotNull(String column) {
+    _conditions.add({
+      'type': 'null',
+      'column': column,
+      'boolean': 'or',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds a WHERE IN condition within the JOIN clause.
+  ///
+  /// [column] is the column name.
+  /// [values] is the list of values to check against.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.join('posts p', (join) {
+  ///   join.on('u.id', 'p.user_id')
+  ///       .whereIn('p.status', ['published', 'draft']);
+  /// })
+  /// ```
+  JoinClause whereIn(String column, List<Object?> values) {
+    _conditions.add({
+      'type': 'in',
+      'column': column,
+      'values': values,
+      'boolean': 'and',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE IN condition within the JOIN clause.
+  ///
+  /// [column] is the column name.
+  /// [values] is the list of values to check against.
+  JoinClause orWhereIn(String column, List<Object?> values) {
+    _conditions.add({
+      'type': 'in',
+      'column': column,
+      'values': values,
+      'boolean': 'or',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds a WHERE NOT IN condition within the JOIN clause.
+  ///
+  /// [column] is the column name.
+  /// [values] is the list of values to exclude.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.join('posts p', (join) {
+  ///   join.on('u.id', 'p.user_id')
+  ///       .whereNotIn('p.status', ['deleted', 'archived']);
+  /// })
+  /// ```
+  JoinClause whereNotIn(String column, List<Object?> values) {
+    _conditions.add({
+      'type': 'in',
+      'column': column,
+      'values': values,
+      'boolean': 'and',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE NOT IN condition within the JOIN clause.
+  ///
+  /// [column] is the column name.
+  /// [values] is the list of values to exclude.
+  JoinClause orWhereNotIn(String column, List<Object?> values) {
+    _conditions.add({
+      'type': 'in',
+      'column': column,
+      'values': values,
+      'boolean': 'or',
+      'not': true,
+    });
+    return this;
+  }
 }

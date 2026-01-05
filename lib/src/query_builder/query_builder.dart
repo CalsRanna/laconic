@@ -157,13 +157,13 @@ class QueryBuilder {
     return await _laconic.insertAndGetId(compiled.sql, compiled.bindings);
   }
 
-  /// Adds a JOIN clause to the query.
+  /// Adds an INNER JOIN clause to the query.
   ///
   /// [targetTable] is the table to join.
   /// [builder] is a function that receives a [JoinClause] to define join conditions.
   ///
   /// The [JoinClause] allows building complex join conditions with multiple ON clauses.
-  /// This design mirrors Laravel's approach and allows for future expansion to support:
+  /// This design mirrors Laravel's approach and allows for:
   /// - Multiple ON conditions with AND/OR
   /// - WHERE conditions within JOINs
   /// - Complex nested conditions
@@ -173,7 +173,7 @@ class QueryBuilder {
   /// query.join('posts p', (join) => join.on('u.id', 'p.user_id'))
   /// ```
   ///
-  /// Future support (Laravel-compatible):
+  /// Advanced usage (Laravel-compatible):
   /// ```dart
   /// query.join('contacts c', (join) {
   ///   join.on('u.id', 'c.user_id')
@@ -185,7 +185,87 @@ class QueryBuilder {
     final joinClause = JoinClause();
     builder(joinClause);
 
-    _joins.add({'table': targetTable, 'conditions': joinClause.conditions});
+    _joins.add({
+      'type': 'inner',
+      'table': targetTable,
+      'conditions': joinClause.conditions,
+    });
+
+    return this;
+  }
+
+  /// Adds a LEFT JOIN clause to the query.
+  ///
+  /// [targetTable] is the table to join.
+  /// [builder] is a function that receives a [JoinClause] to define join conditions.
+  ///
+  /// A LEFT JOIN returns all records from the left table and the matched records
+  /// from the right table. If there is no match, the right side will contain NULL values.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.leftJoin('posts p', (join) => join.on('u.id', 'p.user_id'))
+  /// ```
+  QueryBuilder leftJoin(String targetTable, void Function(JoinClause) builder) {
+    final joinClause = JoinClause();
+    builder(joinClause);
+
+    _joins.add({
+      'type': 'left',
+      'table': targetTable,
+      'conditions': joinClause.conditions,
+    });
+
+    return this;
+  }
+
+  /// Adds a RIGHT JOIN clause to the query.
+  ///
+  /// [targetTable] is the table to join.
+  /// [builder] is a function that receives a [JoinClause] to define join conditions.
+  ///
+  /// A RIGHT JOIN returns all records from the right table and the matched records
+  /// from the left table. If there is no match, the left side will contain NULL values.
+  ///
+  /// Note: SQLite does not support RIGHT JOIN natively. Consider using LEFT JOIN instead.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.rightJoin('posts p', (join) => join.on('u.id', 'p.user_id'))
+  /// ```
+  QueryBuilder rightJoin(
+    String targetTable,
+    void Function(JoinClause) builder,
+  ) {
+    final joinClause = JoinClause();
+    builder(joinClause);
+
+    _joins.add({
+      'type': 'right',
+      'table': targetTable,
+      'conditions': joinClause.conditions,
+    });
+
+    return this;
+  }
+
+  /// Adds a CROSS JOIN clause to the query.
+  ///
+  /// [targetTable] is the table to cross join.
+  ///
+  /// A CROSS JOIN returns the Cartesian product of rows from both tables.
+  /// Each row from the first table is combined with all rows from the second table.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.crossJoin('colors')
+  /// ```
+  QueryBuilder crossJoin(String targetTable) {
+    _joins.add({
+      'type': 'cross',
+      'table': targetTable,
+      'conditions': <Map<String, dynamic>>[],
+    });
 
     return this;
   }

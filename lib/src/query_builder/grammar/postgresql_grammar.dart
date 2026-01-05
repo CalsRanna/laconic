@@ -179,8 +179,26 @@ class PostgresqlGrammar extends Grammar {
     final buffer = StringBuffer();
 
     for (final join in joins) {
-      buffer.write(' join ${join['table']} on ');
-      buffer.write(_compileJoinConditions(join['conditions'], bindings));
+      final type = join['type'] as String? ?? 'inner';
+      final table = join['table'] as String;
+      final conditions = join['conditions'] as List<Map<String, dynamic>>;
+
+      switch (type) {
+        case 'left':
+          buffer.write(' left join $table');
+        case 'right':
+          buffer.write(' right join $table');
+        case 'cross':
+          buffer.write(' cross join $table');
+        case 'inner':
+        default:
+          buffer.write(' join $table');
+      }
+
+      if (conditions.isNotEmpty) {
+        buffer.write(' on ');
+        buffer.write(_compileJoinConditions(conditions, bindings));
+      }
     }
 
     return buffer.toString();
@@ -212,6 +230,37 @@ class PostgresqlGrammar extends Grammar {
           '${condition['operator']} \$${bindings.length + 1}',
         );
         bindings.add(_prepareValue(condition['value']));
+      } else if (type == 'column') {
+        // WHERE column1 = column2
+        parts.add(
+          '$boolean${condition['first']} '
+          '${condition['operator']} '
+          '${condition['second']}',
+        );
+      } else if (type == 'null') {
+        // WHERE column IS NULL or WHERE column IS NOT NULL
+        final column = condition['column'];
+        final not = condition['not'] as bool;
+        final nullKeyword = not ? 'is not null' : 'is null';
+        parts.add('$boolean$column $nullKeyword');
+      } else if (type == 'in') {
+        // WHERE column IN ($1, $2, $3) or WHERE column NOT IN ($1, $2, $3)
+        final column = condition['column'];
+        final values = condition['values'] as List<Object?>;
+        final not = condition['not'] as bool;
+        final inKeyword = not ? 'not in' : 'in';
+
+        if (values.isEmpty) {
+          // Handle empty IN clause - always false for IN, always true for NOT IN
+          parts.add('$boolean${not ? '1 = 1' : '1 = 0'}');
+        } else {
+          final placeholders = List.generate(
+            values.length,
+            (i) => '\$${bindings.length + i + 1}',
+          ).join(', ');
+          parts.add('$boolean$column $inKeyword ($placeholders)');
+          bindings.addAll(values.map(_prepareValue));
+        }
       }
     }
 
