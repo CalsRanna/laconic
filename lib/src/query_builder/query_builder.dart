@@ -60,22 +60,47 @@ class QueryBuilder {
   }
 
   /// Returns the count of records matching the query.
+  ///
+  /// Uses SQL COUNT(*) aggregate function for optimal performance.
+  /// If GROUP BY is used, returns the number of groups.
   Future<int> count() async {
     final compiled = _grammar.compileSelect(
       table: _table,
-      columns: _columns,
+      columns: ['COUNT(*) as aggregate'],
       wheres: _wheres,
       joins: _joins,
-      orders: _orders,
+      orders: [],
       groups: _groups,
       havings: _havings,
-      distinct: _distinct,
-      limit: _limit,
-      offset: _offset,
+      distinct: false,
+      limit: null,
+      offset: null,
     );
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
-    return results.length;
+
+    if (results.isEmpty) {
+      return 0;
+    }
+
+    // If GROUP BY is used, return the number of groups
+    if (_groups.isNotEmpty) {
+      return results.length;
+    }
+
+    // Otherwise return the COUNT(*) value
+    final value = results.first['aggregate'];
+    if (value == null) {
+      return 0;
+    }
+
+    if (value is int) {
+      return value;
+    } else if (value is String) {
+      return int.tryParse(value) ?? 0;
+    }
+
+    return 0;
   }
 
   /// Deletes records matching the query.

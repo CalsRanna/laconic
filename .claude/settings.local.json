@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__dart-mcp-server__add_roots",
+      "mcp__dart-mcp-server__run_tests",
+      "mcp__dart-mcp-server__analyze_files"
+    ]
+  }
+}
