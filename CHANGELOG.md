@@ -1,3 +1,12 @@
+## 1.0.3
+
+### Performance
+
+- **Fix `count()` performance issue** - Use SQL `COUNT(*)` aggregate function instead of fetching all rows
+  - Before: `SELECT * FROM table` then count rows in Dart (`results.length`)
+  - After: `SELECT COUNT(*) as aggregate FROM table`
+  - Impact: O(n) → O(1) for network transfer and memory usage
+
 ## 1.0.2
 
 ### Features
