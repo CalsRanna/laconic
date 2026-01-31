@@ -1,0 +1,14 @@
+name: laconic
+description: A Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and PostgreSQL.
+version: 2.0.0
+homepage: https://laconic.antdf.xyz
+repository: https://github.com/user/laconic
+
+environment:
+  sdk: '>=3.7.0 <4.0.0'
+
+resolution: workspace
+
+dev_dependencies:
+  lints: ^5.1.1
+  test: ^1.25.15

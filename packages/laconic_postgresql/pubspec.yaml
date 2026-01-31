@@ -1,0 +1,18 @@
+name: laconic_postgresql
+description: PostgreSQL driver for the Laconic query builder.
+version: 2.0.0
+homepage: https://laconic.antdf.xyz
+repository: https://github.com/user/laconic
+
+environment:
+  sdk: '>=3.7.0 <4.0.0'
+
+resolution: workspace
+
+dependencies:
+  laconic:
+  postgres: ^3.5.4
+
+dev_dependencies:
+  lints: ^5.1.1
+  test: ^1.25.15

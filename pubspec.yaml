@@ -1,16 +1,11 @@
-name: laconic
-description: A laravel like sql query builder for relational database designed to be flexible, portable and easy to use.
-version: 1.0.3
-homepage: https://laconic.antdf.xyz
+name: _laconic_workspace
+publish_to: none
 
 environment:
-  sdk: ">=3.7.0 <4.0.0"
+  sdk: '>=3.7.0 <4.0.0'
 
-dev_dependencies:
-  lints: ^5.1.1
-  test: ^1.25.15
-
-dependencies:
-  mysql_client: ^0.0.27
-  postgres: ^3.5.9
-  sqlite3: ^2.7.5
+workspace:
+  - packages/laconic
+  - packages/laconic_sqlite
+  - packages/laconic_mysql
+  - packages/laconic_postgresql

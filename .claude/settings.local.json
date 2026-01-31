@@ -3,7 +3,13 @@
     "allow": [
       "mcp__dart-mcp-server__add_roots",
       "mcp__dart-mcp-server__run_tests",
-      "mcp__dart-mcp-server__analyze_files"
+      "mcp__dart-mcp-server__analyze_files",
+      "Bash(dart create:*)",
+      "Bash(dart pub get:*)",
+      "Bash(dart analyze:*)",
+      "Bash(docker ps:*)",
+      "WebSearch",
+      "WebFetch(domain:pub.dev)"
     ]
   }
 }
