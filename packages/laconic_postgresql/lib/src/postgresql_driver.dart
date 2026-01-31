@@ -15,7 +15,7 @@ import 'package:postgres/postgres.dart';
 /// ));
 /// final db = Laconic(driver);
 /// ```
-class PostgresqlDriver implements DatabaseDriver {
+class PostgresqlDriver implements LaconicDriver {
   final PostgresqlConfig config;
   Pool? _pool;
 
@@ -81,10 +81,7 @@ class PostgresqlDriver implements DatabaseDriver {
   Future<void> statement(String sql, [List<Object?> params = const []]) async {
     try {
       final convertedSql = _convertPlaceholders(sql);
-      await _connectionPool.execute(
-        Sql(convertedSql),
-        parameters: params,
-      );
+      await _connectionPool.execute(Sql(convertedSql), parameters: params);
     } catch (e) {
       throw LaconicException(e.toString());
     }

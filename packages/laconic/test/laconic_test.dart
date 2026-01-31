@@ -2,7 +2,7 @@ import 'package:laconic/laconic.dart';
 import 'package:test/test.dart';
 
 /// Mock driver for testing the core package without database dependencies.
-class MockDriver implements DatabaseDriver {
+class MockDriver implements LaconicDriver {
   final List<String> executedSql = [];
   final List<List<Object?>> executedParams = [];
   List<Map<String, Object?>> mockResults = [];
@@ -11,23 +11,26 @@ class MockDriver implements DatabaseDriver {
   Grammar get grammar => SqlGrammar();
 
   @override
-  Future<List<LaconicResult>> select(String sql,
-      [List<Object?> params = const []]) async {
+  Future<List<LaconicResult>> select(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async {
     executedSql.add(sql);
     executedParams.add(params);
     return mockResults.map((r) => LaconicResult.fromMap(r)).toList();
   }
 
   @override
-  Future<void> statement(String sql,
-      [List<Object?> params = const []]) async {
+  Future<void> statement(String sql, [List<Object?> params = const []]) async {
     executedSql.add(sql);
     executedParams.add(params);
   }
 
   @override
-  Future<int> insertAndGetId(String sql,
-      [List<Object?> params = const []]) async {
+  Future<int> insertAndGetId(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async {
     executedSql.add(sql);
     executedParams.add(params);
     return 1;
@@ -79,8 +82,10 @@ void main() {
         {'name': 'John', 'age': 25},
       ]);
 
-      expect(driver.executedSql.first,
-          'insert into users (name, age) values (?, ?)');
+      expect(
+        driver.executedSql.first,
+        'insert into users (name, age) values (?, ?)',
+      );
       expect(driver.executedParams.first, ['John', 25]);
     });
 
@@ -88,7 +93,9 @@ void main() {
       await laconic.table('users').where('id', 1).update({'name': 'Jane'});
 
       expect(
-          driver.executedSql.first, 'update users set name = ? where id = ?');
+        driver.executedSql.first,
+        'update users set name = ? where id = ?',
+      );
       expect(driver.executedParams.first, ['Jane', 1]);
     });
 
@@ -102,8 +109,10 @@ void main() {
     test('whereIn compiles correctly', () async {
       await laconic.table('users').whereIn('id', [1, 2, 3]).get();
 
-      expect(driver.executedSql.first,
-          'select * from users where id in (?, ?, ?)');
+      expect(
+        driver.executedSql.first,
+        'select * from users where id in (?, ?, ?)',
+      );
       expect(driver.executedParams.first, [1, 2, 3]);
     });
 
@@ -111,7 +120,9 @@ void main() {
       await laconic.table('users').whereNull('deleted_at').get();
 
       expect(
-          driver.executedSql.first, 'select * from users where deleted_at is null');
+        driver.executedSql.first,
+        'select * from users where deleted_at is null',
+      );
       expect(driver.executedParams.first, isEmpty);
     });
 
@@ -122,8 +133,10 @@ void main() {
           .join('posts p', (join) => join.on('u.id', 'p.user_id'))
           .get();
 
-      expect(driver.executedSql.first,
-          'select u.name, p.title from users u join posts p on u.id = p.user_id');
+      expect(
+        driver.executedSql.first,
+        'select u.name, p.title from users u join posts p on u.id = p.user_id',
+      );
     });
 
     test('listen callback is called', () async {
@@ -144,7 +157,13 @@ void main() {
         table: 'users',
         columns: ['*'],
         wheres: [
-          {'type': 'basic', 'column': 'id', 'operator': '=', 'value': 1, 'boolean': 'and'},
+          {
+            'type': 'basic',
+            'column': 'id',
+            'operator': '=',
+            'value': 1,
+            'boolean': 'and',
+          },
         ],
         joins: [],
         orders: [],
@@ -155,8 +174,10 @@ void main() {
         offset: 5,
       );
 
-      expect(compiled.sql,
-          'select * from users where id = \$1 limit \$2 offset \$3');
+      expect(
+        compiled.sql,
+        'select * from users where id = \$1 limit \$2 offset \$3',
+      );
       expect(compiled.bindings, [1, 10, 5]);
     });
 
@@ -167,7 +188,10 @@ void main() {
         data: {'name': 'John'},
       );
 
-      expect(compiled.sql, 'insert into users (name) values (\$1) returning id');
+      expect(
+        compiled.sql,
+        'insert into users (name) values (\$1) returning id',
+      );
       expect(compiled.bindings, ['John']);
     });
   });

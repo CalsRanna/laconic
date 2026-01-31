@@ -15,7 +15,7 @@ import 'package:mysql_client/mysql_client.dart';
 /// ));
 /// final db = Laconic(driver);
 /// ```
-class MysqlDriver implements DatabaseDriver {
+class MysqlDriver implements LaconicDriver {
   final MysqlConfig config;
   MySQLConnectionPool? _pool;
 

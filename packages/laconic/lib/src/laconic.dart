@@ -1,4 +1,4 @@
-import 'package:laconic/src/database_driver.dart';
+import 'package:laconic/src/driver.dart';
 import 'package:laconic/src/query.dart';
 import 'package:laconic/src/query_builder/grammar/grammar.dart';
 import 'package:laconic/src/query_builder/query_builder.dart';
@@ -7,7 +7,7 @@ import 'package:laconic/src/result.dart';
 /// The main entry point for building and executing database queries.
 ///
 /// Laconic uses a driver-based architecture where the database-specific
-/// implementation is provided through a [DatabaseDriver] instance.
+/// implementation is provided through a [LaconicDriver] instance.
 ///
 /// Example usage:
 /// ```dart
@@ -19,7 +19,7 @@ import 'package:laconic/src/result.dart';
 /// await db.close();
 /// ```
 class Laconic {
-  final DatabaseDriver _driver;
+  final LaconicDriver _driver;
 
   /// Optional listener for query execution.
   ///

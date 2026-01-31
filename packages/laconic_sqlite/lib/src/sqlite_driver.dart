@@ -12,7 +12,7 @@ import 'package:sqlite3/sqlite3.dart';
 /// final driver = SqliteDriver(SqliteConfig('app.db'));
 /// final db = Laconic(driver);
 /// ```
-class SqliteDriver implements DatabaseDriver {
+class SqliteDriver implements LaconicDriver {
   final SqliteConfig config;
   Database? _database;
 
@@ -36,8 +36,10 @@ class SqliteDriver implements DatabaseDriver {
       final results = stmt.select(params);
       stmt.dispose();
       return results
-          .map((row) =>
-              LaconicResult.fromMap(Map.fromIterables(row.keys, row.values)))
+          .map(
+            (row) =>
+                LaconicResult.fromMap(Map.fromIterables(row.keys, row.values)),
+          )
           .toList();
     } catch (e) {
       throw LaconicException(e.toString());

@@ -9,7 +9,7 @@ import 'package:laconic/src/result.dart';
 ///
 /// To create a custom driver, implement this interface and provide
 /// the appropriate Grammar for your database system.
-abstract class DatabaseDriver {
+abstract class LaconicDriver {
   /// Provides the SQL dialect Grammar instance for this driver.
   ///
   /// The Grammar is responsible for compiling query components into
