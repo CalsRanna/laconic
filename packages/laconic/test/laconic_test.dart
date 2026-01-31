@@ -1,8 +1,8 @@
 import 'package:laconic/laconic.dart';
 import 'package:test/test.dart';
 
-/// A simple Grammar implementation for testing core package functionality.
-class MockGrammar extends Grammar {
+/// A simple SqlGrammar implementation for testing core package functionality.
+class MockGrammar extends SqlGrammar {
   @override
   CompiledQuery compileSelect({
     required String table,
@@ -197,7 +197,7 @@ class MockDriver implements DatabaseDriver {
   List<Map<String, Object?>> mockResults = [];
 
   @override
-  Grammar get grammar => MockGrammar();
+  SqlGrammar get grammar => MockGrammar();
 
   @override
   Future<List<LaconicResult>> select(

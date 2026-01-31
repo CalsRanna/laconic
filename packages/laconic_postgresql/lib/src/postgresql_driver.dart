@@ -24,7 +24,7 @@ class PostgresqlDriver implements DatabaseDriver {
   PostgresqlDriver(this.config);
 
   @override
-  Grammar get grammar => PostgresqlGrammar();
+  SqlGrammar get grammar => PostgresqlGrammar();
 
   Pool get _connectionPool {
     return _pool ??= Pool.withEndpoints(

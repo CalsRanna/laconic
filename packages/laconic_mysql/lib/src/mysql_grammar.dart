@@ -3,7 +3,7 @@ import 'package:laconic/laconic.dart';
 /// MySQL-specific SQL grammar.
 ///
 /// Handles MySQL SQL syntax with `?` placeholders for parameter binding.
-class MysqlGrammar extends Grammar {
+class MysqlGrammar extends SqlGrammar {
   @override
   CompiledQuery compileSelect({
     required String table,

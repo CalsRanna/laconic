@@ -21,7 +21,7 @@ class SqliteDriver implements DatabaseDriver {
   SqliteDriver(this.config);
 
   @override
-  Grammar get grammar => SqliteGrammar();
+  SqlGrammar get grammar => SqliteGrammar();
 
   Database get _db {
     return _database ??= sqlite3.open(config.path);

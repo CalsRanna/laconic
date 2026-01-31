@@ -24,7 +24,7 @@ class MysqlDriver implements DatabaseDriver {
   MysqlDriver(this.config);
 
   @override
-  Grammar get grammar => MysqlGrammar();
+  SqlGrammar get grammar => MysqlGrammar();
 
   MySQLConnectionPool get _connectionPool {
     return _pool ??= MySQLConnectionPool(

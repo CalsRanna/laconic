@@ -37,7 +37,7 @@
 /// ```dart
 /// class MyDriver implements DatabaseDriver {
 ///   @override
-///   Grammar get grammar => MyGrammar();
+///   SqlGrammar get grammar => MySqlGrammar();
 ///
 ///   // Implement other methods...
 /// }

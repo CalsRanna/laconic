@@ -2,9 +2,9 @@ import 'package:laconic/src/grammar/compiled_query.dart';
 
 /// Abstract base class for SQL grammar implementations.
 ///
-/// Grammar classes are responsible for compiling query components into
+/// SqlGrammar subclasses are responsible for compiling query components into
 /// database-specific SQL strings with parameter bindings.
-abstract class Grammar {
+abstract class SqlGrammar {
   /// Compiles a SELECT query.
   ///
   /// Parameters:

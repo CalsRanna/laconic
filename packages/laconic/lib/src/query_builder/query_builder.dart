@@ -7,7 +7,7 @@ import 'package:laconic/src/result.dart';
 /// Fluent query builder for constructing and executing database queries.
 class QueryBuilder {
   final Laconic _laconic;
-  final Grammar _grammar;
+  final SqlGrammar _grammar;
 
   /// The table name for the query.
   final String _table;

@@ -5,7 +5,7 @@ import 'package:laconic/laconic.dart';
 /// Handles PostgreSQL-specific syntax differences:
 /// - Positional parameters ($1, $2, etc.)
 /// - RETURNING clause for insertGetId
-class PostgresqlGrammar extends Grammar {
+class PostgresqlGrammar extends SqlGrammar {
   @override
   CompiledQuery compileSelect({
     required String table,

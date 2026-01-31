@@ -4,17 +4,17 @@ import 'package:laconic/src/result.dart';
 /// Abstract interface for database drivers.
 ///
 /// Database drivers are responsible for executing SQL queries against
-/// a specific database system. Each driver provides its own Grammar
+/// a specific database system. Each driver provides its own SqlGrammar
 /// implementation for generating database-specific SQL.
 ///
 /// To create a custom driver, implement this interface and provide
-/// the appropriate Grammar for your database system.
+/// the appropriate SqlGrammar for your database system.
 abstract class DatabaseDriver {
-  /// Provides the SQL dialect Grammar instance for this driver.
+  /// Provides the SQL dialect SqlGrammar instance for this driver.
   ///
-  /// The Grammar is responsible for compiling query components into
+  /// The SqlGrammar is responsible for compiling query components into
   /// database-specific SQL strings with parameter bindings.
-  Grammar get grammar;
+  SqlGrammar get grammar;
 
   /// Executes a SELECT query and returns the result list.
   ///

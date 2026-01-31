@@ -32,11 +32,11 @@ class Laconic {
   /// [listen] is an optional callback for query logging/debugging.
   Laconic(this._driver, {this.listen});
 
-  /// Returns the Grammar instance from the driver.
+  /// Returns the SqlGrammar instance from the driver.
   ///
-  /// The Grammar is responsible for compiling query components into
+  /// The SqlGrammar is responsible for compiling query components into
   /// database-specific SQL strings with parameter bindings.
-  Grammar get grammar => _driver.grammar;
+  SqlGrammar get grammar => _driver.grammar;
 
   /// Runs a SELECT statement against the database.
   ///
