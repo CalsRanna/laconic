@@ -1,31 +1,31 @@
 # Laconic
 
-A Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and PostgreSQL databases.
+一个 Laravel 风格的 Dart SQL 查询构建器，支持 MySQL、SQLite 和 PostgreSQL 数据库。
 
-This is the core package that provides the query builder API and abstract driver interface. You'll also need a driver package for your database:
+这是核心包，提供查询构建器 API 和抽象驱动接口。你还需要安装对应数据库的驱动包：
 
-- [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) - SQLite driver
-- [laconic_mysql](https://pub.dev/packages/laconic_mysql) - MySQL driver
-- [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) - PostgreSQL driver
+- [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) - SQLite 驱动
+- [laconic_mysql](https://pub.dev/packages/laconic_mysql) - MySQL 驱动
+- [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) - PostgreSQL 驱动
 
-## Features
+## 特性
 
-- **Laravel-style API** - Familiar query builder syntax with 57 methods
-- **Fluent Interface** - Chainable methods for elegant query building
-- **Parameterized Queries** - Automatic SQL injection prevention
-- **Transaction Support** - Complete transaction management
-- **Query Listener** - Built-in debugging and logging
-- **Driver Abstraction** - Clean separation between query builder and database implementations
+- **Laravel 风格 API** - 熟悉的查询构建器语法，57 个方法
+- **流畅接口** - 链式方法优雅构建查询
+- **参数化查询** - 自动防止 SQL 注入
+- **事务支持** - 完整的事务管理
+- **查询监听器** - 内置调试和日志功能
+- **驱动抽象** - 查询构建器与数据库实现清晰分离
 
-## Installation
+## 安装
 
 ```yaml
 dependencies:
   laconic: ^2.0.0
-  laconic_sqlite: ^1.0.0  # Or your preferred driver
+  laconic_sqlite: ^1.0.0  # 或其他驱动
 ```
 
-## Quick Start
+## 快速开始
 
 ```dart
 import 'package:laconic/laconic.dart';
@@ -34,47 +34,47 @@ import 'package:laconic_sqlite/laconic_sqlite.dart';
 void main() async {
   final laconic = Laconic(SqliteDriver(SqliteConfig('app.db')));
 
-  // Query users
+  // 查询用户
   final users = await laconic.table('users').where('active', true).get();
 
-  // Don't forget to close
+  // 别忘了关闭连接
   await laconic.close();
 }
 ```
 
-## Query Builder
+## 查询构建器
 
-### Select
+### 查询
 
 ```dart
-// Get all records
+// 获取所有记录
 final users = await laconic.table('users').get();
 
-// Get first record
+// 获取第一条记录
 final user = await laconic.table('users').first();
 
-// Select specific columns
+// 选择特定列
 final names = await laconic.table('users').select(['name', 'age']).get();
 
-// Distinct
+// 去重
 final roles = await laconic.table('users').distinct().select(['role']).get();
 ```
 
-### WHERE Clauses
+### WHERE 子句
 
 ```dart
-// Basic where
+// 基本 where
 final adults = await laconic.table('users')
     .where('age', 18, operator: '>=')
     .get();
 
-// Multiple conditions (AND)
+// 多条件（AND）
 final results = await laconic.table('users')
     .where('age', 18, operator: '>')
     .where('status', 'active')
     .get();
 
-// OR conditions
+// OR 条件
 final users = await laconic.table('users')
     .where('role', 'admin')
     .orWhere('role', 'moderator')
@@ -95,13 +95,13 @@ final users = await laconic.table('users')
     .whereBetween('age', min: 18, max: 30)
     .get();
 
-// WHERE column comparison
+// 列对比
 final users = await laconic.table('users')
     .whereColumn('created_at', 'updated_at', operator: '<')
     .get();
 ```
 
-### JOIN Operations
+### JOIN 操作
 
 ```dart
 // INNER JOIN
@@ -110,7 +110,7 @@ final results = await laconic.table('users u')
     .join('posts p', (join) => join.on('u.id', 'p.user_id'))
     .get();
 
-// LEFT JOIN with conditions
+// 带条件的 LEFT JOIN
 final results = await laconic.table('users u')
     .select(['u.name', 'p.title'])
     .leftJoin(
@@ -132,7 +132,7 @@ final results = await laconic.table('users')
     .get();
 ```
 
-### Aggregates
+### 聚合函数
 
 ```dart
 final count = await laconic.table('users').count();
@@ -142,36 +142,36 @@ final highest = await laconic.table('scores').max('score');
 final lowest = await laconic.table('scores').min('score');
 ```
 
-### Insert / Update / Delete
+### 插入 / 更新 / 删除
 
 ```dart
-// Insert
+// 插入
 await laconic.table('users').insert([
   {'name': 'John', 'age': 25},
 ]);
 
-// Insert and get ID
+// 插入并获取 ID
 final id = await laconic.table('users').insertGetId({
   'name': 'Jane',
   'age': 30,
 });
 
-// Update
+// 更新
 await laconic.table('users')
     .where('id', 1)
     .update({'name': 'New Name'});
 
-// Increment / Decrement
+// 自增 / 自减
 await laconic.table('posts').where('id', 1).increment('views');
 await laconic.table('products').where('id', 1).decrement('stock', 5);
 
-// Delete
+// 删除
 await laconic.table('users')
     .where('id', 99)
     .delete();
 ```
 
-### Ordering and Limiting
+### 排序和分页
 
 ```dart
 final users = await laconic.table('users')
@@ -182,7 +182,7 @@ final users = await laconic.table('users')
     .get();
 ```
 
-### Transactions
+### 事务
 
 ```dart
 await laconic.transaction(() async {
@@ -196,9 +196,9 @@ await laconic.transaction(() async {
 });
 ```
 
-## Custom Drivers
+## 自定义驱动
 
-You can create custom drivers by implementing `DatabaseDriver`:
+你可以通过实现 `DatabaseDriver` 来创建自定义驱动：
 
 ```dart
 class MyDriver implements DatabaseDriver {
@@ -207,31 +207,31 @@ class MyDriver implements DatabaseDriver {
 
   @override
   Future<List<LaconicResult>> select(String sql, [List<Object?> params = const []]) async {
-    // Implementation
+    // 实现
   }
 
   @override
   Future<void> statement(String sql, [List<Object?> params = const []]) async {
-    // Implementation
+    // 实现
   }
 
   @override
   Future<int> insertAndGetId(String sql, [List<Object?> params = const []]) async {
-    // Implementation
+    // 实现
   }
 
   @override
   Future<T> transaction<T>(Future<T> Function() action) async {
-    // Implementation
+    // 实现
   }
 
   @override
   Future<void> close() async {
-    // Implementation
+    // 实现
   }
 }
 ```
 
-## License
+## 许可证
 
 MIT License
