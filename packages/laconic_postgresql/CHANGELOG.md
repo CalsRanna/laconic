@@ -12,6 +12,11 @@ Initial release of the PostgreSQL driver for Laconic query builder.
   - Transaction support
   - Proper connection pool cleanup on close
 
+- **`PostgresqlGrammar`** - PostgreSQL-specific SQL grammar extending `SqlGrammar`
+  - PostgreSQL-specific syntax compilation
+  - `$1, $2, ...` positional parameter binding
+  - `RETURNING` clause for insert operations
+
 - **`PostgresqlConfig`** - Configuration class for PostgreSQL connections
   - `host` - Database server host (default: `localhost`)
   - `port` - Database server port (default: `5432`)

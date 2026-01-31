@@ -10,6 +10,10 @@ Initial release of the SQLite driver for Laconic query builder.
   - Transaction support
   - Proper resource cleanup on close
 
+- **`SqliteGrammar`** - SQLite-specific SQL grammar extending `SqlGrammar`
+  - Standard SQL syntax compilation
+  - `?` placeholder parameter binding
+
 - **`SqliteConfig`** - Configuration class for SQLite connections
   - `path` - Database file path (use `:memory:` for in-memory database)
 
@@ -19,7 +23,7 @@ Initial release of the SQLite driver for Laconic query builder.
 import 'package:laconic/laconic.dart';
 import 'package:laconic_sqlite/laconic_sqlite.dart';
 
-final laconic = Laconic(SqliteDriver(SqliteConfig(path: 'app.db')));
+final laconic = Laconic(SqliteDriver(SqliteConfig('app.db')));
 
 final users = await laconic.table('users').get();
 

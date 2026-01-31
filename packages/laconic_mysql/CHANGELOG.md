@@ -10,6 +10,10 @@ Initial release of the MySQL driver for Laconic query builder.
   - Transaction support
   - Proper connection pool cleanup on close
 
+- **`MysqlGrammar`** - MySQL-specific SQL grammar extending `SqlGrammar`
+  - Standard SQL syntax compilation
+  - `?` placeholder parameter binding
+
 - **`MysqlConfig`** - Configuration class for MySQL connections
   - `host` - Database server host (default: `localhost`)
   - `port` - Database server port (default: `3306`)

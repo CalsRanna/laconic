@@ -8,10 +8,17 @@
   - Remove database-specific code from core package
   - Users now pass a `DatabaseDriver` instance to `Laconic()` constructor
 
+- **Grammar Refactoring** - Rename `Grammar` to `SqlGrammar` and move implementations to driver packages
+  - Core package only contains abstract `SqlGrammar` class
+  - Each driver package provides its own grammar implementation:
+    - `laconic_sqlite` → `SqliteGrammar`
+    - `laconic_mysql` → `MysqlGrammar`
+    - `laconic_postgresql` → `PostgresqlGrammar`
+
 ### New Features
 
 - **`DatabaseDriver` Interface** - Abstract interface for implementing custom database drivers
-  - `grammar` - Provides SQL dialect-specific Grammar instance
+  - `grammar` - Provides SQL dialect-specific `SqlGrammar` instance
   - `select()` - Execute SELECT queries
   - `statement()` - Execute non-query statements (INSERT/UPDATE/DELETE/DDL)
   - `insertAndGetId()` - Execute INSERT and return auto-increment ID
