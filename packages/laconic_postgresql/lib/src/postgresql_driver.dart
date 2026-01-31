@@ -1,5 +1,6 @@
 import 'package:laconic/laconic.dart';
 import 'package:laconic_postgresql/src/postgresql_config.dart';
+import 'package:laconic_postgresql/src/postgresql_grammar.dart';
 import 'package:postgres/postgres.dart';
 
 /// PostgreSQL driver implementation for Laconic.

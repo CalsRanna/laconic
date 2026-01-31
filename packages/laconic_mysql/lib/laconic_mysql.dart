@@ -23,3 +23,4 @@ library laconic_mysql;
 
 export 'src/mysql_config.dart';
 export 'src/mysql_driver.dart';
+export 'src/mysql_grammar.dart';

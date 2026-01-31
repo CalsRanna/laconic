@@ -1,5 +1,6 @@
 import 'package:laconic/laconic.dart';
 import 'package:laconic_sqlite/src/sqlite_config.dart';
+import 'package:laconic_sqlite/src/sqlite_grammar.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 /// SQLite driver implementation for Laconic.
@@ -20,7 +21,7 @@ class SqliteDriver implements LaconicDriver {
   SqliteDriver(this.config);
 
   @override
-  Grammar get grammar => SqlGrammar();
+  Grammar get grammar => SqliteGrammar();
 
   Database get _db {
     return _database ??= sqlite3.open(config.path);

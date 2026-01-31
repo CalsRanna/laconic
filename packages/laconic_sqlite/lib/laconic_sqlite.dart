@@ -20,3 +20,4 @@ library laconic_sqlite;
 
 export 'src/sqlite_config.dart';
 export 'src/sqlite_driver.dart';
+export 'src/sqlite_grammar.dart';

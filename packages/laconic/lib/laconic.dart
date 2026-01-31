@@ -37,7 +37,7 @@
 /// ```dart
 /// class MyDriver implements LaconicDriver {
 ///   @override
-///   Grammar get grammar => SqlGrammar();
+///   Grammar get grammar => MyGrammar();
 ///
 ///   // Implement other methods...
 /// }
@@ -50,8 +50,6 @@ export 'src/laconic.dart';
 export 'src/query.dart';
 export 'src/query_builder/grammar/compiled_query.dart';
 export 'src/query_builder/grammar/grammar.dart';
-export 'src/query_builder/grammar/postgresql_grammar.dart';
-export 'src/query_builder/grammar/sql_grammar.dart';
 export 'src/query_builder/join_clause.dart';
 export 'src/query_builder/query_builder.dart';
 export 'src/result.dart';

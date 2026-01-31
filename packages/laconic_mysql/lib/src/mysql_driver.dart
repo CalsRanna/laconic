@@ -1,5 +1,6 @@
 import 'package:laconic/laconic.dart';
 import 'package:laconic_mysql/src/mysql_config.dart';
+import 'package:laconic_mysql/src/mysql_grammar.dart';
 import 'package:mysql_client/mysql_client.dart';
 
 /// MySQL driver implementation for Laconic.
@@ -23,7 +24,7 @@ class MysqlDriver implements LaconicDriver {
   MysqlDriver(this.config);
 
   @override
-  Grammar get grammar => SqlGrammar();
+  Grammar get grammar => MysqlGrammar();
 
   MySQLConnectionPool get _connectionPool {
     return _pool ??= MySQLConnectionPool(

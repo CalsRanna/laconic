@@ -1,11 +1,9 @@
-import 'package:laconic/src/query_builder/grammar/compiled_query.dart';
-import 'package:laconic/src/query_builder/grammar/grammar.dart';
+import 'package:laconic/laconic.dart';
 
-/// SQL grammar implementation for SQLite and MySQL.
+/// SQLite-specific SQL grammar.
 ///
-/// Since SQLite and MySQL share the same basic SQL syntax for common operations,
-/// this single implementation works for both databases.
-class SqlGrammar extends Grammar {
+/// Handles SQLite SQL syntax with `?` placeholders for parameter binding.
+class SqliteGrammar extends Grammar {
   @override
   CompiledQuery compileSelect({
     required String table,
@@ -161,8 +159,8 @@ class SqlGrammar extends Grammar {
     required Map<String, Object?> data,
     String idColumn = 'id',
   }) {
-    // For MySQL/SQLite, insertGetId is identical to insert
-    // They use lastInsertId to get the inserted ID
+    // For SQLite, insertGetId is identical to insert
+    // SQLite uses last_insert_rowid() to get the inserted ID
     return compileInsert(table: table, data: [data]);
   }
 

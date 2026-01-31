@@ -23,3 +23,4 @@ library laconic_postgresql;
 
 export 'src/postgresql_config.dart';
 export 'src/postgresql_driver.dart';
+export 'src/postgresql_grammar.dart';
