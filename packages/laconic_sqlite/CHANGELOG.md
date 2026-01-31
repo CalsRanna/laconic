@@ -4,7 +4,7 @@ Initial release of the SQLite driver for Laconic query builder.
 
 ### Features
 
-- **`SqliteDriver`** - SQLite database driver implementing `LaconicDriver` interface
+- **`SqliteDriver`** - SQLite database driver implementing `DatabaseDriver` interface
   - Lazy database connection initialization
   - Parameterized query support with `?` placeholders
   - Transaction support

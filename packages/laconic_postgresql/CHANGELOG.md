@@ -4,7 +4,7 @@ Initial release of the PostgreSQL driver for Laconic query builder.
 
 ### Features
 
-- **`PostgresqlDriver`** - PostgreSQL database driver implementing `LaconicDriver` interface
+- **`PostgresqlDriver`** - PostgreSQL database driver implementing `DatabaseDriver` interface
   - Connection pooling with configurable max connections (default: 10)
   - Automatic `?` to `$1, $2, ...` parameter placeholder conversion
   - `RETURNING id` clause support for `insertGetId()`

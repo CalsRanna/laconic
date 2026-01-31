@@ -6,11 +6,11 @@
   - Remove hard dependencies on `mysql_client`, `sqlite3`, and `postgres`
   - Remove `Laconic.mysql()`, `Laconic.sqlite()`, `Laconic.postgresql()` factory constructors
   - Remove database-specific code from core package
-  - Users now pass a `LaconicDriver` instance to `Laconic()` constructor
+  - Users now pass a `DatabaseDriver` instance to `Laconic()` constructor
 
 ### New Features
 
-- **`LaconicDriver` Interface** - Abstract interface for implementing custom database drivers
+- **`DatabaseDriver` Interface** - Abstract interface for implementing custom database drivers
   - `grammar` - Provides SQL dialect-specific Grammar instance
   - `select()` - Execute SELECT queries
   - `statement()` - Execute non-query statements (INSERT/UPDATE/DELETE/DDL)

@@ -32,10 +32,10 @@
 ///
 /// ## Custom Drivers
 ///
-/// You can create custom drivers by implementing [LaconicDriver]:
+/// You can create custom drivers by implementing [DatabaseDriver]:
 ///
 /// ```dart
-/// class MyDriver implements LaconicDriver {
+/// class MyDriver implements DatabaseDriver {
 ///   @override
 ///   Grammar get grammar => MyGrammar();
 ///
@@ -44,7 +44,7 @@
 /// ```
 library laconic;
 
-export 'src/driver.dart';
+export 'src/database_driver.dart';
 export 'src/exception.dart';
 export 'src/laconic.dart';
 export 'src/query.dart';

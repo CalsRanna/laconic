@@ -21,9 +21,11 @@ class MockGrammar extends Grammar {
 
     buffer.write('select ');
     if (distinct) buffer.write('distinct ');
-    buffer.write(columns.isEmpty || (columns.length == 1 && columns[0] == '*')
-        ? '*'
-        : columns.join(', '));
+    buffer.write(
+      columns.isEmpty || (columns.length == 1 && columns[0] == '*')
+          ? '*'
+          : columns.join(', '),
+    );
     buffer.write(' from $table');
 
     if (joins.isNotEmpty) {
@@ -66,7 +68,8 @@ class MockGrammar extends Grammar {
           } else {
             final placeholders = List.filled(values.length, '?').join(', ');
             buffer.write(
-                '${w['column']} ${not ? 'not in' : 'in'} ($placeholders)');
+              '${w['column']} ${not ? 'not in' : 'in'} ($placeholders)',
+            );
             bindings.addAll(values);
           }
         } else if (type == 'null') {
@@ -79,7 +82,8 @@ class MockGrammar extends Grammar {
     if (orders.isNotEmpty) {
       buffer.write(' order by ');
       buffer.write(
-          orders.map((o) => '${o['column']} ${o['direction']}').join(', '));
+        orders.map((o) => '${o['column']} ${o['direction']}').join(', '),
+      );
     }
 
     if (limit != null) {
@@ -187,7 +191,7 @@ class MockGrammar extends Grammar {
 }
 
 /// Mock driver for testing the core package without database dependencies.
-class MockDriver implements LaconicDriver {
+class MockDriver implements DatabaseDriver {
   final List<String> executedSql = [];
   final List<List<Object?>> executedParams = [];
   List<Map<String, Object?>> mockResults = [];

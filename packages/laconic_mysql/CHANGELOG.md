@@ -4,7 +4,7 @@ Initial release of the MySQL driver for Laconic query builder.
 
 ### Features
 
-- **`MysqlDriver`** - MySQL database driver implementing `LaconicDriver` interface
+- **`MysqlDriver`** - MySQL database driver implementing `DatabaseDriver` interface
   - Connection pooling with configurable max connections (default: 10)
   - Automatic `?` to `:p0, :p1, ...` parameter placeholder conversion
   - Transaction support

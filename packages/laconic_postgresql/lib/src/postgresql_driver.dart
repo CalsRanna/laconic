@@ -16,7 +16,7 @@ import 'package:postgres/postgres.dart';
 /// ));
 /// final db = Laconic(driver);
 /// ```
-class PostgresqlDriver implements LaconicDriver {
+class PostgresqlDriver implements DatabaseDriver {
   final PostgresqlConfig config;
   Pool? _pool;
 
