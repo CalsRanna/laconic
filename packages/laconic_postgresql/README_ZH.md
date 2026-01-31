@@ -1,8 +1,8 @@
 # laconic_postgresql
 
-PostgreSQL driver for the [Laconic](https://pub.dev/packages/laconic) query builder.
+[Laconic](https://pub.dev/packages/laconic) 查询构建器的 PostgreSQL 驱动。
 
-## Installation
+## 安装
 
 ```yaml
 dependencies:
@@ -10,7 +10,7 @@ dependencies:
   laconic_postgresql: ^1.0.0
 ```
 
-## Usage
+## 使用
 
 ```dart
 import 'package:laconic/laconic.dart';
@@ -25,46 +25,46 @@ void main() async {
     password: 'password',
   )));
 
-  // Query users
+  // 查询用户
   final users = await laconic.table('users').where('active', true).get();
 
-  // Insert data
+  // 插入数据
   final id = await laconic.table('users').insertGetId({
     'name': 'John',
     'age': 25,
   });
 
-  // Update data
+  // 更新数据
   await laconic.table('users').where('id', id).update({'age': 26});
 
-  // Delete data
+  // 删除数据
   await laconic.table('users').where('id', id).delete();
 
-  // Don't forget to close
+  // 别忘了关闭连接
   await laconic.close();
 }
 ```
 
-## Configuration
+## 配置
 
-`PostgresqlConfig` accepts the following parameters:
+`PostgresqlConfig` 接受以下参数：
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `database` | `String` | required | Database name |
-| `host` | `String` | `'127.0.0.1'` | PostgreSQL host address |
-| `port` | `int` | `5432` | Connection port |
-| `username` | `String` | `'postgres'` | Connection username |
-| `password` | `String` | required | Connection password |
-| `useSsl` | `bool` | `true` | Whether to use SSL connection |
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `database` | `String` | 必填 | 数据库名 |
+| `host` | `String` | `'127.0.0.1'` | PostgreSQL 主机地址 |
+| `port` | `int` | `5432` | 连接端口 |
+| `username` | `String` | `'postgres'` | 用户名 |
+| `password` | `String` | 必填 | 密码 |
+| `useSsl` | `bool` | `true` | 是否使用 SSL 连接 |
 
-## Connection Pooling
+## 连接池
 
-The PostgreSQL driver uses connection pooling internally for better performance. Connections are managed automatically and released back to the pool after each query.
+PostgreSQL 驱动内部使用连接池以提升性能。连接会自动管理，每次查询后释放回池中。
 
-## Query Listener
+## 查询监听器
 
-You can add a query listener for debugging:
+可以添加查询监听器用于调试：
 
 ```dart
 final laconic = Laconic(
@@ -79,7 +79,7 @@ final laconic = Laconic(
 );
 ```
 
-## Transactions
+## 事务
 
 ```dart
 await laconic.transaction(() async {
@@ -93,10 +93,10 @@ await laconic.transaction(() async {
 });
 ```
 
-## Parameter Binding
+## 参数绑定
 
-PostgreSQL uses numbered placeholders (`$1`, `$2`, ...) instead of `?`. The driver handles this conversion automatically, so you can use the same query builder API as with other databases.
+PostgreSQL 使用编号占位符（`$1`、`$2`、...）而不是 `?`。驱动会自动处理这个转换，因此你可以使用与其他数据库相同的查询构建器 API。
 
-## License
+## 许可证
 
 MIT License

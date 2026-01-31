@@ -10,7 +10,7 @@ environment:
 resolution: workspace
 
 dependencies:
-  laconic:
+  laconic: ^2.0.0
   sqlite3: ^2.7.5
 
 dev_dependencies:

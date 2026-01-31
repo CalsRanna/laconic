@@ -10,7 +10,7 @@ environment:
 resolution: workspace
 
 dependencies:
-  laconic:
+  laconic: ^2.0.0
   mysql_client: ^0.0.27
 
 dev_dependencies:

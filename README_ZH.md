@@ -4,25 +4,38 @@
   <a href="README.md">English</a> | <a href="README_ZH.md">简体中文</a>
 </p>
 
-一个为 Dart 设计的 Laravel 风格 SQL 查询构建器，支持 MySQL、SQLite 和 PostgreSQL 数据库。提供流畅的链式 API，让数据库查询变得简洁优雅。
+一个 Laravel 风格的 Dart SQL 查询构建器，支持 MySQL、SQLite 和 PostgreSQL 数据库。提供流畅的链式 API 来优雅地构建数据库查询。
 
 ## 特性
 
-- **Laravel 风格 API** - 熟悉的查询构建器语法，57 个方法覆盖约 75% 的 Laravel Query Builder 核心功能
-- **多数据库支持** - 支持 MySQL、SQLite 和 PostgreSQL
-- **完整的 JOIN 支持** - INNER、LEFT、RIGHT、CROSS JOIN 及丰富的条件方法
-- **链式调用** - 流畅的查询构建体验
+- **Laravel 风格 API** - 熟悉的查询构建器语法，57 个方法覆盖 Laravel Query Builder 约 75% 的核心功能
+- **多数据库支持** - 通过独立驱动包支持 MySQL、SQLite 和 PostgreSQL
+- **驱动抽象** - 核心查询构建器与数据库实现清晰分离
+- **完整 JOIN 支持** - INNER、LEFT、RIGHT、CROSS JOIN 及全面的条件方法
+- **链式方法** - 流畅的查询构建体验
 - **参数化查询** - 自动防止 SQL 注入
 - **事务支持** - 完整的事务管理
-- **查询监听** - 内置调试和日志功能
+- **查询监听器** - 内置调试和日志功能
+
+## 包
+
+| 包 | 描述 | 版本 |
+|---|------|------|
+| [laconic](https://pub.dev/packages/laconic) | 核心查询构建器 | 2.0.0 |
+| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite 驱动 | 1.0.0 |
+| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 1.0.0 |
+| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 1.0.0 |
 
 ## 安装
 
-在 `pubspec.yaml` 中添加依赖：
+添加核心包和你需要的驱动：
 
 ```yaml
 dependencies:
-  laconic: ^1.0.0
+  laconic: ^2.0.0
+  laconic_sqlite: ^1.0.0    # SQLite
+  # laconic_mysql: ^1.0.0   # MySQL
+  # laconic_postgresql: ^1.0.0  # PostgreSQL
 ```
 
 然后运行：
@@ -33,438 +46,234 @@ dart pub get
 
 ## 快速开始
 
-### 数据库连接
-
-#### MySQL
+### SQLite
 
 ```dart
 import 'package:laconic/laconic.dart';
+import 'package:laconic_sqlite/laconic_sqlite.dart';
 
-var config = MysqlConfig(
-  database: 'my_database',
-  host: '127.0.0.1',
-  port: 3306,
-  username: 'root',
-  password: 'password',
-);
+void main() async {
+  final laconic = Laconic(SqliteDriver(SqliteConfig('app.db')));
 
-var laconic = Laconic.mysql(config);
+  // 查询用户
+  final users = await laconic.table('users').where('active', true).get();
+
+  // 别忘了关闭连接
+  await laconic.close();
+}
 ```
 
-#### SQLite
+### MySQL
 
 ```dart
 import 'package:laconic/laconic.dart';
+import 'package:laconic_mysql/laconic_mysql.dart';
 
-var config = SqliteConfig('database.db');
-var laconic = Laconic.sqlite(config);
+void main() async {
+  final laconic = Laconic(MysqlDriver(MysqlConfig(
+    host: '127.0.0.1',
+    port: 3306,
+    database: 'my_database',
+    username: 'root',
+    password: 'password',
+  )));
+
+  final users = await laconic.table('users').get();
+  await laconic.close();
+}
 ```
 
-#### PostgreSQL
+### PostgreSQL
 
 ```dart
 import 'package:laconic/laconic.dart';
+import 'package:laconic_postgresql/laconic_postgresql.dart';
 
-var config = PostgresqlConfig(
-  database: 'my_database',
-  host: '127.0.0.1',
-  port: 5432,
-  username: 'postgres',
-  password: 'password',
-);
+void main() async {
+  final laconic = Laconic(PostgresqlDriver(PostgresqlConfig(
+    host: '127.0.0.1',
+    port: 5432,
+    database: 'my_database',
+    username: 'postgres',
+    password: 'password',
+  )));
 
-var laconic = Laconic.postgresql(config);
+  final users = await laconic.table('users').get();
+  await laconic.close();
+}
 ```
 
-### 查询监听（调试用）
+### 查询监听器（调试用）
 
 ```dart
-var laconic = Laconic.mysql(
-  config,
+final laconic = Laconic(
+  SqliteDriver(SqliteConfig('app.db')),
   listen: (query) {
     print('SQL: ${query.sql}');
-    print('参数: ${query.bindings}');
+    print('Bindings: ${query.bindings}');
   },
 );
 ```
 
 ## 基本用法
 
-### 原生 SQL 查询
-
-```dart
-// SELECT 查询
-var users = await laconic.select('SELECT * FROM users WHERE age > ?', [18]);
-
-// INSERT/UPDATE/DELETE 语句
-await laconic.statement(
-  'INSERT INTO users (name, age) VALUES (?, ?)',
-  ['张三', 25],
-);
-```
-
 ### 查询构建器
-
-#### 基本查询
 
 ```dart
 // 获取所有记录
-var users = await laconic.table('users').get();
+final users = await laconic.table('users').get();
 
 // 获取第一条记录
-var user = await laconic.table('users').first();
+final user = await laconic.table('users').first();
 
 // 选择特定列
-var names = await laconic.table('users').select(['name', 'age']).get();
+final names = await laconic.table('users').select(['name', 'age']).get();
 
 // 统计记录数
-var count = await laconic.table('users').count();
+final count = await laconic.table('users').count();
 
 // 检查记录是否存在
-var exists = await laconic.table('users').where('id', 1).exists();
+final exists = await laconic.table('users').where('id', 1).exists();
 ```
 
-#### WHERE 条件
+### WHERE 子句
 
 ```dart
-// 基本条件
-var adults = await laconic.table('users')
-    .where('age', 18, comparator: '>=')
+// 基本 where
+final adults = await laconic.table('users')
+    .where('age', 18, operator: '>=')
     .get();
 
-// 多条件 (AND)
-var results = await laconic.table('users')
-    .where('age', 18, comparator: '>')
+// 多条件（AND）
+final results = await laconic.table('users')
+    .where('age', 18, operator: '>')
     .where('status', 'active')
     .get();
 
 // OR 条件
-var users = await laconic.table('users')
+final users = await laconic.table('users')
     .where('role', 'admin')
     .orWhere('role', 'moderator')
     .get();
 
 // WHERE IN
-var users = await laconic.table('users')
+final users = await laconic.table('users')
     .whereIn('id', [1, 2, 3])
     .get();
 
-// WHERE NOT IN
-var users = await laconic.table('users')
-    .whereNotIn('status', ['banned', 'deleted'])
-    .get();
-
 // WHERE NULL / NOT NULL
-var usersWithEmail = await laconic.table('users')
+final usersWithEmail = await laconic.table('users')
     .whereNotNull('email')
     .get();
 
-var usersWithoutEmail = await laconic.table('users')
-    .whereNull('email')
-    .get();
-
 // WHERE BETWEEN
-var users = await laconic.table('users')
+final users = await laconic.table('users')
     .whereBetween('age', min: 18, max: 30)
-    .get();
-
-// WHERE NOT BETWEEN
-var users = await laconic.table('users')
-    .whereNotBetween('age', min: 18, max: 30)
-    .get();
-
-// 列对比
-var users = await laconic.table('users')
-    .whereColumn('created_at', 'updated_at', operator: '<')
-    .get();
-
-// 所有列必须匹配
-var users = await laconic.table('users')
-    .whereAll(['name', 'email'], '%john%', operator: 'like')
-    .get();
-
-// 任一列匹配
-var users = await laconic.table('users')
-    .whereAny(['name', 'email', 'phone'], 'john', operator: 'like')
-    .get();
-
-// 所有列都不匹配
-var users = await laconic.table('users')
-    .whereNone(['name', 'email'], '%spam%', operator: 'like')
     .get();
 ```
 
-#### JOIN 操作
+### JOIN 操作
 
 ```dart
 // INNER JOIN
-var results = await laconic.table('users u')
+final results = await laconic.table('users u')
     .select(['u.name', 'p.title'])
     .join('posts p', (join) => join.on('u.id', 'p.user_id'))
     .get();
 
-// LEFT JOIN
-var results = await laconic.table('users u')
-    .select(['u.name', 'p.title'])
-    .leftJoin('posts p', (join) => join.on('u.id', 'p.user_id'))
-    .get();
-
-// RIGHT JOIN
-var results = await laconic.table('users u')
-    .select(['u.name', 'p.title'])
-    .rightJoin('posts p', (join) => join.on('u.id', 'p.user_id'))
-    .get();
-
-// CROSS JOIN
-var results = await laconic.table('users u')
-    .select(['u.name', 'p.title'])
-    .crossJoin('posts p')
-    .get();
-
-// 复杂 JOIN 条件
-var results = await laconic.table('users u')
-    .select(['u.name', 'p.title'])
-    .join(
-      'posts p',
-      (join) => join
-          .on('u.id', 'p.user_id')
-          .whereIn('p.status', ['published', 'draft'])
-          .whereNotNull('p.content'),
-    )
-    .get();
-
-// JOIN 中的高级条件
-var results = await laconic.table('users u')
+// 带条件的 LEFT JOIN
+final results = await laconic.table('users u')
     .select(['u.name', 'p.title'])
     .leftJoin(
       'posts p',
       (join) => join
           .on('u.id', 'p.user_id')
-          .orOn('u.email', 'p.author_email')
-          .where('p.status', 'published')
-          .orWhere('p.featured', true),
+          .where('p.status', 'published'),
     )
     .get();
 ```
 
-#### 排序、分组和分页
+### 插入 / 更新 / 删除
 
 ```dart
-// 排序
-var users = await laconic.table('users')
-    .orderBy('name')
-    .orderBy('age', direction: 'desc')
-    .get();
-
-// 分组
-var counts = await laconic.table('posts')
-    .select(['user_id'])
-    .groupBy('user_id')
-    .having('user_id', 1, operator: '>')
-    .get();
-
-// 去重
-var ages = await laconic.table('users')
-    .select(['age'])
-    .distinct()
-    .get();
-
-// 分页
-var users = await laconic.table('users')
-    .limit(10)
-    .offset(20)
-    .get();
-```
-
-#### 聚合函数
-
-```dart
-// 平均值
-var avgAge = await laconic.table('users').avg('age');
-
-// 求和
-var totalAge = await laconic.table('users').sum('age');
-
-// 最大值
-var maxAge = await laconic.table('users').max('age');
-
-// 最小值
-var minAge = await laconic.table('users').min('age');
-
-// 带条件的聚合
-var avgMaleAge = await laconic.table('users')
-    .where('gender', 'male')
-    .avg('age');
-```
-
-### 插入数据
-
-```dart
-// 插入单条记录
+// 插入
 await laconic.table('users').insert([
-  {'name': '张三', 'age': 25, 'gender': 'male'},
-]);
-
-// 插入多条记录
-await laconic.table('users').insert([
-  {'name': '李四', 'age': 30, 'gender': 'male'},
-  {'name': '王五', 'age': 28, 'gender': 'female'},
+  {'name': 'John', 'age': 25},
 ]);
 
 // 插入并获取 ID
-var id = await laconic.table('users').insertGetId({
-  'name': '赵六',
-  'age': 22,
-  'gender': 'male',
+final id = await laconic.table('users').insertGetId({
+  'name': 'Jane',
+  'age': 30,
 });
-print('新用户 ID: $id');
-```
 
-### 更新数据
-
-```dart
-// 基本更新
+// 更新
 await laconic.table('users')
     .where('id', 1)
-    .update({'name': '新名字'});
+    .update({'name': 'New Name'});
 
-// 批量更新
-await laconic.table('users')
-    .where('status', 'pending')
-    .update({'status': 'active'});
-
-// 自增
-await laconic.table('users')
-    .where('id', 1)
-    .increment('login_count');
-
-// 自增指定数值
-await laconic.table('users')
-    .where('id', 1)
-    .increment('points', amount: 10);
-
-// 自增同时更新其他列
-await laconic.table('users')
-    .where('id', 1)
-    .increment(
-      'age',
-      extra: {'updated_at': DateTime.now().toIso8601String()},
-    );
-
-// 自减
-await laconic.table('users')
-    .where('id', 1)
-    .decrement('balance', amount: 100);
-```
-
-### 删除数据
-
-```dart
-// 条件删除
+// 删除
 await laconic.table('users')
     .where('id', 99)
     .delete();
-
-// 批量删除
-await laconic.table('users')
-    .where('status', 'inactive')
-    .delete();
-```
-
-### 实用方法
-
-```dart
-// pluck - 获取单列值数组
-var names = await laconic.table('users').pluck('name') as List<Object?>;
-
-// pluck - 获取键值对 Map
-var idNameMap = await laconic.table('users').pluck('name', key: 'id')
-    as Map<Object?, Object?>;
-
-// value - 获取单个值
-var name = await laconic.table('users')
-    .where('id', 1)
-    .value('name');
-
-// addSelect - 追加选择列
-var users = await laconic.table('users')
-    .select(['name'])
-    .addSelect(['age', 'email'])
-    .get();
-
-// when - 条件构建
-var role = 'admin';
-var users = await laconic.table('users')
-    .when(
-      role == 'admin',
-      (query) => query.where('is_admin', true),
-      otherwise: (query) => query.where('is_active', true),
-    )
-    .get();
-
-// sole - 确保只有一条结果
-try {
-  var user = await laconic.table('users')
-      .where('email', 'unique@example.com')
-      .sole();
-} catch (e) {
-  print('结果不唯一或不存在');
-}
 ```
 
 ### 事务
 
 ```dart
-try {
-  await laconic.transaction(() async {
-    // 插入用户
-    var userId = await laconic.table('users').insertGetId({
-      'name': '测试用户',
-      'age': 30,
-    });
-
-    // 插入关联数据
-    await laconic.table('posts').insert([
-      {'user_id': userId, 'title': '第一篇文章'},
-    ]);
-
-    // 如果任何操作失败，整个事务将回滚
+await laconic.transaction(() async {
+  final userId = await laconic.table('users').insertGetId({
+    'name': 'Test User',
   });
-  print('事务成功');
-} catch (e) {
-  print('事务失败: $e');
-}
+
+  await laconic.table('posts').insert([
+    {'user_id': userId, 'title': 'First Post'},
+  ]);
+});
 ```
 
-### 关闭连接
+## 架构
 
-```dart
-// 完成后记得关闭连接
-await laconic.close();
+### 包结构
+
 ```
-
-## 架构概览
+laconic/                     # 工作区根目录
+├── packages/
+│   ├── laconic/             # 核心包
+│   │   └── lib/src/
+│   │       ├── laconic.dart          # 主入口
+│   │       ├── database_driver.dart  # 抽象驱动接口
+│   │       ├── grammar/              # SQL 语法（抽象）
+│   │       └── query_builder/        # 查询构建器
+│   ├── laconic_sqlite/      # SQLite 驱动
+│   ├── laconic_mysql/       # MySQL 驱动
+│   └── laconic_postgresql/  # PostgreSQL 驱动
+```
 
 ### 核心组件
 
-1. **Laconic** - 主入口点，管理数据库连接
-2. **QueryBuilder** - 流畅的查询构建器
-3. **Grammar** - SQL 生成核心
-   - SqlGrammar: MySQL/SQLite 实现（使用 `?` 占位符）
-   - PostgresqlGrammar: PostgreSQL 实现（使用 `$1, $2, ...` 占位符）
-4. **JoinClause** - JOIN 条件构建器
+1. **Laconic** - 主入口，委托给驱动
+2. **DatabaseDriver** - 数据库驱动的抽象接口
+3. **SqlGrammar** - SQL 生成的抽象基类
+4. **QueryBuilder** - 流畅查询构建器
 
-### 设计模式
+### 自定义驱动
 
-- **Grammar 模式**：QueryBuilder 收集查询组件，Grammar 负责编译成具体 SQL
-- **参数绑定**：所有查询使用参数化绑定防止 SQL 注入
-- **延迟连接**：数据库连接在首次使用时才建立
+你可以通过实现 `DatabaseDriver` 来创建自定义驱动：
 
-## 依赖
+```dart
+class MyDriver implements DatabaseDriver {
+  @override
+  SqlGrammar get grammar => MyGrammar();
 
-- `mysql_client: ^0.0.27` - MySQL 连接
-- `sqlite3: ^2.7.5` - SQLite 支持
-- `postgres: ^3.5.5` - PostgreSQL 支持
+  @override
+  Future<List<LaconicResult>> select(String sql, [List<Object?> params = const []]) async {
+    // 实现
+  }
+
+  // 实现其他方法...
+}
+```
 
 ## 测试
 
@@ -472,15 +281,31 @@ await laconic.close();
 # 运行所有测试
 dart test
 
-# 运行特定数据库测试
-dart test test/sqlite_test.dart
-dart test test/mysql_test.dart
-dart test test/postgresql_test.dart
+# 运行特定包的测试
+dart test packages/laconic/test
+dart test packages/laconic_sqlite/test
+dart test packages/laconic_mysql/test
+dart test packages/laconic_postgresql/test
 
 # 启动 Docker 容器进行 MySQL/PostgreSQL 测试
 docker-compose up -d
 dart test
 docker-compose down
+```
+
+## 从 1.x 迁移
+
+之前（1.x）：
+```dart
+import 'package:laconic/laconic.dart';
+final laconic = Laconic.mysql(MysqlConfig(...));
+```
+
+之后（2.0）：
+```dart
+import 'package:laconic/laconic.dart';
+import 'package:laconic_mysql/laconic_mysql.dart';
+final laconic = Laconic(MysqlDriver(MysqlConfig(...)));
 ```
 
 ## 许可证
@@ -489,4 +314,4 @@ MIT License
 
 ## 贡献
 
-欢迎提交 Issue 和 Pull Request！
+欢迎提交 Issues 和 Pull Requests！

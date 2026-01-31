@@ -1,8 +1,8 @@
 # laconic_sqlite
 
-SQLite driver for the [Laconic](https://pub.dev/packages/laconic) query builder.
+[Laconic](https://pub.dev/packages/laconic) 查询构建器的 SQLite 驱动。
 
-## Installation
+## 安装
 
 ```yaml
 dependencies:
@@ -10,50 +10,50 @@ dependencies:
   laconic_sqlite: ^1.0.0
 ```
 
-## Usage
+## 使用
 
 ```dart
 import 'package:laconic/laconic.dart';
 import 'package:laconic_sqlite/laconic_sqlite.dart';
 
 void main() async {
-  // Create a file-based database
+  // 创建文件数据库
   final laconic = Laconic(SqliteDriver(SqliteConfig('app.db')));
 
-  // Or use an in-memory database
+  // 或使用内存数据库
   // final laconic = Laconic(SqliteDriver(SqliteConfig(':memory:')));
 
-  // Query users
+  // 查询用户
   final users = await laconic.table('users').where('active', true).get();
 
-  // Insert data
+  // 插入数据
   final id = await laconic.table('users').insertGetId({
     'name': 'John',
     'age': 25,
   });
 
-  // Update data
+  // 更新数据
   await laconic.table('users').where('id', id).update({'age': 26});
 
-  // Delete data
+  // 删除数据
   await laconic.table('users').where('id', id).delete();
 
-  // Don't forget to close
+  // 别忘了关闭连接
   await laconic.close();
 }
 ```
 
-## Configuration
+## 配置
 
-`SqliteConfig` accepts a single parameter:
+`SqliteConfig` 接受一个参数：
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `path` | `String` | Path to the SQLite database file. Use `:memory:` for an in-memory database. |
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `path` | `String` | SQLite 数据库文件路径。使用 `:memory:` 创建内存数据库。 |
 
-## Query Listener
+## 查询监听器
 
-You can add a query listener for debugging:
+可以添加查询监听器用于调试：
 
 ```dart
 final laconic = Laconic(
@@ -65,7 +65,7 @@ final laconic = Laconic(
 );
 ```
 
-## Transactions
+## 事务
 
 ```dart
 await laconic.transaction(() async {
@@ -79,6 +79,6 @@ await laconic.transaction(() async {
 });
 ```
 
-## License
+## 许可证
 
 MIT License

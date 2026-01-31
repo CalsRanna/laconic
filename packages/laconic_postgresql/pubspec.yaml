@@ -10,7 +10,7 @@ environment:
 resolution: workspace
 
 dependencies:
-  laconic:
+  laconic: ^2.0.0
   postgres: ^3.5.4
 
 dev_dependencies:
