@@ -14,9 +14,9 @@ import 'package:laconic/src/result.dart';
 /// import 'package:laconic/laconic.dart';
 /// import 'package:laconic_sqlite/laconic_sqlite.dart';
 ///
-/// final db = Laconic(SqliteDriver(SqliteConfig('app.db')));
-/// final users = await db.table('users').where('active', true).get();
-/// await db.close();
+/// final laconic = Laconic(SqliteDriver(SqliteConfig('app.db')));
+/// final users = await laconic.table('users').where('active', true).get();
+/// await laconic.close();
 /// ```
 class Laconic {
   final DatabaseDriver _driver;
@@ -81,7 +81,7 @@ class Laconic {
   ///
   /// Example:
   /// ```dart
-  /// final users = await db.table('users').where('active', true).get();
+  /// final users = await laconic.table('users').where('active', true).get();
   /// ```
   QueryBuilder table(String table) {
     return QueryBuilder(laconic: this, table: table);
@@ -94,9 +94,9 @@ class Laconic {
   ///
   /// Example:
   /// ```dart
-  /// await db.transaction(() async {
-  ///   await db.table('accounts').where('id', 1).decrement('balance', amount: 100);
-  ///   await db.table('accounts').where('id', 2).increment('balance', amount: 100);
+  /// await laconic.transaction(() async {
+  ///   await laconic.table('accounts').where('id', 1).decrement('balance', amount: 100);
+  ///   await laconic.table('accounts').where('id', 2).increment('balance', amount: 100);
   /// });
   /// ```
   Future<T> transaction<T>(Future<T> Function() action) =>

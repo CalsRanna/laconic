@@ -9,17 +9,17 @@
 /// import 'package:laconic_postgresql/laconic_postgresql.dart';
 ///
 /// void main() async {
-///   final db = Laconic(PostgresqlDriver(PostgresqlConfig(
-///     database: 'mydb',
-///     password: 'secret',
+///   final laconic = Laconic(PostgresqlDriver(PostgresqlConfig(
+///     database: 'database',
+///     password: 'password',
 ///   )));
 ///
-///   final users = await db.table('users').get();
+///   final users = await laconic.table('users').get();
 ///
-///   await db.close();
+///   await laconic.close();
 /// }
 /// ```
-library laconic_postgresql;
+library;
 
 export 'src/postgresql_config.dart';
 export 'src/postgresql_driver.dart';

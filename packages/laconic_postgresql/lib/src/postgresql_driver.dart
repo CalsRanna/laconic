@@ -11,10 +11,10 @@ import 'package:postgres/postgres.dart';
 /// Example:
 /// ```dart
 /// final driver = PostgresqlDriver(PostgresqlConfig(
-///   database: 'mydb',
-///   password: 'secret',
+///   database: 'database',
+///   password: 'password',
 /// ));
-/// final db = Laconic(driver);
+/// final laconic = Laconic(driver);
 /// ```
 class PostgresqlDriver implements DatabaseDriver {
   final PostgresqlConfig config;

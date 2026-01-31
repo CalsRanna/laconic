@@ -11,16 +11,16 @@
 ///
 /// void main() async {
 ///   // Create a database connection
-///   final db = Laconic(SqliteDriver(SqliteConfig('app.db')));
+///   final laconic = Laconic(SqliteDriver(SqliteConfig('app.db')));
 ///
 ///   // Query the database
-///   final users = await db.table('users')
+///   final users = await laconic.table('users')
 ///       .where('active', true)
 ///       .orderBy('name')
 ///       .get();
 ///
 ///   // Don't forget to close the connection
-///   await db.close();
+///   await laconic.close();
 /// }
 /// ```
 ///
@@ -42,7 +42,7 @@
 ///   // Implement other methods...
 /// }
 /// ```
-library laconic;
+library;
 
 export 'src/database_driver.dart';
 export 'src/exception.dart';

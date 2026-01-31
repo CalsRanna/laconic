@@ -9,17 +9,17 @@
 /// import 'package:laconic_mysql/laconic_mysql.dart';
 ///
 /// void main() async {
-///   final db = Laconic(MysqlDriver(MysqlConfig(
-///     database: 'mydb',
-///     password: 'secret',
+///   final laconic = Laconic(MysqlDriver(MysqlConfig(
+///     database: 'database',
+///     password: 'password',
 ///   )));
 ///
-///   final users = await db.table('users').get();
+///   final users = await laconic.table('users').get();
 ///
-///   await db.close();
+///   await laconic.close();
 /// }
 /// ```
-library laconic_mysql;
+library;
 
 export 'src/mysql_config.dart';
 export 'src/mysql_driver.dart';

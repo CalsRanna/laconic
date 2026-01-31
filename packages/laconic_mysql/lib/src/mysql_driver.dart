@@ -11,10 +11,10 @@ import 'package:mysql_client/mysql_client.dart';
 /// Example:
 /// ```dart
 /// final driver = MysqlDriver(MysqlConfig(
-///   database: 'mydb',
-///   password: 'secret',
+///   database: 'database',
+///   password: 'password',
 /// ));
-/// final db = Laconic(driver);
+/// final laconic = Laconic(driver);
 /// ```
 class MysqlDriver implements DatabaseDriver {
   final MysqlConfig config;

@@ -11,7 +11,7 @@ import 'package:sqlite3/sqlite3.dart';
 /// Example:
 /// ```dart
 /// final driver = SqliteDriver(SqliteConfig('app.db'));
-/// final db = Laconic(driver);
+/// final laconic = Laconic(driver);
 /// ```
 class SqliteDriver implements DatabaseDriver {
   final SqliteConfig config;

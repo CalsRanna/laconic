@@ -26,14 +26,14 @@ Initial release of the PostgreSQL driver for Laconic query builder.
 import 'package:laconic/laconic.dart';
 import 'package:laconic_postgresql/laconic_postgresql.dart';
 
-final db = Laconic(PostgresqlDriver(PostgresqlConfig(
-  database: 'mydb',
-  password: 'secret',
+final laconic = Laconic(PostgresqlDriver(PostgresqlConfig(
+  database: 'database',
+  password: 'password',
 )));
 
-final users = await db.table('users').get();
+final users = await laconic.table('users').get();
 
-await db.close();
+await laconic.close();
 ```
 
 ### Dependencies

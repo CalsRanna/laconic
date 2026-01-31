@@ -19,11 +19,11 @@ Initial release of the SQLite driver for Laconic query builder.
 import 'package:laconic/laconic.dart';
 import 'package:laconic_sqlite/laconic_sqlite.dart';
 
-final db = Laconic(SqliteDriver(SqliteConfig(path: 'app.db')));
+final laconic = Laconic(SqliteDriver(SqliteConfig(path: 'app.db')));
 
-final users = await db.table('users').get();
+final users = await laconic.table('users').get();
 
-await db.close();
+await laconic.close();
 ```
 
 ### Dependencies

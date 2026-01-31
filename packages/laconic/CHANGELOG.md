@@ -23,14 +23,14 @@
 Before (1.x):
 ```dart
 import 'package:laconic/laconic.dart';
-final db = Laconic.mysql(MysqlConfig(...));
+final laconic = Laconic.mysql(MysqlConfig(...));
 ```
 
 After (2.0):
 ```dart
 import 'package:laconic/laconic.dart';
 import 'package:laconic_mysql/laconic_mysql.dart';
-final db = Laconic(MysqlDriver(MysqlConfig(...)));
+final laconic = Laconic(MysqlDriver(MysqlConfig(...)));
 ```
 
 ### Package Structure

@@ -9,14 +9,14 @@
 /// import 'package:laconic_sqlite/laconic_sqlite.dart';
 ///
 /// void main() async {
-///   final db = Laconic(SqliteDriver(SqliteConfig('app.db')));
+///   final laconic = Laconic(SqliteDriver(SqliteConfig('app.db')));
 ///
-///   final users = await db.table('users').get();
+///   final users = await laconic.table('users').get();
 ///
-///   await db.close();
+///   await laconic.close();
 /// }
 /// ```
-library laconic_sqlite;
+library;
 
 export 'src/sqlite_config.dart';
 export 'src/sqlite_driver.dart';
