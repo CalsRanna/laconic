@@ -1,6 +1,6 @@
 import 'package:laconic/src/exception.dart';
 import 'package:laconic/src/laconic.dart';
-import 'package:laconic/src/query_builder/grammar/grammar.dart';
+import 'package:laconic/src/grammar/grammar.dart';
 import 'package:laconic/src/query_builder/join_clause.dart';
 import 'package:laconic/src/result.dart';
 
@@ -41,9 +41,9 @@ class QueryBuilder {
 
   /// Creates a new query builder instance.
   QueryBuilder({required Laconic laconic, required String table})
-      : _laconic = laconic,
-        _table = table,
-        _grammar = laconic.grammar;
+    : _laconic = laconic,
+      _table = table,
+      _grammar = laconic.grammar;
 
   /// Returns the count of records matching the query.
   ///
@@ -1081,7 +1081,9 @@ class QueryBuilder {
         final columns = where['columns'] as List<String>;
         final operator = where['operator'];
         final value = where['value'];
-        final conditions = columns.map((col) => '$col $operator ?').join(' and ');
+        final conditions = columns
+            .map((col) => '$col $operator ?')
+            .join(' and ');
         parts.add('$boolean($conditions)');
         for (var j = 0; j < columns.length; j++) {
           bindings.add(value);
@@ -1090,7 +1092,9 @@ class QueryBuilder {
         final columns = where['columns'] as List<String>;
         final operator = where['operator'];
         final value = where['value'];
-        final conditions = columns.map((col) => '$col $operator ?').join(' or ');
+        final conditions = columns
+            .map((col) => '$col $operator ?')
+            .join(' or ');
         parts.add('$boolean($conditions)');
         for (var j = 0; j < columns.length; j++) {
           bindings.add(value);
@@ -1099,7 +1103,9 @@ class QueryBuilder {
         final columns = where['columns'] as List<String>;
         final operator = where['operator'];
         final value = where['value'];
-        final conditions = columns.map((col) => '$col $operator ?').join(' or ');
+        final conditions = columns
+            .map((col) => '$col $operator ?')
+            .join(' or ');
         parts.add('${boolean}not ($conditions)');
         for (var j = 0; j < columns.length; j++) {
           bindings.add(value);

@@ -1,4 +1,4 @@
-import 'package:laconic/src/query_builder/grammar/grammar.dart';
+import 'package:laconic/src/grammar/grammar.dart';
 import 'package:laconic/src/result.dart';
 
 /// Abstract interface for database drivers.

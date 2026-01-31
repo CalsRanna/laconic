@@ -1,4 +1,4 @@
-import 'package:laconic/src/query_builder/grammar/compiled_query.dart';
+import 'package:laconic/src/grammar/compiled_query.dart';
 
 /// Abstract base class for SQL grammar implementations.
 ///

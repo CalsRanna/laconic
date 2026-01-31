@@ -1,6 +1,6 @@
 import 'package:laconic/src/driver.dart';
 import 'package:laconic/src/query.dart';
-import 'package:laconic/src/query_builder/grammar/grammar.dart';
+import 'package:laconic/src/grammar/grammar.dart';
 import 'package:laconic/src/query_builder/query_builder.dart';
 import 'package:laconic/src/result.dart';
 
