@@ -65,11 +65,12 @@ void main() async {
   print('All users: ${users.map((u) => u['name']).toList()}\n');
 
   // Get users with conditions
-  final adults = await laconic
-      .table('users')
-      .where('age', 25, operator: '>=')
-      .orderBy('name')
-      .get();
+  final adults =
+      await laconic
+          .table('users')
+          .where('age', 25, comparator: '>=')
+          .orderBy('name')
+          .get();
   print('Adults: ${adults.map((u) => u['name']).toList()}\n');
 
   // Count users
@@ -77,11 +78,12 @@ void main() async {
   print('User count: $count\n');
 
   // Join query
-  final postsWithUsers = await laconic
-      .table('posts p')
-      .select(['p.title', 'u.name as author'])
-      .join('users u', (join) => join.on('p.user_id', 'u.id'))
-      .get();
+  final postsWithUsers =
+      await laconic
+          .table('posts p')
+          .select(['p.title', 'u.name as author'])
+          .join('users u', (join) => join.on('p.user_id', 'u.id'))
+          .get();
   print('Posts with authors:');
   for (final post in postsWithUsers) {
     print('  - ${post['title']} by ${post['author']}');
@@ -94,7 +96,7 @@ void main() async {
 
   // Verify update
   final updated = await laconic.table('users').where('id', userId1).first();
-  print('Updated user age: ${updated?['age']}\n');
+  print('Updated user age: ${updated['age']}\n');
 
   print('=== Transaction ===\n');
 

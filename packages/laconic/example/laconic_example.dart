@@ -64,13 +64,13 @@ class _MockGrammar extends SqlGrammar {
   @override
   CompiledQuery compileSelect({
     required String table,
-    required bool distinct,
     required List<String> columns,
     required List<Map<String, dynamic>> wheres,
     required List<Map<String, dynamic>> joins,
     required List<Map<String, dynamic>> orders,
-    required List<Map<String, dynamic>> groups,
+    required List<String> groups,
     required List<Map<String, dynamic>> havings,
+    required bool distinct,
     int? limit,
     int? offset,
   }) {
@@ -84,7 +84,7 @@ class _MockGrammar extends SqlGrammar {
   @override
   CompiledQuery compileInsert({
     required String table,
-    required List<Map<String, Object?>> values,
+    required List<Map<String, Object?>> data,
   }) {
     return CompiledQuery(sql: 'INSERT INTO $table ...', bindings: []);
   }
@@ -92,9 +92,8 @@ class _MockGrammar extends SqlGrammar {
   @override
   CompiledQuery compileUpdate({
     required String table,
-    required Map<String, Object?> values,
+    required Map<String, Object?> data,
     required List<Map<String, dynamic>> wheres,
-    required List<Map<String, dynamic>> joins,
   }) {
     return CompiledQuery(sql: 'UPDATE $table ...', bindings: []);
   }
@@ -103,7 +102,6 @@ class _MockGrammar extends SqlGrammar {
   CompiledQuery compileDelete({
     required String table,
     required List<Map<String, dynamic>> wheres,
-    required List<Map<String, dynamic>> joins,
   }) {
     return CompiledQuery(sql: 'DELETE FROM $table ...', bindings: []);
   }
@@ -111,9 +109,11 @@ class _MockGrammar extends SqlGrammar {
   @override
   CompiledQuery compileInsertGetId({
     required String table,
-    required Map<String, Object?> values,
+    required Map<String, Object?> data,
+    String idColumn = 'id',
   }) {
-    return CompiledQuery(sql: 'INSERT INTO $table ... RETURNING id', bindings: []);
+    return CompiledQuery(
+        sql: 'INSERT INTO $table ... RETURNING $idColumn', bindings: []);
   }
 }
 
