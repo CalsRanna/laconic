@@ -83,7 +83,7 @@ class PostgresqlGrammar extends SqlGrammar {
       final row = data[i];
       for (var j = 0; j < columns.length; j++) {
         buffer.write('\$${bindings.length + 1}');
-        bindings.add(_prepareValue(row[columns[j]]));
+        bindings.add(row[columns[j]]);
         if (j < columns.length - 1) {
           buffer.write(', ');
         }
@@ -125,7 +125,7 @@ class PostgresqlGrammar extends SqlGrammar {
     final entries = data.entries.toList();
     for (var i = 0; i < entries.length; i++) {
       buffer.write('${entries[i].key} = \$${bindings.length + 1}');
-      bindings.add(_prepareValue(entries[i].value));
+      bindings.add(entries[i].value);
       if (i < entries.length - 1) {
         buffer.write(', ');
       }
@@ -155,11 +155,6 @@ class PostgresqlGrammar extends SqlGrammar {
     }
 
     return CompiledQuery(sql: buffer.toString(), bindings: bindings);
-  }
-
-  /// Prepares a value for PostgreSQL parameter binding.
-  Object? _prepareValue(Object? value) {
-    return value;
   }
 
   /// Compiles column names for SELECT clause.
@@ -228,7 +223,7 @@ class PostgresqlGrammar extends SqlGrammar {
           '$boolean${condition['column']} '
           '${condition['operator']} \$${bindings.length + 1}',
         );
-        bindings.add(_prepareValue(condition['value']));
+        bindings.add(condition['value']);
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
@@ -258,7 +253,7 @@ class PostgresqlGrammar extends SqlGrammar {
             (i) => '\$${bindings.length + i + 1}',
           ).join(', ');
           parts.add('$boolean$column $inKeyword ($placeholders)');
-          bindings.addAll(values.map(_prepareValue));
+          bindings.addAll(values);
         }
       }
     }
@@ -284,7 +279,7 @@ class PostgresqlGrammar extends SqlGrammar {
           '$boolean${where['column']} '
           '${where['operator']} \$${bindings.length + 1}',
         );
-        bindings.add(_prepareValue(where['value']));
+        bindings.add(where['value']);
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
@@ -308,7 +303,7 @@ class PostgresqlGrammar extends SqlGrammar {
             (i) => '\$${bindings.length + i + 1}',
           ).join(', ');
           parts.add('$boolean$column $inKeyword ($placeholders)');
-          bindings.addAll(values.map(_prepareValue));
+          bindings.addAll(values);
         }
       } else if (type == 'null') {
         // WHERE column IS NULL or WHERE column IS NOT NULL
@@ -325,7 +320,7 @@ class PostgresqlGrammar extends SqlGrammar {
         parts.add(
           '$boolean$column $betweenKeyword \$${bindings.length + 1} and \$${bindings.length + 2}',
         );
-        bindings.addAll(values.map(_prepareValue));
+        bindings.addAll(values);
       } else if (type == 'betweenColumns') {
         // WHERE column BETWEEN column1 AND column2
         final column = where['column'];
@@ -345,7 +340,7 @@ class PostgresqlGrammar extends SqlGrammar {
         final conditions = <String>[];
         for (var j = 0; j < columns.length; j++) {
           conditions.add('${columns[j]} $operator \$${bindings.length + 1}');
-          bindings.add(_prepareValue(value));
+          bindings.add(value);
         }
         parts.add('$boolean(${conditions.join(' and ')})');
       } else if (type == 'any') {
@@ -356,7 +351,7 @@ class PostgresqlGrammar extends SqlGrammar {
         final conditions = <String>[];
         for (var j = 0; j < columns.length; j++) {
           conditions.add('${columns[j]} $operator \$${bindings.length + 1}');
-          bindings.add(_prepareValue(value));
+          bindings.add(value);
         }
         parts.add('$boolean(${conditions.join(' or ')})');
       } else if (type == 'none') {
@@ -367,7 +362,7 @@ class PostgresqlGrammar extends SqlGrammar {
         final conditions = <String>[];
         for (var j = 0; j < columns.length; j++) {
           conditions.add('${columns[j]} $operator \$${bindings.length + 1}');
-          bindings.add(_prepareValue(value));
+          bindings.add(value);
         }
         parts.add('${boolean}not (${conditions.join(' or ')})');
       } else if (type == 'nested') {
@@ -416,7 +411,7 @@ class PostgresqlGrammar extends SqlGrammar {
         '$boolean${having['column']} '
         '${having['operator']} \$${bindings.length + 1}',
       );
-      bindings.add(_prepareValue(having['value']));
+      bindings.add(having['value']);
     }
 
     return parts.join('');

@@ -70,7 +70,14 @@ class SqliteDriver implements DatabaseDriver {
       stmt.dispose();
       // Get the last inserted row ID
       final result = _db.select('SELECT last_insert_rowid() as id');
-      return result.first['id'] as int;
+      if (result.isEmpty) {
+        throw LaconicException('Failed to retrieve last insert ID');
+      }
+      final id = result.first['id'];
+      if (id is! int) {
+        throw LaconicException('last_insert_rowid() returned non-integer: $id');
+      }
+      return id;
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }

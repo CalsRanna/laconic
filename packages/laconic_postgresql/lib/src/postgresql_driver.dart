@@ -101,14 +101,18 @@ class PostgresqlDriver implements DatabaseDriver {
         parameters: params,
       );
       // PostgreSQL returns the id via RETURNING clause
-      if (results.isNotEmpty) {
-        final firstRow = results.first;
-        final id = firstRow[0];
-        if (id is int) {
-          return id;
-        }
+      if (results.isEmpty) {
+        throw LaconicException('Insert did not return an ID');
       }
-      return 0;
+      final firstRow = results.first;
+      if (firstRow.isEmpty) {
+        throw LaconicException('Insert returned empty row');
+      }
+      final id = firstRow[0];
+      if (id is! int) {
+        throw LaconicException('Insert returned non-integer ID: $id');
+      }
+      return id;
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }

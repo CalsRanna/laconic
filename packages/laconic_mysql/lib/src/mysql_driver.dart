@@ -42,11 +42,10 @@ class MysqlDriver implements DatabaseDriver {
   String _convertPlaceholders(String sql, List<Object?> params) {
     if (params.isEmpty) return sql;
 
-    String result = sql;
-    for (var i = 0; i < params.length; i++) {
-      result = result.replaceFirst('?', ':p$i');
-    }
-    return result;
+    int index = 0;
+    return sql.replaceAllMapped(RegExp(r'\?'), (match) {
+      return ':p${index++}';
+    });
   }
 
   /// Creates a map of named parameters for MySQL.

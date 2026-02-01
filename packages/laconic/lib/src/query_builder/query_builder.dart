@@ -789,7 +789,7 @@ class QueryBuilder {
   /// ```dart
   /// final avgAge = await query.avg('age');
   /// ```
-  Future<double> avg(String column) async {
+  Future<double?> avg(String column) async {
     return _aggregate('AVG', column);
   }
 
@@ -801,7 +801,7 @@ class QueryBuilder {
   /// ```dart
   /// final totalVotes = await query.sum('votes');
   /// ```
-  Future<double> sum(String column) async {
+  Future<double?> sum(String column) async {
     return _aggregate('SUM', column);
   }
 
@@ -813,7 +813,7 @@ class QueryBuilder {
   /// ```dart
   /// final maxPrice = await query.max('price');
   /// ```
-  Future<double> max(String column) async {
+  Future<double?> max(String column) async {
     return _aggregate('MAX', column);
   }
 
@@ -825,12 +825,12 @@ class QueryBuilder {
   /// ```dart
   /// final minPrice = await query.min('price');
   /// ```
-  Future<double> min(String column) async {
+  Future<double?> min(String column) async {
     return _aggregate('MIN', column);
   }
 
   /// Helper method for aggregate functions.
-  Future<double> _aggregate(String function, String column) async {
+  Future<double?> _aggregate(String function, String column) async {
     final compiled = _grammar.compileSelect(
       table: _table,
       columns: ['$function($column) as aggregate'],
@@ -847,12 +847,12 @@ class QueryBuilder {
     final results = await _laconic.select(compiled.sql, compiled.bindings);
 
     if (results.isEmpty) {
-      return 0.0;
+      return null;
     }
 
     final value = results.first['aggregate'];
     if (value == null) {
-      return 0.0;
+      return null;
     }
 
     // Convert to double
@@ -861,10 +861,10 @@ class QueryBuilder {
     } else if (value is int) {
       return value.toDouble();
     } else if (value is String) {
-      return double.tryParse(value) ?? 0.0;
+      return double.tryParse(value);
     }
 
-    return 0.0;
+    return null;
   }
 
   /// Checks if any records exist for the current query.
