@@ -19,12 +19,13 @@ import 'package:mysql_client/mysql_client.dart';
 class MysqlDriver implements DatabaseDriver {
   final MysqlConfig config;
   MySQLConnectionPool? _pool;
+  static final _grammar = MysqlGrammar();
 
   /// Creates a new MySQL driver with the given configuration.
   MysqlDriver(this.config);
 
   @override
-  SqlGrammar get grammar => MysqlGrammar();
+  SqlGrammar get grammar => _grammar;
 
   MySQLConnectionPool get _connectionPool {
     return _pool ??= MySQLConnectionPool(
@@ -70,8 +71,8 @@ class MysqlDriver implements DatabaseDriver {
         final map = row.typedAssoc();
         return LaconicResult.fromMap(Map<String, Object?>.from(map));
       }).toList();
-    } catch (e) {
-      throw LaconicException(e.toString());
+    } catch (e, stackTrace) {
+      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
   }
 
@@ -81,8 +82,8 @@ class MysqlDriver implements DatabaseDriver {
       final convertedSql = _convertPlaceholders(sql, params);
       final namedParams = _createNamedParams(params);
       await _connectionPool.execute(convertedSql, namedParams);
-    } catch (e) {
-      throw LaconicException(e.toString());
+    } catch (e, stackTrace) {
+      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
   }
 
@@ -92,12 +93,17 @@ class MysqlDriver implements DatabaseDriver {
     List<Object?> params = const [],
   ]) async {
     try {
-      final stmt = await _connectionPool.prepare(sql);
-      final results = await stmt.execute(params);
-      await stmt.deallocate();
-      return results.lastInsertID.toInt();
-    } catch (e) {
-      throw LaconicException(e.toString());
+      final convertedSql = _convertPlaceholders(sql, params);
+      final namedParams = _createNamedParams(params);
+      final stmt = await _connectionPool.prepare(convertedSql);
+      try {
+        final results = await stmt.execute([namedParams]);
+        return results.lastInsertID.toInt();
+      } finally {
+        await stmt.deallocate();
+      }
+    } catch (e, stackTrace) {
+      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
   }
 
@@ -108,9 +114,18 @@ class MysqlDriver implements DatabaseDriver {
       final result = await action();
       await _execute('COMMIT');
       return result;
-    } catch (e) {
-      await _execute('ROLLBACK');
-      throw LaconicException(e.toString());
+    } catch (e, stackTrace) {
+      try {
+        await _execute('ROLLBACK');
+      } catch (rollbackError) {
+        throw LaconicException(
+          'Transaction failed: ${e.toString()}. '
+          'Rollback also failed: ${rollbackError.toString()}',
+          cause: e,
+          stackTrace: stackTrace,
+        );
+      }
+      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
   }
 

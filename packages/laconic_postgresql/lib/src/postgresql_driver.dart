@@ -19,12 +19,13 @@ import 'package:postgres/postgres.dart';
 class PostgresqlDriver implements DatabaseDriver {
   final PostgresqlConfig config;
   Pool? _pool;
+  static final _grammar = PostgresqlGrammar();
 
   /// Creates a new PostgreSQL driver with the given configuration.
   PostgresqlDriver(this.config);
 
   @override
-  SqlGrammar get grammar => PostgresqlGrammar();
+  SqlGrammar get grammar => _grammar;
 
   Pool get _connectionPool {
     return _pool ??= Pool.withEndpoints(
@@ -73,8 +74,8 @@ class PostgresqlDriver implements DatabaseDriver {
         final map = row.toColumnMap();
         return LaconicResult.fromMap(Map<String, Object?>.from(map));
       }).toList();
-    } catch (e) {
-      throw LaconicException(e.toString());
+    } catch (e, stackTrace) {
+      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
   }
 
@@ -83,8 +84,8 @@ class PostgresqlDriver implements DatabaseDriver {
     try {
       final convertedSql = _convertPlaceholders(sql);
       await _connectionPool.execute(Sql(convertedSql), parameters: params);
-    } catch (e) {
-      throw LaconicException(e.toString());
+    } catch (e, stackTrace) {
+      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
   }
 
@@ -108,8 +109,8 @@ class PostgresqlDriver implements DatabaseDriver {
         }
       }
       return 0;
-    } catch (e) {
-      throw LaconicException(e.toString());
+    } catch (e, stackTrace) {
+      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
   }
 
@@ -121,8 +122,8 @@ class PostgresqlDriver implements DatabaseDriver {
           return await action();
         });
       });
-    } catch (e) {
-      throw LaconicException(e.toString());
+    } catch (e, stackTrace) {
+      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
   }
 

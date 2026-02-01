@@ -16,12 +16,13 @@ import 'package:sqlite3/sqlite3.dart';
 class SqliteDriver implements DatabaseDriver {
   final SqliteConfig config;
   Database? _database;
+  static final _grammar = SqliteGrammar();
 
   /// Creates a new SQLite driver with the given configuration.
   SqliteDriver(this.config);
 
   @override
-  SqlGrammar get grammar => SqliteGrammar();
+  SqlGrammar get grammar => _grammar;
 
   Database get _db {
     return _database ??= sqlite3.open(config.path);
@@ -42,8 +43,8 @@ class SqliteDriver implements DatabaseDriver {
                 LaconicResult.fromMap(Map.fromIterables(row.keys, row.values)),
           )
           .toList();
-    } catch (e) {
-      throw LaconicException(e.toString());
+    } catch (e, stackTrace) {
+      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
   }
 
@@ -53,8 +54,8 @@ class SqliteDriver implements DatabaseDriver {
       final stmt = _db.prepare(sql);
       stmt.execute(params);
       stmt.dispose();
-    } catch (e) {
-      throw LaconicException(e.toString());
+    } catch (e, stackTrace) {
+      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
   }
 
@@ -70,8 +71,8 @@ class SqliteDriver implements DatabaseDriver {
       // Get the last inserted row ID
       final result = _db.select('SELECT last_insert_rowid() as id');
       return result.first['id'] as int;
-    } catch (e) {
-      throw LaconicException(e.toString());
+    } catch (e, stackTrace) {
+      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
   }
 
@@ -82,9 +83,18 @@ class SqliteDriver implements DatabaseDriver {
       final result = await action();
       _db.execute('COMMIT');
       return result;
-    } catch (e) {
-      _db.execute('ROLLBACK');
-      throw LaconicException(e.toString());
+    } catch (e, stackTrace) {
+      try {
+        _db.execute('ROLLBACK');
+      } catch (rollbackError) {
+        throw LaconicException(
+          'Transaction failed: ${e.toString()}. '
+          'Rollback also failed: ${rollbackError.toString()}',
+          cause: e,
+          stackTrace: stackTrace,
+        );
+      }
+      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
   }
 

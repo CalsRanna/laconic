@@ -9,7 +9,8 @@
       "Bash(dart analyze:*)",
       "Bash(docker ps:*)",
       "WebSearch",
-      "WebFetch(domain:pub.dev)"
+      "WebFetch(domain:pub.dev)",
+      "Bash(grep:*)"
     ]
   }
 }

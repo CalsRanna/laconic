@@ -90,7 +90,18 @@ class QueryBuilder {
   }
 
   /// Deletes records matching the query.
-  Future<void> delete() async {
+  ///
+  /// By default, calling delete() without a WHERE clause will throw a
+  /// [LaconicException] to prevent accidental deletion of all records.
+  /// Set [allowWithoutWhere] to `true` to explicitly allow this.
+  Future<void> delete({bool allowWithoutWhere = false}) async {
+    if (_wheres.isEmpty && !allowWithoutWhere) {
+      throw LaconicException(
+        'Calling delete() without WHERE clause will delete all records. '
+        'Use delete(allowWithoutWhere: true) if this is intentional.',
+      );
+    }
+
     final compiled = _grammar.compileDelete(table: _table, wheres: _wheres);
 
     await _laconic.statement(compiled.sql, compiled.bindings);
@@ -381,7 +392,14 @@ class QueryBuilder {
 
   /// Returns a single record matching the query.
   ///
-  /// Throws [LaconicException] if no record is found.
+  /// Throws [LaconicException] if no record is found or if multiple records are found.
+  /// Use this method when you expect exactly one result.
+  ///
+  /// Example:
+  /// ```dart
+  /// // Throws if user doesn't exist or if multiple users match
+  /// final user = await query.where('email', 'john@example.com').sole();
+  /// ```
   Future<LaconicResult> sole() async {
     final compiled = _grammar.compileSelect(
       table: _table,
@@ -400,6 +418,12 @@ class QueryBuilder {
 
     if (results.isEmpty) {
       throw LaconicException('No record found');
+    }
+
+    if (results.length > 1) {
+      throw LaconicException(
+        'Multiple records found when exactly one was expected',
+      );
     }
 
     return results.first;
@@ -972,7 +996,15 @@ class QueryBuilder {
     String column, {
     int amount = 1,
     Map<String, Object?>? extra,
+    bool allowWithoutWhere = false,
   }) async {
+    if (_wheres.isEmpty && !allowWithoutWhere) {
+      throw LaconicException(
+        'Calling increment() without WHERE clause will update all records. '
+        'Use increment(..., allowWithoutWhere: true) if this is intentional.',
+      );
+    }
+
     final bindings = <Object?>[];
     final buffer = StringBuffer('update $_table set $column = $column + ?');
     bindings.add(amount);
@@ -1008,7 +1040,15 @@ class QueryBuilder {
     String column, {
     int amount = 1,
     Map<String, Object?>? extra,
+    bool allowWithoutWhere = false,
   }) async {
+    if (_wheres.isEmpty && !allowWithoutWhere) {
+      throw LaconicException(
+        'Calling decrement() without WHERE clause will update all records. '
+        'Use decrement(..., allowWithoutWhere: true) if this is intentional.',
+      );
+    }
+
     final bindings = <Object?>[];
     final buffer = StringBuffer('update $_table set $column = $column - ?');
     bindings.add(amount);

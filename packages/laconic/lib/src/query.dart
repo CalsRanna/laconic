@@ -17,7 +17,10 @@ class LaconicQuery {
 
   /// Returns the SQL with bindings substituted inline.
   ///
-  /// Note: This is for debugging only and should not be executed directly.
+  /// **WARNING**: This method is for debugging only. The returned SQL
+  /// should NEVER be executed directly as it may be vulnerable to SQL injection.
+  /// Always use parameterized queries for execution.
+  @Deprecated('For debugging only. Do not execute the returned SQL directly.')
   String get rawSql {
     var realSql = sql;
     for (var binding in bindings) {
