@@ -50,8 +50,11 @@ void main() async {
 // 获取所有记录
 final users = await laconic.table('users').get();
 
-// 获取第一条记录
+// 获取第一条记录（无结果时抛出异常）
 final user = await laconic.table('users').first();
+
+// 获取唯一记录（无结果或多条结果时抛出异常）
+final user = await laconic.table('users').where('email', 'john@example.com').sole();
 
 // 选择特定列
 final names = await laconic.table('users').select(['name', 'age']).get();
@@ -65,12 +68,12 @@ final roles = await laconic.table('users').distinct().select(['role']).get();
 ```dart
 // 基本 where
 final adults = await laconic.table('users')
-    .where('age', 18, operator: '>=')
+    .where('age', 18, comparator: '>=')
     .get();
 
 // 多条件（AND）
 final results = await laconic.table('users')
-    .where('age', 18, operator: '>')
+    .where('age', 18, comparator: '>')
     .where('status', 'active')
     .get();
 
@@ -163,12 +166,16 @@ await laconic.table('users')
 
 // 自增 / 自减
 await laconic.table('posts').where('id', 1).increment('views');
-await laconic.table('products').where('id', 1).decrement('stock', 5);
+await laconic.table('products').where('id', 1).decrement('stock', amount: 5);
 
 // 删除
 await laconic.table('users')
     .where('id', 99)
     .delete();
+
+// 注意：delete()、increment()、decrement() 默认需要 WHERE 子句，
+// 以防止意外的批量操作。如需显式允许无 WHERE 操作：
+// await laconic.table('users').delete(allowWithoutWhere: true);
 ```
 
 ### 排序和分页

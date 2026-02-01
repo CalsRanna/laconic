@@ -65,12 +65,12 @@ final roles = await laconic.table('users').distinct().select(['role']).get();
 ```dart
 // Basic where
 final adults = await laconic.table('users')
-    .where('age', 18, operator: '>=')
+    .where('age', 18, comparator: '>=')
     .get();
 
 // Multiple conditions (AND)
 final results = await laconic.table('users')
-    .where('age', 18, operator: '>')
+    .where('age', 18, comparator: '>')
     .where('status', 'active')
     .get();
 
@@ -99,6 +99,16 @@ final users = await laconic.table('users')
 final users = await laconic.table('users')
     .whereColumn('created_at', 'updated_at', operator: '<')
     .get();
+```
+
+### Retrieving Single Records
+
+```dart
+// Get first record (throws if none found)
+final user = await laconic.table('users').first();
+
+// Get sole record (throws if none or multiple found)
+final user = await laconic.table('users').where('email', 'john@example.com').sole();
 ```
 
 ### JOIN Operations
@@ -163,12 +173,16 @@ await laconic.table('users')
 
 // Increment / Decrement
 await laconic.table('posts').where('id', 1).increment('views');
-await laconic.table('products').where('id', 1).decrement('stock', 5);
+await laconic.table('products').where('id', 1).decrement('stock', amount: 5);
 
 // Delete
 await laconic.table('users')
     .where('id', 99)
     .delete();
+
+// Note: delete(), increment(), and decrement() require a WHERE clause by default
+// to prevent accidental mass operations. To explicitly allow without WHERE:
+// await laconic.table('users').delete(allowWithoutWhere: true);
 ```
 
 ### Ordering and Limiting

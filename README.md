@@ -123,8 +123,11 @@ final laconic = Laconic(
 // Get all records
 final users = await laconic.table('users').get();
 
-// Get first record
+// Get first record (throws if none found)
 final user = await laconic.table('users').first();
+
+// Get sole record (throws if none or multiple found)
+final user = await laconic.table('users').where('email', 'john@example.com').sole();
 
 // Select specific columns
 final names = await laconic.table('users').select(['name', 'age']).get();
@@ -141,12 +144,12 @@ final exists = await laconic.table('users').where('id', 1).exists();
 ```dart
 // Basic where
 final adults = await laconic.table('users')
-    .where('age', 18, operator: '>=')
+    .where('age', 18, comparator: '>=')
     .get();
 
 // Multiple conditions (AND)
 final results = await laconic.table('users')
-    .where('age', 18, operator: '>')
+    .where('age', 18, comparator: '>')
     .where('status', 'active')
     .get();
 
@@ -216,6 +219,10 @@ await laconic.table('users')
 await laconic.table('users')
     .where('id', 99)
     .delete();
+
+// Note: delete(), increment(), and decrement() require a WHERE clause by default
+// to prevent accidental mass operations. To explicitly allow without WHERE:
+// await laconic.table('users').delete(allowWithoutWhere: true);
 ```
 
 ### Transactions

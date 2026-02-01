@@ -11,9 +11,10 @@ import 'package:laconic/laconic.dart';
 /// A simple in-memory driver for demonstration purposes.
 class MockDriver implements DatabaseDriver {
   final List<Map<String, Object?>> _data = [];
+  static final _grammar = _MockGrammar();
 
   @override
-  SqlGrammar get grammar => _MockGrammar();
+  SqlGrammar get grammar => _grammar;
 
   @override
   Future<List<LaconicResult>> select(String sql,
