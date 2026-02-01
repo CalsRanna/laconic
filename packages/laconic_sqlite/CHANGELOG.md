@@ -1,3 +1,14 @@
+## 1.0.1
+
+### Bug Fixes
+
+- **Improved Transaction Error Handling** - Rollback failures are now caught and reported alongside the original error instead of silently replacing it
+
+### Improvements
+
+- **Grammar Singleton** - `SqliteGrammar` is now a static singleton instance, avoiding unnecessary allocations on each access
+- **Enhanced Exception Handling** - All catch blocks now preserve the original exception `cause` and `stackTrace` in `LaconicException`
+
 ## 1.0.0
 
 Initial release of the SQLite driver for Laconic query builder.

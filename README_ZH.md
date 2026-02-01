@@ -21,10 +21,10 @@
 
 | 包 | 描述 | 版本 |
 |---|------|------|
-| [laconic](https://pub.dev/packages/laconic) | 核心查询构建器 | 2.0.0 |
-| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite 驱动 | 1.0.0 |
-| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 1.0.0 |
-| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 1.0.0 |
+| [laconic](https://pub.dev/packages/laconic) | 核心查询构建器 | 2.1.0 |
+| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite 驱动 | 1.0.1 |
+| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 1.0.1 |
+| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 1.0.1 |
 
 ## 安装
 

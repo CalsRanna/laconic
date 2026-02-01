@@ -1,3 +1,16 @@
+## 1.0.1
+
+### Bug Fixes
+
+- **Fix `insertAndGetId()` Placeholder Conversion** - Now properly uses `_convertPlaceholders()` and `_createNamedParams()` for parameter binding, previously passed raw SQL with `?` placeholders to prepared statements
+- **Fix Prepared Statement Leak** - Use `try-finally` to ensure `stmt.deallocate()` is always called even when execution fails
+- **Improved Transaction Error Handling** - Rollback failures are now caught and reported alongside the original error instead of silently replacing it
+
+### Improvements
+
+- **Grammar Singleton** - `MysqlGrammar` is now a static singleton instance, avoiding unnecessary allocations on each access
+- **Enhanced Exception Handling** - All catch blocks now preserve the original exception `cause` and `stackTrace` in `LaconicException`
+
 ## 1.0.0
 
 Initial release of the MySQL driver for Laconic query builder.

@@ -1,3 +1,33 @@
+## 2.1.0
+
+### Features
+
+- **Safety Checks** - Add protection against accidental mass operations
+  - `delete()` now throws `LaconicException` without WHERE clause by default
+  - `increment()` now throws `LaconicException` without WHERE clause by default
+  - `decrement()` now throws `LaconicException` without WHERE clause by default
+  - Use `allowWithoutWhere: true` parameter to explicitly allow operations without WHERE
+
+- **Improved `sole()` Method** - Now properly validates single record expectation
+  - Throws `LaconicException` when no records found
+  - Throws `LaconicException` when multiple records found (previously returned first record)
+
+- **Enhanced Exception Handling** - `LaconicException` now preserves original error context
+  - Added `cause` field to store the original exception
+  - Added `stackTrace` field to preserve the original stack trace
+
+### Improvements
+
+- **`rawSql` Deprecation Warning** - Mark `rawSql` getter as deprecated with SQL injection warning
+  - Added `@Deprecated` annotation
+  - Enhanced documentation warning about security risks
+
+### Documentation
+
+- Update README with `sole()` method documentation
+- Add safety check usage examples
+- Fix `operator:` → `comparator:` parameter name in examples
+
 ## 2.0.0
 
 ### Breaking Changes

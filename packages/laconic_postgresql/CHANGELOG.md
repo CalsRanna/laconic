@@ -1,3 +1,10 @@
+## 1.0.1
+
+### Improvements
+
+- **Grammar Singleton** - `PostgresqlGrammar` is now a static singleton instance, avoiding unnecessary allocations on each access
+- **Enhanced Exception Handling** - All catch blocks now preserve the original exception `cause` and `stackTrace` in `LaconicException`
+
 ## 1.0.0
 
 Initial release of the PostgreSQL driver for Laconic query builder.
