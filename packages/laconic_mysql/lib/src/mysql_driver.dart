@@ -118,22 +118,13 @@ class MysqlDriver implements DatabaseDriver {
 
       // Use transaction connection if available
       if (_transactionConnection != null) {
-        final stmt = await _transactionConnection!.prepare(convertedSql);
-        try {
-          final results = await stmt.execute([namedParams]);
-          return results.lastInsertID.toInt();
-        } finally {
-          await stmt.deallocate();
-        }
+        final results =
+            await _transactionConnection!.execute(convertedSql, namedParams);
+        return results.lastInsertID.toInt();
       }
 
-      final stmt = await _connectionPool.prepare(convertedSql);
-      try {
-        final results = await stmt.execute([namedParams]);
-        return results.lastInsertID.toInt();
-      } finally {
-        await stmt.deallocate();
-      }
+      final results = await _connectionPool.execute(convertedSql, namedParams);
+      return results.lastInsertID.toInt();
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
