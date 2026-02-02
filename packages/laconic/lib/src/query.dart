@@ -13,7 +13,7 @@ class LaconicQuery {
 
   /// Creates a new query representation.
   LaconicQuery({required this.bindings, required this.sql})
-      : timestamp = DateTime.now();
+    : timestamp = DateTime.now();
 
   /// Returns the SQL with bindings substituted inline.
   ///

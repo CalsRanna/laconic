@@ -78,4 +78,36 @@ abstract class SqlGrammar {
     required Map<String, Object?> data,
     String idColumn = 'id',
   });
+
+  /// Compiles an INCREMENT query.
+  ///
+  /// Parameters:
+  /// - [table]: The table name
+  /// - [column]: The column to increment
+  /// - [amount]: The amount to increment by
+  /// - [extra]: Optional additional columns to update
+  /// - [wheres]: List of WHERE conditions
+  CompiledQuery compileIncrement({
+    required String table,
+    required String column,
+    required int amount,
+    Map<String, Object?>? extra,
+    required List<Map<String, dynamic>> wheres,
+  });
+
+  /// Compiles a DECREMENT query.
+  ///
+  /// Parameters:
+  /// - [table]: The table name
+  /// - [column]: The column to decrement
+  /// - [amount]: The amount to decrement by
+  /// - [extra]: Optional additional columns to update
+  /// - [wheres]: List of WHERE conditions
+  CompiledQuery compileDecrement({
+    required String table,
+    required String column,
+    required int amount,
+    Map<String, Object?>? extra,
+    required List<Map<String, dynamic>> wheres,
+  });
 }

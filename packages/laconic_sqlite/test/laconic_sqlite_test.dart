@@ -131,8 +131,9 @@ void main() {
     });
 
     test('table(users).pluck(key: "id") returns map', () async {
-      var map = await laconic.table(userTable).pluck('name', key: 'id')
-          as Map<Object?, Object?>;
+      var map =
+          await laconic.table(userTable).pluck('name', key: 'id')
+              as Map<Object?, Object?>;
       expect(map.length, 3);
     });
 
@@ -203,21 +204,23 @@ void main() {
     // ==================== WHERE Conditions ====================
 
     test('select with specific columns', () async {
-      var users = await laconic
-          .table(userTable)
-          .select(['name', 'age'])
-          .where('id', 1)
-          .get();
+      var users =
+          await laconic
+              .table(userTable)
+              .select(['name', 'age'])
+              .where('id', 1)
+              .get();
       expect(users.length, 1);
       expect(users.first['name'], 'John');
       expect(users.first['age'], 25);
     });
 
     test('select with whereIn', () async {
-      var users = await laconic.table(userTable).whereIn('name', [
-        'John',
-        'Jane',
-      ]).get();
+      var users =
+          await laconic.table(userTable).whereIn('name', [
+            'John',
+            'Jane',
+          ]).get();
       expect(users.length, 2);
     });
 
@@ -238,18 +241,20 @@ void main() {
     });
 
     test('select with whereBetween', () async {
-      var users = await laconic
-          .table(userTable)
-          .whereBetween('age', min: 20, max: 30)
-          .get();
+      var users =
+          await laconic
+              .table(userTable)
+              .whereBetween('age', min: 20, max: 30)
+              .get();
       expect(users.length, 2);
     });
 
     test('select with whereNotBetween', () async {
-      var users = await laconic
-          .table(userTable)
-          .whereNotBetween('age', min: 20, max: 30)
-          .get();
+      var users =
+          await laconic
+              .table(userTable)
+              .whereNotBetween('age', min: 20, max: 30)
+              .get();
       expect(users.length, 1);
     });
 
@@ -283,42 +288,46 @@ void main() {
     // ==================== Advanced WHERE ====================
 
     test('when true applies condition', () async {
-      var users = await laconic
-          .table(userTable)
-          .when(true, (builder) => builder.where('age', 25))
-          .get();
+      var users =
+          await laconic
+              .table(userTable)
+              .when(true, (builder) => builder.where('age', 25))
+              .get();
       expect(users.length, 1);
       expect(users.first['name'], 'John');
     });
 
     test('when false skips condition', () async {
-      var users = await laconic
-          .table(userTable)
-          .when(false, (builder) => builder.where('age', 25))
-          .get();
+      var users =
+          await laconic
+              .table(userTable)
+              .when(false, (builder) => builder.where('age', 25))
+              .get();
       expect(users.length, 3);
     });
 
     test('when with otherwise', () async {
-      var users = await laconic
-          .table(userTable)
-          .when(
-            false,
-            (builder) => builder.where('age', 25),
-            otherwise: (builder) => builder.where('age', 30),
-          )
-          .get();
+      var users =
+          await laconic
+              .table(userTable)
+              .when(
+                false,
+                (builder) => builder.where('age', 25),
+                otherwise: (builder) => builder.where('age', 30),
+              )
+              .get();
       expect(users.length, 1);
       expect(users.first['name'], 'Jane');
     });
 
     test('addSelect adds columns', () async {
-      var results = await laconic
-          .table(userTable)
-          .select(['name'])
-          .addSelect(['age'])
-          .where('id', 1)
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .select(['name'])
+              .addSelect(['age'])
+              .where('id', 1)
+              .get();
       expect(results.length, 1);
       expect(results.first['name'], 'John');
       expect(results.first['age'], 25);
@@ -326,163 +335,171 @@ void main() {
 
     test('whereColumn with equals', () async {
       var results =
-          await laconic.table(postTable).whereColumn('user_id', 'user_id').get();
+          await laconic
+              .table(postTable)
+              .whereColumn('user_id', 'user_id')
+              .get();
       expect(results.length, 3);
     });
 
     test('whereColumn with not equals', () async {
-      var results = await laconic
-          .table(postTable)
-          .whereColumn('user_id', 'id', operator: '!=')
-          .get();
+      var results =
+          await laconic
+              .table(postTable)
+              .whereColumn('user_id', 'id', operator: '!=')
+              .get();
       expect(results.length, 2);
     });
 
     test('whereAll with matching value', () async {
-      var results = await laconic.table(postTable).whereAll([
-        'user_id',
-        'id',
-      ], 1).get();
+      var results =
+          await laconic.table(postTable).whereAll(['user_id', 'id'], 1).get();
       expect(results.length, 1);
     });
 
     test('whereAny with matching value', () async {
-      var results = await laconic.table(postTable).whereAny([
-        'user_id',
-        'id',
-      ], 2).get();
+      var results =
+          await laconic.table(postTable).whereAny(['user_id', 'id'], 2).get();
       expect(results.length, 2);
     });
 
     test('whereNone with non-matching value', () async {
-      var results = await laconic.table(userTable).whereNone([
-        'name',
-        'gender',
-      ], 'John').get();
+      var results =
+          await laconic.table(userTable).whereNone([
+            'name',
+            'gender',
+          ], 'John').get();
       expect(results.length, 2);
     });
 
     test('whereBetweenColumns', () async {
-      var users = await laconic
-          .table(userTable)
-          .whereBetweenColumns('age', minColumn: 'age', maxColumn: 'age')
-          .get();
+      var users =
+          await laconic
+              .table(userTable)
+              .whereBetweenColumns('age', minColumn: 'age', maxColumn: 'age')
+              .get();
       expect(users.length, 3);
     });
 
     test('whereNotBetweenColumns', () async {
-      var users = await laconic
-          .table(userTable)
-          .whereNotBetweenColumns('age', minColumn: 'age', maxColumn: 'age')
-          .get();
+      var users =
+          await laconic
+              .table(userTable)
+              .whereNotBetweenColumns('age', minColumn: 'age', maxColumn: 'age')
+              .get();
       expect(users.length, 0);
     });
 
     // ==================== JOIN ====================
 
     test('join with on condition', () async {
-      var results = await laconic
-          .table('$userTable u')
-          .select(['u.name', 'p.title'])
-          .join('$postTable p', (join) => join.on('u.id', 'p.user_id'))
-          .orderBy('u.name')
-          .orderBy('p.title')
-          .get();
+      var results =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .join('$postTable p', (join) => join.on('u.id', 'p.user_id'))
+              .orderBy('u.name')
+              .orderBy('p.title')
+              .get();
       expect(results.length, 3);
     });
 
     test('join with multiple conditions', () async {
-      var results = await laconic
-          .table('$userTable u')
-          .select(['u.name', 'p.title'])
-          .join('$postTable p', (join) => join.on('u.id', 'p.user_id'))
-          .where('u.age', 25)
-          .get();
+      var results =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .join('$postTable p', (join) => join.on('u.id', 'p.user_id'))
+              .where('u.age', 25)
+              .get();
       expect(results.length, 2);
     });
 
     test('join with orOn condition', () async {
-      var results = await laconic
-          .table('$userTable u')
-          .select(['u.name', 'p.title'])
-          .join(
-            '$postTable p',
-            (join) => join.on('u.id', 'p.user_id').orOn('u.id', 'p.id'),
-          )
-          .orderBy('u.name')
-          .orderBy('p.title')
-          .get();
+      var results =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .join(
+                '$postTable p',
+                (join) => join.on('u.id', 'p.user_id').orOn('u.id', 'p.id'),
+              )
+              .orderBy('u.name')
+              .orderBy('p.title')
+              .get();
       expect(results.isNotEmpty, isTrue);
     });
 
     test('join with where condition', () async {
-      var results = await laconic
-          .table('$userTable u')
-          .select(['u.name', 'p.title'])
-          .join(
-            '$postTable p',
-            (join) => join.on('u.id', 'p.user_id').where('p.user_id', 1),
-          )
-          .orderBy('p.title')
-          .get();
+      var results =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .join(
+                '$postTable p',
+                (join) => join.on('u.id', 'p.user_id').where('p.user_id', 1),
+              )
+              .orderBy('p.title')
+              .get();
       expect(results.length, 2);
       expect(results.every((r) => r['name'] == 'John'), isTrue);
     });
 
     test('join with orWhere condition', () async {
-      var results = await laconic
-          .table('$userTable u')
-          .select(['u.name', 'p.title'])
-          .join(
-            '$postTable p',
-            (join) => join
-                .on('u.id', 'p.user_id')
-                .where('p.user_id', 1)
-                .orWhere('p.user_id', 2),
-          )
-          .orderBy('u.name')
-          .orderBy('p.title')
-          .get();
+      var results =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .join(
+                '$postTable p',
+                (join) => join
+                    .on('u.id', 'p.user_id')
+                    .where('p.user_id', 1)
+                    .orWhere('p.user_id', 2),
+              )
+              .orderBy('u.name')
+              .orderBy('p.title')
+              .get();
       expect(results.isNotEmpty, isTrue);
       expect(results.length, greaterThan(0));
     });
 
     test('join with complex conditions', () async {
-      var results = await laconic
-          .table('$userTable u')
-          .select(['u.name', 'p.title'])
-          .join(
-            '$postTable p',
-            (join) => join
-                .on('u.id', 'p.user_id')
-                .where('u.age', 25, operator: '>')
-                .orOn('u.id', 'p.id', operator: '='),
-          )
-          .orderBy('u.name')
-          .get();
+      var results =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .join(
+                '$postTable p',
+                (join) => join
+                    .on('u.id', 'p.user_id')
+                    .where('u.age', 25, operator: '>')
+                    .orOn('u.id', 'p.id', operator: '='),
+              )
+              .orderBy('u.name')
+              .get();
       expect(results.isNotEmpty, isTrue);
     });
 
     test('leftJoin returns all users including those without posts', () async {
-      var results = await laconic
-          .table('$userTable u')
-          .select(['u.name', 'p.title'])
-          .leftJoin(
-            '$postTable p',
-            (join) => join.on('u.id', 'p.user_id'),
-          )
-          .orderBy('u.name')
-          .get();
+      var results =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .leftJoin('$postTable p', (join) => join.on('u.id', 'p.user_id'))
+              .orderBy('u.name')
+              .get();
       expect(results.length, greaterThanOrEqualTo(3));
     });
 
     test('crossJoin creates cartesian product', () async {
-      var results = await laconic
-          .table('$userTable u')
-          .select(['u.name', 'p.title'])
-          .crossJoin('$postTable p')
-          .orderBy('u.name')
-          .get();
+      var results =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .crossJoin('$postTable p')
+              .orderBy('u.name')
+              .get();
       expect(results.length, 9);
     });
 
@@ -491,72 +508,77 @@ void main() {
         {'user_id': 999, 'title': 'Orphan Post', 'content': 'Test'},
       ]);
 
-      var results = await laconic
-          .table('$postTable p')
-          .select(['p.title', 'u.name'])
-          .leftJoin(
-            '$userTable u',
-            (join) => join.on('p.user_id', 'u.id'),
-          )
-          .get();
+      var results =
+          await laconic
+              .table('$postTable p')
+              .select(['p.title', 'u.name'])
+              .leftJoin('$userTable u', (join) => join.on('p.user_id', 'u.id'))
+              .get();
       expect(results.any((r) => r['title'] == 'Orphan Post'), isTrue);
 
       await laconic.table(postTable).where('title', 'Orphan Post').delete();
     });
 
     test('join with whereNotNull condition', () async {
-      var results = await laconic
-          .table('$userTable u')
-          .select(['u.name', 'p.title'])
-          .join(
-            '$postTable p',
-            (join) => join.on('u.id', 'p.user_id').whereNotNull('p.content'),
-          )
-          .orderBy('u.name')
-          .get();
+      var results =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .join(
+                '$postTable p',
+                (join) =>
+                    join.on('u.id', 'p.user_id').whereNotNull('p.content'),
+              )
+              .orderBy('u.name')
+              .get();
       expect(results.isNotEmpty, isTrue);
     });
 
     test('join with whereIn condition', () async {
-      var results = await laconic
-          .table('$userTable u')
-          .select(['u.name', 'p.title'])
-          .join(
-            '$postTable p',
-            (join) => join.on('u.id', 'p.user_id').whereIn('p.user_id', [1, 2]),
-          )
-          .orderBy('u.name')
-          .get();
+      var results =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .join(
+                '$postTable p',
+                (join) =>
+                    join.on('u.id', 'p.user_id').whereIn('p.user_id', [1, 2]),
+              )
+              .orderBy('u.name')
+              .get();
       expect(results.length, 3);
     });
 
     test('join with whereNotIn condition', () async {
-      var results = await laconic
-          .table('$userTable u')
-          .select(['u.name', 'p.title'])
-          .join(
-            '$postTable p',
-            (join) => join.on('u.id', 'p.user_id').whereNotIn('p.user_id', [2]),
-          )
-          .orderBy('u.name')
-          .get();
+      var results =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .join(
+                '$postTable p',
+                (join) =>
+                    join.on('u.id', 'p.user_id').whereNotIn('p.user_id', [2]),
+              )
+              .orderBy('u.name')
+              .get();
       expect(results.length, 2);
       expect(results.every((r) => r['name'] == 'John'), isTrue);
     });
 
     test('join with multiple new conditions', () async {
-      var results = await laconic
-          .table('$userTable u')
-          .select(['u.name', 'p.title'])
-          .join(
-            '$postTable p',
-            (join) => join
-                .on('u.id', 'p.user_id')
-                .whereIn('p.user_id', [1, 2, 3])
-                .whereNotNull('p.title'),
-          )
-          .orderBy('u.name')
-          .get();
+      var results =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .join(
+                '$postTable p',
+                (join) => join
+                    .on('u.id', 'p.user_id')
+                    .whereIn('p.user_id', [1, 2, 3])
+                    .whereNotNull('p.title'),
+              )
+              .orderBy('u.name')
+              .get();
       expect(results.length, 3);
     });
   });

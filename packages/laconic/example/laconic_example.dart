@@ -17,8 +17,10 @@ class MockDriver implements DatabaseDriver {
   SqlGrammar get grammar => _grammar;
 
   @override
-  Future<List<LaconicResult>> select(String sql,
-      [List<Object?> params = const []]) async {
+  Future<List<LaconicResult>> select(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async {
     // In a real driver, this would execute the SQL query
     print('SELECT: $sql');
     print('Params: $params');
@@ -26,15 +28,16 @@ class MockDriver implements DatabaseDriver {
   }
 
   @override
-  Future<void> statement(String sql,
-      [List<Object?> params = const []]) async {
+  Future<void> statement(String sql, [List<Object?> params = const []]) async {
     print('STATEMENT: $sql');
     print('Params: $params');
   }
 
   @override
-  Future<int> insertAndGetId(String sql,
-      [List<Object?> params = const []]) async {
+  Future<int> insertAndGetId(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async {
     print('INSERT: $sql');
     print('Params: $params');
     final id = _data.length + 1;
@@ -114,7 +117,37 @@ class _MockGrammar extends SqlGrammar {
     String idColumn = 'id',
   }) {
     return CompiledQuery(
-        sql: 'INSERT INTO $table ... RETURNING $idColumn', bindings: []);
+      sql: 'INSERT INTO $table ... RETURNING $idColumn',
+      bindings: [],
+    );
+  }
+
+  @override
+  CompiledQuery compileIncrement({
+    required String table,
+    required String column,
+    required int amount,
+    Map<String, Object?>? extra,
+    required List<Map<String, dynamic>> wheres,
+  }) {
+    return CompiledQuery(
+      sql: 'UPDATE $table SET $column = $column + $amount ...',
+      bindings: [],
+    );
+  }
+
+  @override
+  CompiledQuery compileDecrement({
+    required String table,
+    required String column,
+    required int amount,
+    Map<String, Object?>? extra,
+    required List<Map<String, dynamic>> wheres,
+  }) {
+    return CompiledQuery(
+      sql: 'UPDATE $table SET $column = $column - $amount ...',
+      bindings: [],
+    );
   }
 }
 

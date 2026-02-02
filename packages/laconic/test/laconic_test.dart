@@ -188,6 +188,74 @@ class MockGrammar extends SqlGrammar {
   }) {
     return compileInsert(table: table, data: [data]);
   }
+
+  @override
+  CompiledQuery compileIncrement({
+    required String table,
+    required String column,
+    required int amount,
+    Map<String, Object?>? extra,
+    required List<Map<String, dynamic>> wheres,
+  }) {
+    final buffer = StringBuffer();
+    final bindings = <Object?>[];
+
+    buffer.write('update $table set $column = $column + ?');
+    bindings.add(amount);
+
+    if (extra != null && extra.isNotEmpty) {
+      for (final entry in extra.entries) {
+        buffer.write(', ${entry.key} = ?');
+        bindings.add(entry.value);
+      }
+    }
+
+    if (wheres.isNotEmpty) {
+      buffer.write(' where ');
+      for (var i = 0; i < wheres.length; i++) {
+        final w = wheres[i];
+        if (i > 0) buffer.write(' ${w['boolean']} ');
+        buffer.write('${w['column']} ${w['operator']} ?');
+        bindings.add(w['value']);
+      }
+    }
+
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
+  }
+
+  @override
+  CompiledQuery compileDecrement({
+    required String table,
+    required String column,
+    required int amount,
+    Map<String, Object?>? extra,
+    required List<Map<String, dynamic>> wheres,
+  }) {
+    final buffer = StringBuffer();
+    final bindings = <Object?>[];
+
+    buffer.write('update $table set $column = $column - ?');
+    bindings.add(amount);
+
+    if (extra != null && extra.isNotEmpty) {
+      for (final entry in extra.entries) {
+        buffer.write(', ${entry.key} = ?');
+        bindings.add(entry.value);
+      }
+    }
+
+    if (wheres.isNotEmpty) {
+      buffer.write(' where ');
+      for (var i = 0; i < wheres.length; i++) {
+        final w = wheres[i];
+        if (i > 0) buffer.write(' ${w['boolean']} ');
+        buffer.write('${w['column']} ${w['operator']} ?');
+        bindings.add(w['value']);
+      }
+    }
+
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
+  }
 }
 
 /// Mock driver for testing the core package without database dependencies.

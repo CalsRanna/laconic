@@ -19,6 +19,7 @@ import 'package:postgres/postgres.dart';
 class PostgresqlDriver implements DatabaseDriver {
   final PostgresqlConfig config;
   Pool? _pool;
+  TxSession? _transactionSession;
   static final _grammar = PostgresqlGrammar();
 
   /// Creates a new PostgreSQL driver with the given configuration.
@@ -66,6 +67,19 @@ class PostgresqlDriver implements DatabaseDriver {
   ]) async {
     try {
       final convertedSql = _convertPlaceholders(sql);
+
+      // Use transaction session if available
+      if (_transactionSession != null) {
+        final results = await _transactionSession!.execute(
+          Sql(convertedSql),
+          parameters: params,
+        );
+        return results.map((row) {
+          final map = row.toColumnMap();
+          return LaconicResult.fromMap(Map<String, Object?>.from(map));
+        }).toList();
+      }
+
       final results = await _connectionPool.execute(
         Sql(convertedSql),
         parameters: params,
@@ -83,6 +97,16 @@ class PostgresqlDriver implements DatabaseDriver {
   Future<void> statement(String sql, [List<Object?> params = const []]) async {
     try {
       final convertedSql = _convertPlaceholders(sql);
+
+      // Use transaction session if available
+      if (_transactionSession != null) {
+        await _transactionSession!.execute(
+          Sql(convertedSql),
+          parameters: params,
+        );
+        return;
+      }
+
       await _connectionPool.execute(Sql(convertedSql), parameters: params);
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
@@ -96,10 +120,21 @@ class PostgresqlDriver implements DatabaseDriver {
   ]) async {
     try {
       final convertedSql = _convertPlaceholders(sql);
-      final results = await _connectionPool.execute(
-        Sql(convertedSql),
-        parameters: params,
-      );
+
+      Result results;
+      // Use transaction session if available
+      if (_transactionSession != null) {
+        results = await _transactionSession!.execute(
+          Sql(convertedSql),
+          parameters: params,
+        );
+      } else {
+        results = await _connectionPool.execute(
+          Sql(convertedSql),
+          parameters: params,
+        );
+      }
+
       // PostgreSQL returns the id via RETURNING clause
       if (results.isEmpty) {
         throw LaconicException('Insert did not return an ID');
@@ -123,7 +158,12 @@ class PostgresqlDriver implements DatabaseDriver {
     try {
       return await _connectionPool.withConnection((conn) async {
         return await conn.runTx((session) async {
-          return await action();
+          _transactionSession = session;
+          try {
+            return await action();
+          } finally {
+            _transactionSession = null;
+          }
         });
       });
     } catch (e, stackTrace) {

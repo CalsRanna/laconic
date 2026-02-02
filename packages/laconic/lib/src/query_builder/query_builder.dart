@@ -735,6 +735,257 @@ class QueryBuilder {
     return this;
   }
 
+  /// Adds an OR WHERE clause comparing two columns.
+  ///
+  /// [first] is the first column name.
+  /// [second] is the second column name.
+  /// [operator] is the comparison operator (defaults to '=').
+  ///
+  /// Example:
+  /// ```dart
+  /// query.where('status', 'active').orWhereColumn('updated_at', 'created_at', operator: '>')
+  /// ```
+  QueryBuilder orWhereColumn(
+    String first,
+    String second, {
+    String operator = '=',
+  }) {
+    _wheres.add({
+      'type': 'column',
+      'first': first,
+      'operator': operator,
+      'second': second,
+      'boolean': 'or',
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE IN condition to the query.
+  ///
+  /// [column] is the column name.
+  /// [values] is the list of values to check against.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.where('status', 'active').orWhereIn('id', [1, 2, 3])
+  /// ```
+  QueryBuilder orWhereIn(String column, List<Object?> values) {
+    _wheres.add({
+      'type': 'in',
+      'column': column,
+      'values': values,
+      'boolean': 'or',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE NOT IN condition to the query.
+  ///
+  /// [column] is the column name.
+  /// [values] is the list of values to exclude.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.where('status', 'active').orWhereNotIn('id', [1, 2, 3])
+  /// ```
+  QueryBuilder orWhereNotIn(String column, List<Object?> values) {
+    _wheres.add({
+      'type': 'in',
+      'column': column,
+      'values': values,
+      'boolean': 'or',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE NULL condition to the query.
+  ///
+  /// [column] is the column name to check for NULL.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.where('status', 'active').orWhereNull('deleted_at')
+  /// ```
+  QueryBuilder orWhereNull(String column) {
+    _wheres.add({
+      'type': 'null',
+      'column': column,
+      'boolean': 'or',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE NOT NULL condition to the query.
+  ///
+  /// [column] is the column name to check for NOT NULL.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.where('status', 'active').orWhereNotNull('email')
+  /// ```
+  QueryBuilder orWhereNotNull(String column) {
+    _wheres.add({
+      'type': 'null',
+      'column': column,
+      'boolean': 'or',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE BETWEEN condition to the query.
+  ///
+  /// [column] is the column name.
+  /// [min] is the minimum value.
+  /// [max] is the maximum value.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.where('status', 'active').orWhereBetween('votes', min: 1, max: 100)
+  /// ```
+  QueryBuilder orWhereBetween(
+    String column, {
+    required Object? min,
+    required Object? max,
+  }) {
+    _wheres.add({
+      'type': 'between',
+      'column': column,
+      'values': [min, max],
+      'boolean': 'or',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE NOT BETWEEN condition to the query.
+  ///
+  /// [column] is the column name.
+  /// [min] is the minimum value.
+  /// [max] is the maximum value.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.where('status', 'active').orWhereNotBetween('votes', min: 1, max: 100)
+  /// ```
+  QueryBuilder orWhereNotBetween(
+    String column, {
+    required Object? min,
+    required Object? max,
+  }) {
+    _wheres.add({
+      'type': 'between',
+      'column': column,
+      'values': [min, max],
+      'boolean': 'or',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE clause checking if a column's value is between two other columns.
+  ///
+  /// [column] is the column name to check.
+  /// [minColumn] is the minimum column name.
+  /// [maxColumn] is the maximum column name.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.where('status', 'active').orWhereBetweenColumns('weight', minColumn: 'min_weight', maxColumn: 'max_weight')
+  /// ```
+  QueryBuilder orWhereBetweenColumns(
+    String column, {
+    required String minColumn,
+    required String maxColumn,
+  }) {
+    _wheres.add({
+      'type': 'betweenColumns',
+      'column': column,
+      'betweenColumns': [minColumn, maxColumn],
+      'boolean': 'or',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE clause checking if a column's value is NOT between two other columns.
+  ///
+  /// [column] is the column name to check.
+  /// [minColumn] is the minimum column name.
+  /// [maxColumn] is the maximum column name.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.where('status', 'active').orWhereNotBetweenColumns('weight', minColumn: 'min_weight', maxColumn: 'max_weight')
+  /// ```
+  QueryBuilder orWhereNotBetweenColumns(
+    String column, {
+    required String minColumn,
+    required String maxColumn,
+  }) {
+    _wheres.add({
+      'type': 'betweenColumns',
+      'column': column,
+      'betweenColumns': [minColumn, maxColumn],
+      'boolean': 'or',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE clause where all columns must match the given value.
+  ///
+  /// [columns] is the list of column names.
+  /// [value] is the value to compare.
+  /// [operator] is the comparison operator (defaults to '=').
+  ///
+  /// Example:
+  /// ```dart
+  /// query.where('status', 'active').orWhereAll(['title', 'content'], '%Laravel%', operator: 'like')
+  /// ```
+  QueryBuilder orWhereAll(
+    List<String> columns,
+    Object? value, {
+    String operator = '=',
+  }) {
+    _wheres.add({
+      'type': 'all',
+      'columns': columns,
+      'operator': operator,
+      'value': value,
+      'boolean': 'or',
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE clause where any column can match the given value.
+  ///
+  /// [columns] is the list of column names.
+  /// [value] is the value to compare.
+  /// [operator] is the comparison operator (defaults to '=').
+  ///
+  /// Example:
+  /// ```dart
+  /// query.where('status', 'active').orWhereAny(['name', 'email'], 'Example%', operator: 'like')
+  /// ```
+  QueryBuilder orWhereAny(
+    List<String> columns,
+    Object? value, {
+    String operator = '=',
+  }) {
+    _wheres.add({
+      'type': 'any',
+      'columns': columns,
+      'operator': operator,
+      'value': value,
+      'boolean': 'or',
+    });
+    return this;
+  }
+
   /// Adds a GROUP BY clause to the query.
   ///
   /// [column] is the column name to group by.
@@ -766,6 +1017,26 @@ class QueryBuilder {
       'operator': operator,
       'value': value,
       'boolean': 'and',
+    });
+    return this;
+  }
+
+  /// Adds an OR HAVING clause to the query.
+  ///
+  /// [column] is the column name (usually an aggregate).
+  /// [value] is the value to compare.
+  /// [operator] is the comparison operator (defaults to '=').
+  ///
+  /// Example:
+  /// ```dart
+  /// query.groupBy('account_id').having('account_id', 100, operator: '>').orHaving('account_id', 50, operator: '<')
+  /// ```
+  QueryBuilder orHaving(String column, Object? value, {String operator = '='}) {
+    _havings.add({
+      'column': column,
+      'operator': operator,
+      'value': value,
+      'boolean': 'or',
     });
     return this;
   }
@@ -1005,23 +1276,15 @@ class QueryBuilder {
       );
     }
 
-    final bindings = <Object?>[];
-    final buffer = StringBuffer('update $_table set $column = $column + ?');
-    bindings.add(amount);
+    final compiled = _grammar.compileIncrement(
+      table: _table,
+      column: column,
+      amount: amount,
+      extra: extra,
+      wheres: _wheres,
+    );
 
-    if (extra != null && extra.isNotEmpty) {
-      for (final entry in extra.entries) {
-        buffer.write(', ${entry.key} = ?');
-        bindings.add(entry.value);
-      }
-    }
-
-    if (_wheres.isNotEmpty) {
-      buffer.write(' where ');
-      buffer.write(_compileWheres(bindings));
-    }
-
-    await _laconic.statement(buffer.toString(), bindings);
+    await _laconic.statement(compiled.sql, compiled.bindings);
   }
 
   /// Decrements a column's value by a given amount.
@@ -1049,110 +1312,14 @@ class QueryBuilder {
       );
     }
 
-    final bindings = <Object?>[];
-    final buffer = StringBuffer('update $_table set $column = $column - ?');
-    bindings.add(amount);
+    final compiled = _grammar.compileDecrement(
+      table: _table,
+      column: column,
+      amount: amount,
+      extra: extra,
+      wheres: _wheres,
+    );
 
-    if (extra != null && extra.isNotEmpty) {
-      for (final entry in extra.entries) {
-        buffer.write(', ${entry.key} = ?');
-        bindings.add(entry.value);
-      }
-    }
-
-    if (_wheres.isNotEmpty) {
-      buffer.write(' where ');
-      buffer.write(_compileWheres(bindings));
-    }
-
-    await _laconic.statement(buffer.toString(), bindings);
-  }
-
-  /// Helper method to compile WHERE conditions for increment/decrement.
-  String _compileWheres(List<Object?> bindings) {
-    final parts = <String>[];
-
-    for (var i = 0; i < _wheres.length; i++) {
-      final where = _wheres[i];
-      final boolean = i == 0 ? '' : ' ${where['boolean']} ';
-      final type = where['type'];
-
-      if (type == 'basic') {
-        parts.add('$boolean${where['column']} ${where['operator']} ?');
-        bindings.add(where['value']);
-      } else if (type == 'column') {
-        parts.add(
-          '$boolean${where['first']} ${where['operator']} ${where['second']}',
-        );
-      } else if (type == 'in') {
-        final column = where['column'];
-        final values = where['values'] as List<Object?>;
-        final not = where['not'] as bool;
-        final inKeyword = not ? 'not in' : 'in';
-
-        if (values.isEmpty) {
-          parts.add('$boolean${not ? '1 = 1' : '1 = 0'}');
-        } else {
-          final placeholders = List.filled(values.length, '?').join(', ');
-          parts.add('$boolean$column $inKeyword ($placeholders)');
-          bindings.addAll(values);
-        }
-      } else if (type == 'null') {
-        final column = where['column'];
-        final not = where['not'] as bool;
-        final nullKeyword = not ? 'is not null' : 'is null';
-        parts.add('$boolean$column $nullKeyword');
-      } else if (type == 'between') {
-        final column = where['column'];
-        final values = where['values'] as List<Object?>;
-        final not = where['not'] as bool;
-        final betweenKeyword = not ? 'not between' : 'between';
-        parts.add('$boolean$column $betweenKeyword ? and ?');
-        bindings.addAll(values);
-      } else if (type == 'betweenColumns') {
-        final column = where['column'];
-        final betweenColumns = where['betweenColumns'] as List<String>;
-        final not = where['not'] as bool;
-        final betweenKeyword = not ? 'not between' : 'between';
-        parts.add(
-          '$boolean$column $betweenKeyword ${betweenColumns[0]} and ${betweenColumns[1]}',
-        );
-      } else if (type == 'all') {
-        final columns = where['columns'] as List<String>;
-        final operator = where['operator'];
-        final value = where['value'];
-        final conditions = columns
-            .map((col) => '$col $operator ?')
-            .join(' and ');
-        parts.add('$boolean($conditions)');
-        for (var j = 0; j < columns.length; j++) {
-          bindings.add(value);
-        }
-      } else if (type == 'any') {
-        final columns = where['columns'] as List<String>;
-        final operator = where['operator'];
-        final value = where['value'];
-        final conditions = columns
-            .map((col) => '$col $operator ?')
-            .join(' or ');
-        parts.add('$boolean($conditions)');
-        for (var j = 0; j < columns.length; j++) {
-          bindings.add(value);
-        }
-      } else if (type == 'none') {
-        final columns = where['columns'] as List<String>;
-        final operator = where['operator'];
-        final value = where['value'];
-        final conditions = columns
-            .map((col) => '$col $operator ?')
-            .join(' or ');
-        parts.add('${boolean}not ($conditions)');
-        for (var j = 0; j < columns.length; j++) {
-          bindings.add(value);
-        }
-      }
-    }
-
-    return parts.join('');
+    await _laconic.statement(compiled.sql, compiled.bindings);
   }
 }

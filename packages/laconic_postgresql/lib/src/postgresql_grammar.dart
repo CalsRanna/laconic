@@ -112,6 +112,68 @@ class PostgresqlGrammar extends SqlGrammar {
   }
 
   @override
+  CompiledQuery compileIncrement({
+    required String table,
+    required String column,
+    required int amount,
+    Map<String, Object?>? extra,
+    required List<Map<String, dynamic>> wheres,
+  }) {
+    final buffer = StringBuffer();
+    final bindings = <Object?>[];
+
+    buffer.write(
+      'update $table set $column = $column + \$${bindings.length + 1}',
+    );
+    bindings.add(amount);
+
+    if (extra != null && extra.isNotEmpty) {
+      for (final entry in extra.entries) {
+        buffer.write(', ${entry.key} = \$${bindings.length + 1}');
+        bindings.add(entry.value);
+      }
+    }
+
+    if (wheres.isNotEmpty) {
+      buffer.write(' where ');
+      buffer.write(_compileWheres(wheres, bindings));
+    }
+
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
+  }
+
+  @override
+  CompiledQuery compileDecrement({
+    required String table,
+    required String column,
+    required int amount,
+    Map<String, Object?>? extra,
+    required List<Map<String, dynamic>> wheres,
+  }) {
+    final buffer = StringBuffer();
+    final bindings = <Object?>[];
+
+    buffer.write(
+      'update $table set $column = $column - \$${bindings.length + 1}',
+    );
+    bindings.add(amount);
+
+    if (extra != null && extra.isNotEmpty) {
+      for (final entry in extra.entries) {
+        buffer.write(', ${entry.key} = \$${bindings.length + 1}');
+        bindings.add(entry.value);
+      }
+    }
+
+    if (wheres.isNotEmpty) {
+      buffer.write(' where ');
+      buffer.write(_compileWheres(wheres, bindings));
+    }
+
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
+  }
+
+  @override
   CompiledQuery compileUpdate({
     required String table,
     required Map<String, Object?> data,
@@ -255,6 +317,25 @@ class PostgresqlGrammar extends SqlGrammar {
           parts.add('$boolean$column $inKeyword ($placeholders)');
           bindings.addAll(values);
         }
+      } else if (type == 'between') {
+        // WHERE column BETWEEN $1 AND $2 or WHERE column NOT BETWEEN $1 AND $2
+        final column = condition['column'];
+        final values = condition['values'] as List<Object?>;
+        final not = condition['not'] as bool;
+        final betweenKeyword = not ? 'not between' : 'between';
+        parts.add(
+          '$boolean$column $betweenKeyword \$${bindings.length + 1} and \$${bindings.length + 2}',
+        );
+        bindings.addAll(values);
+      } else if (type == 'betweenColumns') {
+        // WHERE column BETWEEN column1 AND column2
+        final column = condition['column'];
+        final betweenColumns = condition['betweenColumns'] as List<String>;
+        final not = condition['not'] as bool;
+        final betweenKeyword = not ? 'not between' : 'between';
+        parts.add(
+          '$boolean$column $betweenKeyword ${betweenColumns[0]} and ${betweenColumns[1]}',
+        );
       }
     }
 

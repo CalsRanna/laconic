@@ -59,10 +59,7 @@ class MysqlGrammar extends SqlGrammar {
       bindings.add(offset);
     }
 
-    return CompiledQuery(
-      sql: buffer.toString(),
-      bindings: bindings,
-    );
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
   }
 
   @override
@@ -95,10 +92,7 @@ class MysqlGrammar extends SqlGrammar {
       }
     }
 
-    return CompiledQuery(
-      sql: buffer.toString(),
-      bindings: bindings,
-    );
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
   }
 
   @override
@@ -126,10 +120,7 @@ class MysqlGrammar extends SqlGrammar {
       buffer.write(_compileWheres(wheres, bindings));
     }
 
-    return CompiledQuery(
-      sql: buffer.toString(),
-      bindings: bindings,
-    );
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
   }
 
   @override
@@ -147,10 +138,7 @@ class MysqlGrammar extends SqlGrammar {
       buffer.write(_compileWheres(wheres, bindings));
     }
 
-    return CompiledQuery(
-      sql: buffer.toString(),
-      bindings: bindings,
-    );
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
   }
 
   @override
@@ -162,6 +150,64 @@ class MysqlGrammar extends SqlGrammar {
     // For MySQL, insertGetId is identical to insert
     // MySQL uses lastInsertId to get the inserted ID
     return compileInsert(table: table, data: [data]);
+  }
+
+  @override
+  CompiledQuery compileIncrement({
+    required String table,
+    required String column,
+    required int amount,
+    Map<String, Object?>? extra,
+    required List<Map<String, dynamic>> wheres,
+  }) {
+    final buffer = StringBuffer();
+    final bindings = <Object?>[];
+
+    buffer.write('update $table set $column = $column + ?');
+    bindings.add(amount);
+
+    if (extra != null && extra.isNotEmpty) {
+      for (final entry in extra.entries) {
+        buffer.write(', ${entry.key} = ?');
+        bindings.add(entry.value);
+      }
+    }
+
+    if (wheres.isNotEmpty) {
+      buffer.write(' where ');
+      buffer.write(_compileWheres(wheres, bindings));
+    }
+
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
+  }
+
+  @override
+  CompiledQuery compileDecrement({
+    required String table,
+    required String column,
+    required int amount,
+    Map<String, Object?>? extra,
+    required List<Map<String, dynamic>> wheres,
+  }) {
+    final buffer = StringBuffer();
+    final bindings = <Object?>[];
+
+    buffer.write('update $table set $column = $column - ?');
+    bindings.add(amount);
+
+    if (extra != null && extra.isNotEmpty) {
+      for (final entry in extra.entries) {
+        buffer.write(', ${entry.key} = ?');
+        bindings.add(entry.value);
+      }
+    }
+
+    if (wheres.isNotEmpty) {
+      buffer.write(' where ');
+      buffer.write(_compileWheres(wheres, bindings));
+    }
+
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
   }
 
   /// Compiles column names for SELECT clause.
@@ -216,12 +262,14 @@ class MysqlGrammar extends SqlGrammar {
       final condition = conditions[i];
       final boolean = i == 0 ? '' : ' ${condition['boolean']} ';
       final type =
-          condition['type'] ?? 'on'; // Default to 'on' for backward compatibility
+          condition['type'] ??
+          'on'; // Default to 'on' for backward compatibility
 
       if (type == 'on') {
         // ON clause: column = column
         parts.add(
-            '$boolean${condition['left']} ${condition['operator']} ${condition['right']}');
+          '$boolean${condition['left']} ${condition['operator']} ${condition['right']}',
+        );
       } else if (type == 'where') {
         // WHERE clause within JOIN: column = ?
         parts.add('$boolean${condition['column']} ${condition['operator']} ?');
@@ -229,7 +277,8 @@ class MysqlGrammar extends SqlGrammar {
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
-            '$boolean${condition['first']} ${condition['operator']} ${condition['second']}');
+          '$boolean${condition['first']} ${condition['operator']} ${condition['second']}',
+        );
       } else if (type == 'null') {
         // WHERE column IS NULL or WHERE column IS NOT NULL
         final column = condition['column'];
@@ -251,6 +300,23 @@ class MysqlGrammar extends SqlGrammar {
           parts.add('$boolean$column $inKeyword ($placeholders)');
           bindings.addAll(values);
         }
+      } else if (type == 'between') {
+        // WHERE column BETWEEN ? AND ? or WHERE column NOT BETWEEN ? AND ?
+        final column = condition['column'];
+        final values = condition['values'] as List<Object?>;
+        final not = condition['not'] as bool;
+        final betweenKeyword = not ? 'not between' : 'between';
+        parts.add('$boolean$column $betweenKeyword ? and ?');
+        bindings.addAll(values);
+      } else if (type == 'betweenColumns') {
+        // WHERE column BETWEEN column1 AND column2
+        final column = condition['column'];
+        final betweenColumns = condition['betweenColumns'] as List<String>;
+        final not = condition['not'] as bool;
+        final betweenKeyword = not ? 'not between' : 'between';
+        parts.add(
+          '$boolean$column $betweenKeyword ${betweenColumns[0]} and ${betweenColumns[1]}',
+        );
       }
     }
 
@@ -275,8 +341,9 @@ class MysqlGrammar extends SqlGrammar {
         bindings.add(where['value']);
       } else if (type == 'column') {
         // WHERE column1 = column2
-        parts
-            .add('$boolean${where['first']} ${where['operator']} ${where['second']}');
+        parts.add(
+          '$boolean${where['first']} ${where['operator']} ${where['second']}',
+        );
       } else if (type == 'in') {
         // WHERE column IN (?, ?, ?) or WHERE column NOT IN (?, ?, ?)
         final column = where['column'];
@@ -313,13 +380,16 @@ class MysqlGrammar extends SqlGrammar {
         final not = where['not'] as bool;
         final betweenKeyword = not ? 'not between' : 'between';
         parts.add(
-            '$boolean$column $betweenKeyword ${betweenColumns[0]} and ${betweenColumns[1]}');
+          '$boolean$column $betweenKeyword ${betweenColumns[0]} and ${betweenColumns[1]}',
+        );
       } else if (type == 'all') {
         // WHERE (col1 = ? AND col2 = ? AND col3 = ?)
         final columns = where['columns'] as List<String>;
         final operator = where['operator'];
         final value = where['value'];
-        final conditions = columns.map((col) => '$col $operator ?').join(' and ');
+        final conditions = columns
+            .map((col) => '$col $operator ?')
+            .join(' and ');
         parts.add('$boolean($conditions)');
         for (var j = 0; j < columns.length; j++) {
           bindings.add(value);
@@ -329,7 +399,9 @@ class MysqlGrammar extends SqlGrammar {
         final columns = where['columns'] as List<String>;
         final operator = where['operator'];
         final value = where['value'];
-        final conditions = columns.map((col) => '$col $operator ?').join(' or ');
+        final conditions = columns
+            .map((col) => '$col $operator ?')
+            .join(' or ');
         parts.add('$boolean($conditions)');
         for (var j = 0; j < columns.length; j++) {
           bindings.add(value);
@@ -339,7 +411,9 @@ class MysqlGrammar extends SqlGrammar {
         final columns = where['columns'] as List<String>;
         final operator = where['operator'];
         final value = where['value'];
-        final conditions = columns.map((col) => '$col $operator ?').join(' or ');
+        final conditions = columns
+            .map((col) => '$col $operator ?')
+            .join(' or ');
         parts.add('${boolean}not ($conditions)');
         for (var j = 0; j < columns.length; j++) {
           bindings.add(value);

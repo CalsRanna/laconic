@@ -12,7 +12,12 @@
       "WebFetch(domain:pub.dev)",
       "Bash(grep:*)",
       "Bash(dart pub publish:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "WebFetch(domain:api.laravel.com)",
+      "WebFetch(domain:github.com)",
+      "mcp__dart-mcp-server__hover",
+      "Bash(dart test:*)",
+      "mcp__dart-mcp-server__dart_format"
     ]
   }
 }

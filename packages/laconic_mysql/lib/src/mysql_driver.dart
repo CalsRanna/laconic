@@ -19,6 +19,7 @@ import 'package:mysql_client/mysql_client.dart';
 class MysqlDriver implements DatabaseDriver {
   final MysqlConfig config;
   MySQLConnectionPool? _pool;
+  MySQLConnection? _transactionConnection;
   static final _grammar = MysqlGrammar();
 
   /// Creates a new MySQL driver with the given configuration.
@@ -65,6 +66,19 @@ class MysqlDriver implements DatabaseDriver {
     try {
       final convertedSql = _convertPlaceholders(sql, params);
       final namedParams = _createNamedParams(params);
+
+      // Use transaction connection if available
+      if (_transactionConnection != null) {
+        final results = await _transactionConnection!.execute(
+          convertedSql,
+          namedParams,
+        );
+        return results.rows.map((row) {
+          final map = row.typedAssoc();
+          return LaconicResult.fromMap(Map<String, Object?>.from(map));
+        }).toList();
+      }
+
       final results = await _connectionPool.execute(convertedSql, namedParams);
       return results.rows.map((row) {
         final map = row.typedAssoc();
@@ -80,6 +94,13 @@ class MysqlDriver implements DatabaseDriver {
     try {
       final convertedSql = _convertPlaceholders(sql, params);
       final namedParams = _createNamedParams(params);
+
+      // Use transaction connection if available
+      if (_transactionConnection != null) {
+        await _transactionConnection!.execute(convertedSql, namedParams);
+        return;
+      }
+
       await _connectionPool.execute(convertedSql, namedParams);
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
@@ -94,6 +115,18 @@ class MysqlDriver implements DatabaseDriver {
     try {
       final convertedSql = _convertPlaceholders(sql, params);
       final namedParams = _createNamedParams(params);
+
+      // Use transaction connection if available
+      if (_transactionConnection != null) {
+        final stmt = await _transactionConnection!.prepare(convertedSql);
+        try {
+          final results = await stmt.execute([namedParams]);
+          return results.lastInsertID.toInt();
+        } finally {
+          await stmt.deallocate();
+        }
+      }
+
       final stmt = await _connectionPool.prepare(convertedSql);
       try {
         final results = await stmt.execute([namedParams]);
@@ -109,27 +142,17 @@ class MysqlDriver implements DatabaseDriver {
   @override
   Future<T> transaction<T>(Future<T> Function() action) async {
     try {
-      await _execute('START TRANSACTION');
-      final result = await action();
-      await _execute('COMMIT');
-      return result;
+      return await _connectionPool.transactional((conn) async {
+        _transactionConnection = conn;
+        try {
+          return await action();
+        } finally {
+          _transactionConnection = null;
+        }
+      });
     } catch (e, stackTrace) {
-      try {
-        await _execute('ROLLBACK');
-      } catch (rollbackError) {
-        throw LaconicException(
-          'Transaction failed: ${e.toString()}. '
-          'Rollback also failed: ${rollbackError.toString()}',
-          cause: e,
-          stackTrace: stackTrace,
-        );
-      }
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
-  }
-
-  Future<void> _execute(String sql) async {
-    await _connectionPool.execute(sql);
   }
 
   @override

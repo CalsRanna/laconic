@@ -134,11 +134,7 @@ class JoinClause {
   ///       .whereColumn('p.created_at', 'p.updated_at', operator: '>');
   /// })
   /// ```
-  JoinClause whereColumn(
-    String first,
-    String second, {
-    String operator = '=',
-  }) {
+  JoinClause whereColumn(String first, String second, {String operator = '='}) {
     _conditions.add({
       'type': 'column',
       'first': first,
@@ -307,6 +303,190 @@ class JoinClause {
       'type': 'in',
       'column': column,
       'values': values,
+      'boolean': 'or',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds a WHERE BETWEEN condition within the JOIN clause.
+  ///
+  /// [column] is the column name.
+  /// [min] is the minimum value.
+  /// [max] is the maximum value.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.join('posts p', (join) {
+  ///   join.on('u.id', 'p.user_id')
+  ///       .whereBetween('p.views', min: 100, max: 1000);
+  /// })
+  /// ```
+  JoinClause whereBetween(
+    String column, {
+    required Object? min,
+    required Object? max,
+  }) {
+    _conditions.add({
+      'type': 'between',
+      'column': column,
+      'values': [min, max],
+      'boolean': 'and',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds a WHERE NOT BETWEEN condition within the JOIN clause.
+  ///
+  /// [column] is the column name.
+  /// [min] is the minimum value.
+  /// [max] is the maximum value.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.join('posts p', (join) {
+  ///   join.on('u.id', 'p.user_id')
+  ///       .whereNotBetween('p.views', min: 100, max: 1000);
+  /// })
+  /// ```
+  JoinClause whereNotBetween(
+    String column, {
+    required Object? min,
+    required Object? max,
+  }) {
+    _conditions.add({
+      'type': 'between',
+      'column': column,
+      'values': [min, max],
+      'boolean': 'and',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE BETWEEN condition within the JOIN clause.
+  ///
+  /// [column] is the column name.
+  /// [min] is the minimum value.
+  /// [max] is the maximum value.
+  JoinClause orWhereBetween(
+    String column, {
+    required Object? min,
+    required Object? max,
+  }) {
+    _conditions.add({
+      'type': 'between',
+      'column': column,
+      'values': [min, max],
+      'boolean': 'or',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE NOT BETWEEN condition within the JOIN clause.
+  ///
+  /// [column] is the column name.
+  /// [min] is the minimum value.
+  /// [max] is the maximum value.
+  JoinClause orWhereNotBetween(
+    String column, {
+    required Object? min,
+    required Object? max,
+  }) {
+    _conditions.add({
+      'type': 'between',
+      'column': column,
+      'values': [min, max],
+      'boolean': 'or',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds a WHERE BETWEEN columns condition within the JOIN clause.
+  ///
+  /// [column] is the column name to check.
+  /// [minColumn] is the minimum column name.
+  /// [maxColumn] is the maximum column name.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.join('posts p', (join) {
+  ///   join.on('u.id', 'p.user_id')
+  ///       .whereBetweenColumns('p.rating', minColumn: 'p.min_rating', maxColumn: 'p.max_rating');
+  /// })
+  /// ```
+  JoinClause whereBetweenColumns(
+    String column, {
+    required String minColumn,
+    required String maxColumn,
+  }) {
+    _conditions.add({
+      'type': 'betweenColumns',
+      'column': column,
+      'betweenColumns': [minColumn, maxColumn],
+      'boolean': 'and',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds a WHERE NOT BETWEEN columns condition within the JOIN clause.
+  ///
+  /// [column] is the column name to check.
+  /// [minColumn] is the minimum column name.
+  /// [maxColumn] is the maximum column name.
+  JoinClause whereNotBetweenColumns(
+    String column, {
+    required String minColumn,
+    required String maxColumn,
+  }) {
+    _conditions.add({
+      'type': 'betweenColumns',
+      'column': column,
+      'betweenColumns': [minColumn, maxColumn],
+      'boolean': 'and',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE BETWEEN columns condition within the JOIN clause.
+  ///
+  /// [column] is the column name to check.
+  /// [minColumn] is the minimum column name.
+  /// [maxColumn] is the maximum column name.
+  JoinClause orWhereBetweenColumns(
+    String column, {
+    required String minColumn,
+    required String maxColumn,
+  }) {
+    _conditions.add({
+      'type': 'betweenColumns',
+      'column': column,
+      'betweenColumns': [minColumn, maxColumn],
+      'boolean': 'or',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE NOT BETWEEN columns condition within the JOIN clause.
+  ///
+  /// [column] is the column name to check.
+  /// [minColumn] is the minimum column name.
+  /// [maxColumn] is the maximum column name.
+  JoinClause orWhereNotBetweenColumns(
+    String column, {
+    required String minColumn,
+    required String maxColumn,
+  }) {
+    _conditions.add({
+      'type': 'betweenColumns',
+      'column': column,
+      'betweenColumns': [minColumn, maxColumn],
       'boolean': 'or',
       'not': true,
     });

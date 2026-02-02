@@ -15,8 +15,8 @@ class LaconicResult {
   ///
   /// This is the primary factory constructor used by all drivers.
   LaconicResult.fromMap(Map<String, Object?> map)
-      : columns = map.keys.toList(),
-        values = map.values.toList();
+    : columns = map.keys.toList(),
+      values = map.values.toList();
 
   /// Gets a value by column name.
   ///
