@@ -1,3 +1,10 @@
+## 1.1.0
+
+### Features
+
+- **Implement `compileIncrement()` / `compileDecrement()`** - Grammar methods for increment/decrement SQL generation with `?` placeholders
+- **JoinClause BETWEEN Support** - Add `between` and `betweenColumns` type handling in `_compileJoinConditions()`
+
 ## 1.0.1
 
 ### Bug Fixes

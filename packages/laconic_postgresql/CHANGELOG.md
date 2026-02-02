@@ -1,3 +1,14 @@
+## 1.1.0
+
+### Features
+
+- **Implement `compileIncrement()` / `compileDecrement()`** - Grammar methods for increment/decrement SQL generation with `$N` positional placeholders
+- **JoinClause BETWEEN Support** - Add `between` and `betweenColumns` type handling in `_compileJoinConditions()`
+
+### Bug Fixes
+
+- **Fix Transaction Isolation** - Store `_transactionSession` to ensure all queries within a transaction use the same session
+
 ## 1.0.1
 
 ### Improvements

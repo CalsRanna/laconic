@@ -21,8 +21,8 @@ This is the core package that provides the query builder API and abstract driver
 
 ```yaml
 dependencies:
-  laconic: ^2.0.0
-  laconic_sqlite: ^1.0.0  # Or your preferred driver
+  laconic: ^2.2.0
+  laconic_sqlite: ^1.1.0  # Or your preferred driver
 ```
 
 ## Quick Start

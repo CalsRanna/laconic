@@ -1,3 +1,15 @@
+## 1.1.0
+
+### Features
+
+- **Implement `compileIncrement()` / `compileDecrement()`** - Grammar methods for increment/decrement SQL generation with `?` placeholders
+- **JoinClause BETWEEN Support** - Add `between` and `betweenColumns` type handling in `_compileJoinConditions()`
+
+### Bug Fixes
+
+- **Fix Transaction Isolation** - Use `transactional()` method to ensure all queries within a transaction use the same connection
+- **Fix `insertAndGetId()` Method** - Replace prepared statement with direct `execute()` call to fix parameter binding issue
+
 ## 1.0.1
 
 ### Bug Fixes

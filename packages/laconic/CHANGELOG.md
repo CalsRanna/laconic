@@ -1,3 +1,31 @@
+## 2.2.0
+
+### Features
+
+- **New OR WHERE Methods** - Add 11 new OR variant methods to QueryBuilder for Laravel API consistency
+  - `orWhereColumn()` - OR column comparison
+  - `orWhereIn()` / `orWhereNotIn()` - OR IN conditions
+  - `orWhereNull()` / `orWhereNotNull()` - OR NULL conditions
+  - `orWhereBetween()` / `orWhereNotBetween()` - OR BETWEEN conditions
+  - `orWhereBetweenColumns()` / `orWhereNotBetweenColumns()` - OR BETWEEN columns
+  - `orWhereAll()` / `orWhereAny()` - OR multi-column conditions
+
+- **New JoinClause BETWEEN Methods** - Add 8 new BETWEEN methods to JoinClause
+  - `whereBetween()` / `whereNotBetween()` - BETWEEN value conditions
+  - `orWhereBetween()` / `orWhereNotBetween()` - OR BETWEEN value conditions
+  - `whereBetweenColumns()` / `whereNotBetweenColumns()` - BETWEEN column conditions
+  - `orWhereBetweenColumns()` / `orWhereNotBetweenColumns()` - OR BETWEEN column conditions
+
+- **New `orHaving()` Method** - Add OR HAVING support for GROUP BY queries
+
+- **Grammar `compileIncrement()` / `compileDecrement()`** - Add abstract methods to SqlGrammar
+  - Enables database-specific placeholder handling (PostgreSQL uses `$N`)
+  - QueryBuilder now delegates increment/decrement SQL generation to Grammar
+
+### Bug Fixes
+
+- **Fix PostgreSQL increment/decrement** - Previously used `?` placeholders directly, now correctly uses Grammar for `$N` placeholders
+
 ## 2.1.0
 
 ### Features
