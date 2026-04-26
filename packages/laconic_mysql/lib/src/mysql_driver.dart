@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:laconic/laconic.dart';
 import 'package:laconic_mysql/src/mysql_config.dart';
 import 'package:laconic_mysql/src/mysql_grammar.dart';
@@ -8,19 +10,15 @@ import 'package:mysql_client/mysql_client.dart';
 /// This driver uses the mysql_client package with connection pooling.
 /// The connection pool is lazily created on first use.
 ///
-/// Example:
-/// ```dart
-/// final driver = MysqlDriver(MysqlConfig(
-///   database: 'database',
-///   password: 'password',
-/// ));
-/// final laconic = Laconic(driver);
-/// ```
+/// Uses MySQL prepared statements (binary protocol) via [MySQLConnection.prepare]
+/// for parameterized queries. For queries without parameters (DDL like
+/// CREATE DATABASE, etc.), uses the text protocol directly since MySQL's
+/// COM_STMT_PREPARE does not support all statement types.
 class MysqlDriver implements DatabaseDriver {
   final MysqlConfig config;
   MySQLConnectionPool? _pool;
-  MySQLConnection? _transactionConnection;
   static final _grammar = MysqlGrammar();
+  static final _txConnKey = Object();
 
   /// Creates a new MySQL driver with the given configuration.
   MysqlDriver(this.config);
@@ -39,23 +37,49 @@ class MysqlDriver implements DatabaseDriver {
     );
   }
 
-  /// Converts `?` placeholders to MySQL named parameters (`:p0`, `:p1`, etc.)
-  String _convertPlaceholders(String sql, List<Object?> params) {
-    if (params.isEmpty) return sql;
+  /// Returns the pinned transaction connection from the current Zone, if any.
+  MySQLConnection? get _transactionConnection =>
+      Zone.current[_txConnKey] as MySQLConnection?;
 
-    int index = 0;
-    return sql.replaceAllMapped(RegExp(r'\?'), (match) {
-      return ':p${index++}';
-    });
+  /// Executes a query, delegating to [_executeOnConn] for protocol selection.
+  Future<IResultSet> _executeQuery(String sql, List<Object?> params) async {
+    final conn = _transactionConnection;
+    if (conn != null) {
+      return _executeOnConn(conn, sql, params);
+    }
+    return _connectionPool.withConnection(
+      (conn) => _executeOnConn(conn, sql, params),
+    );
   }
 
-  /// Creates a map of named parameters for MySQL.
-  Map<String, dynamic> _createNamedParams(List<Object?> params) {
-    if (params.isEmpty) return {};
-    return Map.fromIterables(
-      List.generate(params.length, (i) => 'p$i'),
-      params,
-    );
+  /// Executes a query on a given connection.
+  ///
+  /// When there are parameters, uses MySQL prepared statements (binary protocol)
+  /// via [MySQLConnection.prepare] for safe parameter binding and efficient
+  /// binary transfer. When there are no parameters, uses the text protocol
+  /// directly since MySQL's COM_STMT_PREPARE does not support all statement
+  /// types (e.g., DDL like CREATE DATABASE).
+  Future<IResultSet> _executeOnConn(
+    MySQLConnection conn,
+    String sql,
+    List<Object?> params,
+  ) async {
+    if (params.isEmpty) {
+      return conn.execute(sql);
+    }
+    final stmt = await conn.prepare(sql);
+    try {
+      return await stmt.execute(params);
+    } finally {
+      await stmt.deallocate();
+    }
+  }
+
+  List<LaconicResult> _toResults(IResultSet results) {
+    return results.rows.map((row) {
+      final map = row.typedAssoc();
+      return LaconicResult.fromMap(Map<String, Object?>.from(map));
+    }).toList();
   }
 
   @override
@@ -64,26 +88,8 @@ class MysqlDriver implements DatabaseDriver {
     List<Object?> params = const [],
   ]) async {
     try {
-      final convertedSql = _convertPlaceholders(sql, params);
-      final namedParams = _createNamedParams(params);
-
-      // Use transaction connection if available
-      if (_transactionConnection != null) {
-        final results = await _transactionConnection!.execute(
-          convertedSql,
-          namedParams,
-        );
-        return results.rows.map((row) {
-          final map = row.typedAssoc();
-          return LaconicResult.fromMap(Map<String, Object?>.from(map));
-        }).toList();
-      }
-
-      final results = await _connectionPool.execute(convertedSql, namedParams);
-      return results.rows.map((row) {
-        final map = row.typedAssoc();
-        return LaconicResult.fromMap(Map<String, Object?>.from(map));
-      }).toList();
+      final results = await _executeQuery(sql, params);
+      return _toResults(results);
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
@@ -92,16 +98,7 @@ class MysqlDriver implements DatabaseDriver {
   @override
   Future<void> statement(String sql, [List<Object?> params = const []]) async {
     try {
-      final convertedSql = _convertPlaceholders(sql, params);
-      final namedParams = _createNamedParams(params);
-
-      // Use transaction connection if available
-      if (_transactionConnection != null) {
-        await _transactionConnection!.execute(convertedSql, namedParams);
-        return;
-      }
-
-      await _connectionPool.execute(convertedSql, namedParams);
+      await _executeQuery(sql, params);
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
@@ -113,17 +110,7 @@ class MysqlDriver implements DatabaseDriver {
     List<Object?> params = const [],
   ]) async {
     try {
-      final convertedSql = _convertPlaceholders(sql, params);
-      final namedParams = _createNamedParams(params);
-
-      // Use transaction connection if available
-      if (_transactionConnection != null) {
-        final results =
-            await _transactionConnection!.execute(convertedSql, namedParams);
-        return results.lastInsertID.toInt();
-      }
-
-      final results = await _connectionPool.execute(convertedSql, namedParams);
+      final results = await _executeQuery(sql, params);
       return results.lastInsertID.toInt();
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
@@ -134,12 +121,7 @@ class MysqlDriver implements DatabaseDriver {
   Future<T> transaction<T>(Future<T> Function() action) async {
     try {
       return await _connectionPool.transactional((conn) async {
-        _transactionConnection = conn;
-        try {
-          return await action();
-        } finally {
-          _transactionConnection = null;
-        }
+        return runZoned(() => action(), zoneValues: {_txConnKey: conn});
       });
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);

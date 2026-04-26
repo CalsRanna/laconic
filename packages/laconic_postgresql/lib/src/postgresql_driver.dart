@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:laconic/laconic.dart';
 import 'package:laconic_postgresql/src/postgresql_config.dart';
 import 'package:laconic_postgresql/src/postgresql_grammar.dart';
@@ -19,8 +21,8 @@ import 'package:postgres/postgres.dart';
 class PostgresqlDriver implements DatabaseDriver {
   final PostgresqlConfig config;
   Pool? _pool;
-  TxSession? _transactionSession;
   static final _grammar = PostgresqlGrammar();
+  static final _txSessionKey = Object();
 
   /// Creates a new PostgreSQL driver with the given configuration.
   PostgresqlDriver(this.config);
@@ -46,6 +48,10 @@ class PostgresqlDriver implements DatabaseDriver {
     );
   }
 
+  /// Returns the pinned transaction session from the current Zone, if any.
+  TxSession? get _transactionSession =>
+      Zone.current[_txSessionKey] as TxSession?;
+
   /// Converts `?` placeholders to PostgreSQL positional parameters ($1, $2, etc.)
   /// Only converts if the SQL contains `?` placeholders.
   String _convertPlaceholders(String sql) {
@@ -60,30 +66,41 @@ class PostgresqlDriver implements DatabaseDriver {
     });
   }
 
+  /// Runs a prepared statement on a given session.
+  Future<Result> _executeOnConn(Session session, String sql, List<Object?> params) async {
+    final stmt = await session.prepare(Sql(sql));
+    try {
+      return await stmt.run(params);
+    } finally {
+      await stmt.dispose();
+    }
+  }
+
+  /// Executes a query using PostgreSQL prepared statements (extended query protocol).
+  ///
+  /// Uses [Session.prepare] so the SQL is parsed once on the server side and
+  /// only parameter values are sent on each execution.
+  ///
+  /// If a transaction session is active in the current Zone, uses it directly;
+  /// otherwise acquires a connection from the pool.
+  Future<Result> _executeQuery(String sql, List<Object?> params) async {
+    final convertedSql = _convertPlaceholders(sql);
+    final txSession = _transactionSession;
+    if (txSession != null) {
+      return _executeOnConn(txSession, convertedSql, params);
+    }
+    return _connectionPool.run(
+      (session) => _executeOnConn(session, convertedSql, params),
+    );
+  }
+
   @override
   Future<List<LaconicResult>> select(
     String sql, [
     List<Object?> params = const [],
   ]) async {
     try {
-      final convertedSql = _convertPlaceholders(sql);
-
-      // Use transaction session if available
-      if (_transactionSession != null) {
-        final results = await _transactionSession!.execute(
-          Sql(convertedSql),
-          parameters: params,
-        );
-        return results.map((row) {
-          final map = row.toColumnMap();
-          return LaconicResult.fromMap(Map<String, Object?>.from(map));
-        }).toList();
-      }
-
-      final results = await _connectionPool.execute(
-        Sql(convertedSql),
-        parameters: params,
-      );
+      final results = await _executeQuery(sql, params);
       return results.map((row) {
         final map = row.toColumnMap();
         return LaconicResult.fromMap(Map<String, Object?>.from(map));
@@ -96,18 +113,7 @@ class PostgresqlDriver implements DatabaseDriver {
   @override
   Future<void> statement(String sql, [List<Object?> params = const []]) async {
     try {
-      final convertedSql = _convertPlaceholders(sql);
-
-      // Use transaction session if available
-      if (_transactionSession != null) {
-        await _transactionSession!.execute(
-          Sql(convertedSql),
-          parameters: params,
-        );
-        return;
-      }
-
-      await _connectionPool.execute(Sql(convertedSql), parameters: params);
+      await _executeQuery(sql, params);
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
@@ -119,21 +125,7 @@ class PostgresqlDriver implements DatabaseDriver {
     List<Object?> params = const [],
   ]) async {
     try {
-      final convertedSql = _convertPlaceholders(sql);
-
-      Result results;
-      // Use transaction session if available
-      if (_transactionSession != null) {
-        results = await _transactionSession!.execute(
-          Sql(convertedSql),
-          parameters: params,
-        );
-      } else {
-        results = await _connectionPool.execute(
-          Sql(convertedSql),
-          parameters: params,
-        );
-      }
+      final results = await _executeQuery(sql, params);
 
       // PostgreSQL returns the id via RETURNING clause
       if (results.isEmpty) {
@@ -158,12 +150,7 @@ class PostgresqlDriver implements DatabaseDriver {
     try {
       return await _connectionPool.withConnection((conn) async {
         return await conn.runTx((session) async {
-          _transactionSession = session;
-          try {
-            return await action();
-          } finally {
-            _transactionSession = null;
-          }
+          return runZoned(() => action(), zoneValues: {_txSessionKey: session});
         });
       });
     } catch (e, stackTrace) {
