@@ -1,3 +1,10 @@
+## 1.2.0
+
+### Refactoring
+
+- **Improve Transaction Handling** - Replace individual connection management with `runZoned` for transaction context isolation
+- **Simplify Query Execution** - Refactor query execution into dedicated `_executeQuery` methods with protocol-based selection, remove placeholder conversion duplication
+
 ## 1.1.0
 
 ### Features

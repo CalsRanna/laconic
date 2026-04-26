@@ -23,8 +23,8 @@ A Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and Postgr
 |---------|-------------|---------|
 | [laconic](https://pub.dev/packages/laconic) | Core query builder | 2.2.0 |
 | [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite driver | 1.1.0 |
-| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL driver | 1.1.0 |
-| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL driver | 1.1.0 |
+| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL driver | 1.2.0 |
+| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL driver | 1.2.0 |
 
 ## Installation
 
@@ -34,8 +34,8 @@ Add the core package and the driver you need:
 dependencies:
   laconic: ^2.2.0
   laconic_sqlite: ^1.1.0    # For SQLite
-  # laconic_mysql: ^1.1.0   # For MySQL
-  # laconic_postgresql: ^1.1.0  # For PostgreSQL
+  # laconic_mysql: ^1.2.0   # For MySQL
+  # laconic_postgresql: ^1.2.0  # For PostgreSQL
 ```
 
 Then run:

@@ -23,8 +23,8 @@
 |---|------|------|
 | [laconic](https://pub.dev/packages/laconic) | 核心查询构建器 | 2.2.0 |
 | [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite 驱动 | 1.1.0 |
-| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 1.1.0 |
-| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 1.1.0 |
+| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 1.2.0 |
+| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 1.2.0 |
 
 ## 安装
 
@@ -34,8 +34,8 @@
 dependencies:
   laconic: ^2.2.0
   laconic_sqlite: ^1.1.0    # SQLite
-  # laconic_mysql: ^1.1.0   # MySQL
-  # laconic_postgresql: ^1.1.0  # PostgreSQL
+  # laconic_mysql: ^1.2.0   # MySQL
+  # laconic_postgresql: ^1.2.0  # PostgreSQL
 ```
 
 然后运行：
