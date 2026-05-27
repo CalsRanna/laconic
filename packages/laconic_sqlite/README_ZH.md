@@ -7,7 +7,7 @@
 ```yaml
 dependencies:
   laconic: ^2.2.0
-  laconic_sqlite: ^1.1.0
+  laconic_sqlite: ^1.2.0
 ```
 
 ## 使用

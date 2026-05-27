@@ -1,3 +1,9 @@
+## 1.2.0
+
+### Bug Fixes
+
+- **sqlite3 v3 Compatibility** - Updated `sqlite3` dependency from `^2.7.5` to `^3.3.2` and replaced deprecated `dispose()` calls with `close()` throughout the driver
+
 ## 1.1.0
 
 ### Features
