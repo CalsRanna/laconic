@@ -56,5 +56,5 @@ await laconic.close();
 
 ### Dependencies
 
-- `laconic: ^2.0.0`
+- `laconic: ^2.2.0`
 - `sqlite3: ^2.7.5`

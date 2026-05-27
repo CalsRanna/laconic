@@ -68,5 +68,5 @@ await laconic.close();
 
 ### Dependencies
 
-- `laconic: ^2.0.0`
+- `laconic: ^2.2.0`
 - `postgres: ^3.5.4`

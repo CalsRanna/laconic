@@ -72,5 +72,5 @@ await laconic.close();
 
 ### Dependencies
 
-- `laconic: ^2.0.0`
+- `laconic: ^2.2.0`
 - `mysql_client: ^0.0.27`
