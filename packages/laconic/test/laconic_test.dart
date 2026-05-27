@@ -45,7 +45,7 @@ class MockGrammar extends SqlGrammar {
           for (var i = 0; i < conditions.length; i++) {
             final c = conditions[i];
             if (i > 0) buffer.write(' ${c['boolean']} ');
-            buffer.write('${c['left']} ${c['operator']} ${c['right']}');
+            buffer.write('${c['left']} ${c['comparator']} ${c['right']}');
           }
         }
       }
@@ -58,8 +58,15 @@ class MockGrammar extends SqlGrammar {
         if (i > 0) buffer.write(' ${w['boolean']} ');
         final type = w['type'];
         if (type == 'basic') {
-          buffer.write('${w['column']} ${w['operator']} ?');
-          bindings.add(w['value']);
+          final value = w['value'];
+          if (value is Expression) {
+            buffer.write(
+              '${w['column']} ${w['comparator']} ${value.sql}',
+            );
+          } else {
+            buffer.write('${w['column']} ${w['comparator']} ?');
+            bindings.add(value);
+          }
         } else if (type == 'in') {
           final values = w['values'] as List<Object?>;
           final not = w['not'] as bool;
@@ -75,15 +82,25 @@ class MockGrammar extends SqlGrammar {
         } else if (type == 'null') {
           final not = w['not'] as bool;
           buffer.write('${w['column']} ${not ? 'is not null' : 'is null'}');
+        } else if (type == 'raw') {
+          buffer.write('(${w['sql']})');
+          bindings.addAll(w['bindings'] as List<Object?>);
         }
       }
     }
 
     if (orders.isNotEmpty) {
       buffer.write(' order by ');
-      buffer.write(
-        orders.map((o) => '${o['column']} ${o['direction']}').join(', '),
-      );
+      final orderParts = <String>[];
+      for (final o in orders) {
+        if (o['type'] == 'raw') {
+          orderParts.add(o['sql'] as String);
+          bindings.addAll(o['bindings'] as List<Object?>);
+        } else {
+          orderParts.add('${o['column']} ${o['direction']}');
+        }
+      }
+      buffer.write(orderParts.join(', '));
     }
 
     if (limit != null) {
@@ -149,8 +166,18 @@ class MockGrammar extends SqlGrammar {
       for (var i = 0; i < wheres.length; i++) {
         final w = wheres[i];
         if (i > 0) buffer.write(' ${w['boolean']} ');
-        buffer.write('${w['column']} ${w['operator']} ?');
-        bindings.add(w['value']);
+        if (w['type'] == 'raw') {
+          buffer.write('(${w['sql']})');
+          bindings.addAll(w['bindings'] as List<Object?>);
+        } else {
+          final value = w['value'];
+          if (value is Expression) {
+            buffer.write('${w['column']} ${w['comparator']} ${value.sql}');
+          } else {
+            buffer.write('${w['column']} ${w['comparator']} ?');
+            bindings.add(value);
+          }
+        }
       }
     }
 
@@ -172,8 +199,18 @@ class MockGrammar extends SqlGrammar {
       for (var i = 0; i < wheres.length; i++) {
         final w = wheres[i];
         if (i > 0) buffer.write(' ${w['boolean']} ');
-        buffer.write('${w['column']} ${w['operator']} ?');
-        bindings.add(w['value']);
+        if (w['type'] == 'raw') {
+          buffer.write('(${w['sql']})');
+          bindings.addAll(w['bindings'] as List<Object?>);
+        } else {
+          final value = w['value'];
+          if (value is Expression) {
+            buffer.write('${w['column']} ${w['comparator']} ${value.sql}');
+          } else {
+            buffer.write('${w['column']} ${w['comparator']} ?');
+            bindings.add(value);
+          }
+        }
       }
     }
 
@@ -215,8 +252,18 @@ class MockGrammar extends SqlGrammar {
       for (var i = 0; i < wheres.length; i++) {
         final w = wheres[i];
         if (i > 0) buffer.write(' ${w['boolean']} ');
-        buffer.write('${w['column']} ${w['operator']} ?');
-        bindings.add(w['value']);
+        if (w['type'] == 'raw') {
+          buffer.write('(${w['sql']})');
+          bindings.addAll(w['bindings'] as List<Object?>);
+        } else {
+          final value = w['value'];
+          if (value is Expression) {
+            buffer.write('${w['column']} ${w['comparator']} ${value.sql}');
+          } else {
+            buffer.write('${w['column']} ${w['comparator']} ?');
+            bindings.add(value);
+          }
+        }
       }
     }
 
@@ -249,8 +296,18 @@ class MockGrammar extends SqlGrammar {
       for (var i = 0; i < wheres.length; i++) {
         final w = wheres[i];
         if (i > 0) buffer.write(' ${w['boolean']} ');
-        buffer.write('${w['column']} ${w['operator']} ?');
-        bindings.add(w['value']);
+        if (w['type'] == 'raw') {
+          buffer.write('(${w['sql']})');
+          bindings.addAll(w['bindings'] as List<Object?>);
+        } else {
+          final value = w['value'];
+          if (value is Expression) {
+            buffer.write('${w['column']} ${w['comparator']} ${value.sql}');
+          } else {
+            buffer.write('${w['column']} ${w['comparator']} ?');
+            bindings.add(value);
+          }
+        }
       }
     }
 

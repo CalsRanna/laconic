@@ -33,18 +33,18 @@ class JoinClause {
   ///
   /// [leftColumn] is the column from the left table (can include table prefix).
   /// [rightColumn] is the column from the right table (can include table prefix).
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   /// [boolean] is the boolean operator ('and' or 'or', defaults to 'and').
   JoinClause on(
     String leftColumn,
     String rightColumn, {
-    String operator = '=',
+    String comparator = '=',
     String boolean = 'and',
   }) {
     _conditions.add({
       'type': 'on',
       'left': leftColumn,
-      'operator': operator,
+      'comparator': comparator,
       'right': rightColumn,
       'boolean': boolean,
     });
@@ -55,7 +55,7 @@ class JoinClause {
   ///
   /// [leftColumn] is the column from the left table.
   /// [rightColumn] is the column from the right table.
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   ///
   /// Example:
   /// ```dart
@@ -67,16 +67,16 @@ class JoinClause {
   JoinClause orOn(
     String leftColumn,
     String rightColumn, {
-    String operator = '=',
+    String comparator = '=',
   }) {
-    return on(leftColumn, rightColumn, operator: operator, boolean: 'or');
+    return on(leftColumn, rightColumn, comparator: comparator, boolean: 'or');
   }
 
   /// Adds a WHERE condition within the JOIN clause.
   ///
   /// [column] is the column name.
   /// [value] is the value to compare.
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   ///
   /// Example:
   /// ```dart
@@ -85,11 +85,11 @@ class JoinClause {
   ///       .where('c.active', true);
   /// })
   /// ```
-  JoinClause where(String column, Object? value, {String operator = '='}) {
+  JoinClause where(String column, Object? value, {String comparator = '='}) {
     _conditions.add({
       'type': 'where',
       'column': column,
-      'operator': operator,
+      'comparator': comparator,
       'value': value,
       'boolean': 'and',
     });
@@ -100,7 +100,7 @@ class JoinClause {
   ///
   /// [column] is the column name.
   /// [value] is the value to compare.
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   ///
   /// Example:
   /// ```dart
@@ -110,11 +110,11 @@ class JoinClause {
   ///       .orWhere('c.type', 'secondary');
   /// })
   /// ```
-  JoinClause orWhere(String column, Object? value, {String operator = '='}) {
+  JoinClause orWhere(String column, Object? value, {String comparator = '='}) {
     _conditions.add({
       'type': 'where',
       'column': column,
-      'operator': operator,
+      'comparator': comparator,
       'value': value,
       'boolean': 'or',
     });
@@ -125,20 +125,20 @@ class JoinClause {
   ///
   /// [first] is the first column name.
   /// [second] is the second column name.
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   ///
   /// Example:
   /// ```dart
   /// query.join('posts p', (join) {
   ///   join.on('u.id', 'p.user_id')
-  ///       .whereColumn('p.created_at', 'p.updated_at', operator: '>');
+  ///       .whereColumn('p.created_at', 'p.updated_at', comparator: '>');
   /// })
   /// ```
-  JoinClause whereColumn(String first, String second, {String operator = '='}) {
+  JoinClause whereColumn(String first, String second, {String comparator = '='}) {
     _conditions.add({
       'type': 'column',
       'first': first,
-      'operator': operator,
+      'comparator': comparator,
       'second': second,
       'boolean': 'and',
     });
@@ -149,16 +149,16 @@ class JoinClause {
   ///
   /// [first] is the first column name.
   /// [second] is the second column name.
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   JoinClause orWhereColumn(
     String first,
     String second, {
-    String operator = '=',
+    String comparator = '=',
   }) {
     _conditions.add({
       'type': 'column',
       'first': first,
-      'operator': operator,
+      'comparator': comparator,
       'second': second,
       'boolean': 'or',
     });

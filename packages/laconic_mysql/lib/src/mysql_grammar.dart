@@ -46,7 +46,7 @@ class MysqlGrammar extends SqlGrammar {
     }
 
     if (orders.isNotEmpty) {
-      buffer.write(_compileOrders(orders));
+      buffer.write(_compileOrders(orders, bindings));
     }
 
     if (limit != null) {
@@ -268,16 +268,25 @@ class MysqlGrammar extends SqlGrammar {
       if (type == 'on') {
         // ON clause: column = column
         parts.add(
-          '$boolean${condition['left']} ${condition['operator']} ${condition['right']}',
+          '$boolean${condition['left']} ${condition['comparator']} ${condition['right']}',
         );
       } else if (type == 'where') {
-        // WHERE clause within JOIN: column = ?
-        parts.add('$boolean${condition['column']} ${condition['operator']} ?');
-        bindings.add(condition['value']);
+        // WHERE clause within JOIN
+        final value = condition['value'];
+        if (value is Expression) {
+          parts.add(
+            '$boolean${condition['column']} ${condition['comparator']} ${value.sql}',
+          );
+        } else {
+          parts.add(
+            '$boolean${condition['column']} ${condition['comparator']} ?',
+          );
+          bindings.add(value);
+        }
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
-          '$boolean${condition['first']} ${condition['operator']} ${condition['second']}',
+          '$boolean${condition['first']} ${condition['comparator']} ${condition['second']}',
         );
       } else if (type == 'null') {
         // WHERE column IS NULL or WHERE column IS NOT NULL
@@ -317,6 +326,9 @@ class MysqlGrammar extends SqlGrammar {
         parts.add(
           '$boolean$column $betweenKeyword ${betweenColumns[0]} and ${betweenColumns[1]}',
         );
+      } else if (type == 'raw') {
+        parts.add('$boolean(${condition['sql']})');
+        bindings.addAll(condition['bindings'] as List<Object?>);
       }
     }
 
@@ -336,13 +348,19 @@ class MysqlGrammar extends SqlGrammar {
       final type = where['type'];
 
       if (type == 'basic') {
-        // WHERE column = ?
-        parts.add('$boolean${where['column']} ${where['operator']} ?');
-        bindings.add(where['value']);
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add(
+            '$boolean${where['column']} ${where['comparator']} ${value.sql}',
+          );
+        } else {
+          parts.add('$boolean${where['column']} ${where['comparator']} ?');
+          bindings.add(value);
+        }
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
-          '$boolean${where['first']} ${where['operator']} ${where['second']}',
+          '$boolean${where['first']} ${where['comparator']} ${where['second']}',
         );
       } else if (type == 'in') {
         // WHERE column IN (?, ?, ?) or WHERE column NOT IN (?, ?, ?)
@@ -385,10 +403,10 @@ class MysqlGrammar extends SqlGrammar {
       } else if (type == 'all') {
         // WHERE (col1 = ? AND col2 = ? AND col3 = ?)
         final columns = where['columns'] as List<String>;
-        final operator = where['operator'];
+        final comparator = where['comparator'];
         final value = where['value'];
         final conditions = columns
-            .map((col) => '$col $operator ?')
+            .map((col) => '$col $comparator ?')
             .join(' and ');
         parts.add('$boolean($conditions)');
         for (var j = 0; j < columns.length; j++) {
@@ -397,10 +415,10 @@ class MysqlGrammar extends SqlGrammar {
       } else if (type == 'any') {
         // WHERE (col1 = ? OR col2 = ? OR col3 = ?)
         final columns = where['columns'] as List<String>;
-        final operator = where['operator'];
+        final comparator = where['comparator'];
         final value = where['value'];
         final conditions = columns
-            .map((col) => '$col $operator ?')
+            .map((col) => '$col $comparator ?')
             .join(' or ');
         parts.add('$boolean($conditions)');
         for (var j = 0; j < columns.length; j++) {
@@ -409,10 +427,10 @@ class MysqlGrammar extends SqlGrammar {
       } else if (type == 'none') {
         // WHERE NOT (col1 = ? OR col2 = ? OR col3 = ?)
         final columns = where['columns'] as List<String>;
-        final operator = where['operator'];
+        final comparator = where['comparator'];
         final value = where['value'];
         final conditions = columns
-            .map((col) => '$col $operator ?')
+            .map((col) => '$col $comparator ?')
             .join(' or ');
         parts.add('${boolean}not ($conditions)');
         for (var j = 0; j < columns.length; j++) {
@@ -421,6 +439,9 @@ class MysqlGrammar extends SqlGrammar {
       } else if (type == 'nested') {
         final nested = _compileWheres(where['conditions'], bindings);
         parts.add('$boolean($nested)');
+      } else if (type == 'raw') {
+        parts.add('$boolean(${where['sql']})');
+        bindings.addAll(where['bindings'] as List<Object?>);
       }
     }
 
@@ -428,12 +449,18 @@ class MysqlGrammar extends SqlGrammar {
   }
 
   /// Compiles ORDER BY clauses.
-  String _compileOrders(List<Map<String, dynamic>> orders) {
+  String _compileOrders(List<Map<String, dynamic>> orders, List<Object?> bindings) {
     final buffer = StringBuffer();
     buffer.write(' order by ');
 
     for (var i = 0; i < orders.length; i++) {
-      buffer.write('${orders[i]['column']} ${orders[i]['direction']}');
+      final order = orders[i];
+      if (order['type'] == 'raw') {
+        buffer.write(order['sql']);
+        bindings.addAll(order['bindings'] as List<Object?>);
+      } else {
+        buffer.write('${order['column']} ${order['direction']}');
+      }
       if (i < orders.length - 1) {
         buffer.write(', ');
       }
@@ -457,8 +484,21 @@ class MysqlGrammar extends SqlGrammar {
     for (var i = 0; i < havings.length; i++) {
       final having = havings[i];
       final boolean = i == 0 ? '' : ' ${having['boolean']} ';
-      parts.add('$boolean${having['column']} ${having['operator']} ?');
-      bindings.add(having['value']);
+
+      if (having['type'] == 'raw') {
+        parts.add('$boolean(${having['sql']})');
+        bindings.addAll(having['bindings'] as List<Object?>);
+      } else {
+        final value = having['value'];
+        if (value is Expression) {
+          parts.add(
+            '$boolean${having['column']} ${having['comparator']} ${value.sql}',
+          );
+        } else {
+          parts.add('$boolean${having['column']} ${having['comparator']} ?');
+          bindings.add(value);
+        }
+      }
     }
 
     return parts.join('');

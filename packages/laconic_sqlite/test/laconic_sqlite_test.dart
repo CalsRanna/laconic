@@ -346,7 +346,7 @@ void main() {
       var results =
           await laconic
               .table(postTable)
-              .whereColumn('user_id', 'id', operator: '!=')
+              .whereColumn('user_id', 'id', comparator: '!=')
               .get();
       expect(results.length, 2);
     });
@@ -473,8 +473,8 @@ void main() {
                 '$postTable p',
                 (join) => join
                     .on('u.id', 'p.user_id')
-                    .where('u.age', 25, operator: '>')
-                    .orOn('u.id', 'p.id', operator: '='),
+                    .where('u.age', 25, comparator: '>')
+                    .orOn('u.id', 'p.id', comparator: '='),
               )
               .orderBy('u.name')
               .get();
@@ -580,6 +580,146 @@ void main() {
               .orderBy('u.name')
               .get();
       expect(results.length, 3);
+    });
+
+    // ==================== Raw Expressions ====================
+
+    test('selectRaw adds raw expression to select clause', () async {
+      final results = await laconic
+          .table(userTable)
+          .selectRaw('COUNT(*) as total')
+          .get();
+      expect(results.length, 1);
+      expect(results.first['total'], greaterThan(0));
+    });
+
+    test('selectRaw combines with regular select', () async {
+      final results = await laconic
+          .table(userTable)
+          .select(['id', 'name'])
+          .selectRaw('age + 1 as next_age')
+          .where('id', 1)
+          .get();
+      expect(results.length, 1);
+      expect(results.first['next_age'], 26); // John's age is 25
+    });
+
+    test('whereRaw adds raw where condition', () async {
+      final results = await laconic
+          .table(userTable)
+          .whereRaw('id = ?', [1])
+          .get();
+      expect(results.length, 1);
+      expect(results.first['name'], 'John');
+    });
+
+    test('whereRaw without bindings', () async {
+      final results = await laconic
+          .table(userTable)
+          .whereRaw('1 = 1')
+          .get();
+      expect(results.length, 3);
+    });
+
+    test('orWhereRaw combines with regular where', () async {
+      final results = await laconic
+          .table(userTable)
+          .where('id', 1)
+          .orWhereRaw('id = ?', [2])
+          .get();
+      expect(results.length, 2);
+    });
+
+    test('where accepts raw() expression as value', () async {
+      final results = await laconic
+          .table(userTable)
+          .where('age', raw('25 + 5'), comparator: '>')
+          .get();
+      // age > 30 matches Jack (35) only
+      expect(results.length, 1);
+      expect(results.first['name'], 'Jack');
+    });
+
+    test('whereRaw combined with regular where uses AND', () async {
+      final results = await laconic
+          .table(userTable)
+          .whereRaw('id > ?', [0])
+          .where('age', 30)
+          .get();
+      expect(results.length, 1);
+      expect(results.first['name'], 'Jane');
+    });
+
+    test('havingRaw filters aggregated results', () async {
+      await laconic.table(userTable).insert([
+        {'name': 'Duplicate', 'age': 30},
+      ]);
+
+      final results = await laconic
+          .table(userTable)
+          .selectRaw('age, COUNT(*) as cnt')
+          .groupBy('age')
+          .havingRaw('COUNT(*) > ?', [1])
+          .get();
+
+      // age 30 should have count 2 (Jane + Duplicate)
+      expect(results.any((r) => r['age'] == 30 && r['cnt'] == 2), isTrue);
+
+      // Cleanup
+      await laconic
+          .table(userTable)
+          .where('name', 'Duplicate')
+          .delete();
+    });
+
+    test('orHavingRaw combines with having', () async {
+      final results = await laconic
+          .table(userTable)
+          .selectRaw('age, COUNT(*) as cnt')
+          .groupBy('age')
+          .having('age', 25)
+          .orHavingRaw('age = ?', [30])
+          .get();
+      expect(results.length, 2);
+    });
+
+    test('orderByRaw with RANDOM', () async {
+      final results = await laconic
+          .table(userTable)
+          .orderByRaw('RANDOM()')
+          .get();
+      expect(results.length, 3);
+    });
+
+    test('orderByRaw with bindings', () async {
+      final results = await laconic
+          .table(userTable)
+          .orderByRaw('CASE WHEN age > ? THEN 0 ELSE 1 END', [25])
+          .get();
+      expect(results.length, 3);
+      // Jane (age 30) and Bob (age 35) > 25 should come first
+      expect(results.first['age'], greaterThan(25));
+    });
+
+    test('groupByRaw groups by expression', () async {
+      final results = await laconic
+          .table(userTable)
+          .selectRaw('age >= 30 as is_older, COUNT(*) as cnt')
+          .groupByRaw('age >= 30')
+          .orderBy('is_older')
+          .get();
+      expect(results.length, 2); // true and false groups
+    });
+
+    test('having accepts raw() expression as value', () async {
+      final results = await laconic
+          .table(userTable)
+          .selectRaw('age, COUNT(*) as cnt')
+          .groupBy('age')
+          .having('cnt', raw('2'), comparator: '>')
+          .get();
+      // No age has count > 2 in base data
+      expect(results.length, 0);
     });
   });
 }

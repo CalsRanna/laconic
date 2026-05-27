@@ -52,4 +52,5 @@ export 'src/grammar/compiled_query.dart';
 export 'src/grammar/grammar.dart';
 export 'src/query_builder/join_clause.dart';
 export 'src/query_builder/query_builder.dart';
+export 'src/expression.dart';
 export 'src/result.dart';

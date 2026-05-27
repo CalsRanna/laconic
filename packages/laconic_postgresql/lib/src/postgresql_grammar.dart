@@ -48,7 +48,7 @@ class PostgresqlGrammar extends SqlGrammar {
     }
 
     if (orders.isNotEmpty) {
-      buffer.write(_compileOrders(orders));
+      buffer.write(_compileOrders(orders, bindings));
     }
 
     if (limit != null) {
@@ -276,21 +276,29 @@ class PostgresqlGrammar extends SqlGrammar {
         // ON clause: column = column
         parts.add(
           '$boolean${condition['left']} '
-          '${condition['operator']} '
+          '${condition['comparator']} '
           '${condition['right']}',
         );
       } else if (type == 'where') {
-        // WHERE clause within JOIN: column = $1
-        parts.add(
-          '$boolean${condition['column']} '
-          '${condition['operator']} \$${bindings.length + 1}',
-        );
-        bindings.add(condition['value']);
+        // WHERE clause within JOIN
+        final value = condition['value'];
+        if (value is Expression) {
+          parts.add(
+            '$boolean${condition['column']} '
+            '${condition['comparator']} ${value.sql}',
+          );
+        } else {
+          parts.add(
+            '$boolean${condition['column']} '
+            '${condition['comparator']} \$${bindings.length + 1}',
+          );
+          bindings.add(value);
+        }
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
           '$boolean${condition['first']} '
-          '${condition['operator']} '
+          '${condition['comparator']} '
           '${condition['second']}',
         );
       } else if (type == 'null') {
@@ -336,6 +344,13 @@ class PostgresqlGrammar extends SqlGrammar {
         parts.add(
           '$boolean$column $betweenKeyword ${betweenColumns[0]} and ${betweenColumns[1]}',
         );
+      } else if (type == 'raw') {
+        final convertedSql = _compileRawSql(
+          condition['sql'],
+          condition['bindings'] as List<Object?>,
+          bindings,
+        );
+        parts.add('$boolean($convertedSql)');
       }
     }
 
@@ -355,17 +370,24 @@ class PostgresqlGrammar extends SqlGrammar {
       final type = where['type'];
 
       if (type == 'basic') {
-        // WHERE column = $1
-        parts.add(
-          '$boolean${where['column']} '
-          '${where['operator']} \$${bindings.length + 1}',
-        );
-        bindings.add(where['value']);
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add(
+            '$boolean${where['column']} '
+            '${where['comparator']} ${value.sql}',
+          );
+        } else {
+          parts.add(
+            '$boolean${where['column']} '
+            '${where['comparator']} \$${bindings.length + 1}',
+          );
+          bindings.add(value);
+        }
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
           '$boolean${where['first']} '
-          '${where['operator']} '
+          '${where['comparator']} '
           '${where['second']}',
         );
       } else if (type == 'in') {
@@ -416,39 +438,46 @@ class PostgresqlGrammar extends SqlGrammar {
       } else if (type == 'all') {
         // WHERE (col1 = $1 AND col2 = $2 AND col3 = $3)
         final columns = where['columns'] as List<String>;
-        final operator = where['operator'];
+        final comparator = where['comparator'];
         final value = where['value'];
         final conditions = <String>[];
         for (var j = 0; j < columns.length; j++) {
-          conditions.add('${columns[j]} $operator \$${bindings.length + 1}');
+          conditions.add('${columns[j]} $comparator \$${bindings.length + 1}');
           bindings.add(value);
         }
         parts.add('$boolean(${conditions.join(' and ')})');
       } else if (type == 'any') {
         // WHERE (col1 = $1 OR col2 = $2 OR col3 = $3)
         final columns = where['columns'] as List<String>;
-        final operator = where['operator'];
+        final comparator = where['comparator'];
         final value = where['value'];
         final conditions = <String>[];
         for (var j = 0; j < columns.length; j++) {
-          conditions.add('${columns[j]} $operator \$${bindings.length + 1}');
+          conditions.add('${columns[j]} $comparator \$${bindings.length + 1}');
           bindings.add(value);
         }
         parts.add('$boolean(${conditions.join(' or ')})');
       } else if (type == 'none') {
         // WHERE NOT (col1 = $1 OR col2 = $2 OR col3 = $3)
         final columns = where['columns'] as List<String>;
-        final operator = where['operator'];
+        final comparator = where['comparator'];
         final value = where['value'];
         final conditions = <String>[];
         for (var j = 0; j < columns.length; j++) {
-          conditions.add('${columns[j]} $operator \$${bindings.length + 1}');
+          conditions.add('${columns[j]} $comparator \$${bindings.length + 1}');
           bindings.add(value);
         }
         parts.add('${boolean}not (${conditions.join(' or ')})');
       } else if (type == 'nested') {
         final nested = _compileWheres(where['conditions'], bindings);
         parts.add('$boolean($nested)');
+      } else if (type == 'raw') {
+        final convertedSql = _compileRawSql(
+          where['sql'],
+          where['bindings'] as List<Object?>,
+          bindings,
+        );
+        parts.add('$boolean($convertedSql)');
       }
     }
 
@@ -456,15 +485,25 @@ class PostgresqlGrammar extends SqlGrammar {
   }
 
   /// Compiles ORDER BY clauses.
-  String _compileOrders(List<Map<String, dynamic>> orders) {
+  String _compileOrders(List<Map<String, dynamic>> orders, List<Object?> bindings) {
     final buffer = StringBuffer();
     buffer.write(' order by ');
 
     for (var i = 0; i < orders.length; i++) {
-      buffer.write(
-        '${orders[i]['column']} '
-        '${orders[i]['direction']}',
-      );
+      final order = orders[i];
+      if (order['type'] == 'raw') {
+        final convertedSql = _compileRawSql(
+          order['sql'],
+          order['bindings'] as List<Object?>,
+          bindings,
+        );
+        buffer.write(convertedSql);
+      } else {
+        buffer.write(
+          '${order['column']} '
+          '${order['direction']}',
+        );
+      }
       if (i < orders.length - 1) {
         buffer.write(', ');
       }
@@ -488,13 +527,45 @@ class PostgresqlGrammar extends SqlGrammar {
     for (var i = 0; i < havings.length; i++) {
       final having = havings[i];
       final boolean = i == 0 ? '' : ' ${having['boolean']} ';
-      parts.add(
-        '$boolean${having['column']} '
-        '${having['operator']} \$${bindings.length + 1}',
-      );
-      bindings.add(having['value']);
+
+      if (having['type'] == 'raw') {
+        final convertedSql = _compileRawSql(
+          having['sql'],
+          having['bindings'] as List<Object?>,
+          bindings,
+        );
+        parts.add('$boolean($convertedSql)');
+      } else {
+        final value = having['value'];
+        if (value is Expression) {
+          parts.add(
+            '$boolean${having['column']} '
+            '${having['comparator']} ${value.sql}',
+          );
+        } else {
+          parts.add(
+            '$boolean${having['column']} '
+            '${having['comparator']} \$${bindings.length + 1}',
+          );
+          bindings.add(value);
+        }
+      }
     }
 
     return parts.join('');
+  }
+
+  /// Replaces `?` placeholders in raw SQL with `$N` positional placeholders.
+  String _compileRawSql(
+    String rawSql,
+    List<Object?> rawBindings,
+    List<Object?> bindings,
+  ) {
+    var sql = rawSql;
+    for (final binding in rawBindings) {
+      sql = sql.replaceFirst('?', '\$${bindings.length + 1}');
+      bindings.add(binding);
+    }
+    return sql;
   }
 }

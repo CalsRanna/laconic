@@ -313,6 +313,18 @@ class QueryBuilder {
     return this;
   }
 
+  /// Adds a raw ORDER BY expression.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.orderByRaw('RANDOM()');
+  /// query.orderByRaw('FIELD(status, ?, ?, ?)', ['active', 'pending', 'inactive']);
+  /// ```
+  QueryBuilder orderByRaw(String sql, [List<Object?> bindings = const []]) {
+    _orders.add({'type': 'raw', 'sql': sql, 'bindings': bindings});
+    return this;
+  }
+
   /// Adds an OR WHERE condition to the query.
   ///
   /// [column] is the column name.
@@ -326,8 +338,44 @@ class QueryBuilder {
     _wheres.add({
       'type': 'basic',
       'column': column,
-      'operator': comparator,
+      'comparator': comparator,
       'value': value,
+      'boolean': 'or',
+    });
+    return this;
+  }
+
+  /// Adds a raw WHERE condition.
+  ///
+  /// The [sql] is inserted directly into the WHERE clause. Use [bindings]
+  /// for parameterized values.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.whereRaw('created_at > NOW()');
+  /// query.whereRaw('price > ? AND status = ?', [100, 'active']);
+  /// ```
+  QueryBuilder whereRaw(String sql, [List<Object?> bindings = const []]) {
+    _wheres.add({
+      'type': 'raw',
+      'sql': sql,
+      'bindings': bindings,
+      'boolean': 'and',
+    });
+    return this;
+  }
+
+  /// Adds an OR raw WHERE condition.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.where('status', 'active').orWhereRaw('deleted_at IS NULL');
+  /// ```
+  QueryBuilder orWhereRaw(String sql, [List<Object?> bindings = const []]) {
+    _wheres.add({
+      'type': 'raw',
+      'sql': sql,
+      'bindings': bindings,
       'boolean': 'or',
     });
     return this;
@@ -358,6 +406,25 @@ class QueryBuilder {
       _columns = columns;
     } else {
       _columns.addAll(columns);
+    }
+    return this;
+  }
+
+  /// Adds a raw SELECT expression.
+  ///
+  /// The [sql] is inserted directly into the SELECT clause without
+  /// parameterization or column-name wrapping.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.selectRaw('COUNT(*) as count');
+  /// query.select(['name']).selectRaw('COUNT(*) as count');
+  /// ```
+  QueryBuilder selectRaw(String sql) {
+    if (_columns.length == 1 && _columns[0] == '*') {
+      _columns = [sql];
+    } else {
+      _columns.add(sql);
     }
     return this;
   }
@@ -451,7 +518,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'basic',
       'column': column,
-      'operator': comparator,
+      'comparator': comparator,
       'value': value,
       'boolean': 'and',
     });
@@ -462,22 +529,22 @@ class QueryBuilder {
   ///
   /// [first] is the first column name.
   /// [second] is the second column name.
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   ///
   /// Example:
   /// ```dart
   /// query.whereColumn('first_name', 'last_name')
-  /// query.whereColumn('updated_at', 'created_at', operator: '>')
+  /// query.whereColumn('updated_at', 'created_at', comparator: '>')
   /// ```
   QueryBuilder whereColumn(
     String first,
     String second, {
-    String operator = '=',
+    String comparator = '=',
   }) {
     _wheres.add({
       'type': 'column',
       'first': first,
-      'operator': operator,
+      'comparator': comparator,
       'second': second,
       'boolean': 'and',
     });
@@ -488,21 +555,21 @@ class QueryBuilder {
   ///
   /// [columns] is the list of column names.
   /// [value] is the value to compare.
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   ///
   /// Example:
   /// ```dart
-  /// query.whereAll(['title', 'content'], '%Laravel%', operator: 'like')
+  /// query.whereAll(['title', 'content'], '%Laravel%', comparator: 'like')
   /// ```
   QueryBuilder whereAll(
     List<String> columns,
     Object? value, {
-    String operator = '=',
+    String comparator = '=',
   }) {
     _wheres.add({
       'type': 'all',
       'columns': columns,
-      'operator': operator,
+      'comparator': comparator,
       'value': value,
       'boolean': 'and',
     });
@@ -513,21 +580,21 @@ class QueryBuilder {
   ///
   /// [columns] is the list of column names.
   /// [value] is the value to compare.
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   ///
   /// Example:
   /// ```dart
-  /// query.whereAny(['name', 'email', 'phone'], 'Example%', operator: 'like')
+  /// query.whereAny(['name', 'email', 'phone'], 'Example%', comparator: 'like')
   /// ```
   QueryBuilder whereAny(
     List<String> columns,
     Object? value, {
-    String operator = '=',
+    String comparator = '=',
   }) {
     _wheres.add({
       'type': 'any',
       'columns': columns,
-      'operator': operator,
+      'comparator': comparator,
       'value': value,
       'boolean': 'and',
     });
@@ -538,21 +605,21 @@ class QueryBuilder {
   ///
   /// [columns] is the list of column names.
   /// [value] is the value to compare.
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   ///
   /// Example:
   /// ```dart
-  /// query.whereNone(['title', 'lyrics', 'tags'], '%explicit%', operator: 'like')
+  /// query.whereNone(['title', 'lyrics', 'tags'], '%explicit%', comparator: 'like')
   /// ```
   QueryBuilder whereNone(
     List<String> columns,
     Object? value, {
-    String operator = '=',
+    String comparator = '=',
   }) {
     _wheres.add({
       'type': 'none',
       'columns': columns,
-      'operator': operator,
+      'comparator': comparator,
       'value': value,
       'boolean': 'and',
     });
@@ -739,21 +806,21 @@ class QueryBuilder {
   ///
   /// [first] is the first column name.
   /// [second] is the second column name.
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   ///
   /// Example:
   /// ```dart
-  /// query.where('status', 'active').orWhereColumn('updated_at', 'created_at', operator: '>')
+  /// query.where('status', 'active').orWhereColumn('updated_at', 'created_at', comparator: '>')
   /// ```
   QueryBuilder orWhereColumn(
     String first,
     String second, {
-    String operator = '=',
+    String comparator = '=',
   }) {
     _wheres.add({
       'type': 'column',
       'first': first,
-      'operator': operator,
+      'comparator': comparator,
       'second': second,
       'boolean': 'or',
     });
@@ -940,21 +1007,21 @@ class QueryBuilder {
   ///
   /// [columns] is the list of column names.
   /// [value] is the value to compare.
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   ///
   /// Example:
   /// ```dart
-  /// query.where('status', 'active').orWhereAll(['title', 'content'], '%Laravel%', operator: 'like')
+  /// query.where('status', 'active').orWhereAll(['title', 'content'], '%Laravel%', comparator: 'like')
   /// ```
   QueryBuilder orWhereAll(
     List<String> columns,
     Object? value, {
-    String operator = '=',
+    String comparator = '=',
   }) {
     _wheres.add({
       'type': 'all',
       'columns': columns,
-      'operator': operator,
+      'comparator': comparator,
       'value': value,
       'boolean': 'or',
     });
@@ -965,21 +1032,21 @@ class QueryBuilder {
   ///
   /// [columns] is the list of column names.
   /// [value] is the value to compare.
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   ///
   /// Example:
   /// ```dart
-  /// query.where('status', 'active').orWhereAny(['name', 'email'], 'Example%', operator: 'like')
+  /// query.where('status', 'active').orWhereAny(['name', 'email'], 'Example%', comparator: 'like')
   /// ```
   QueryBuilder orWhereAny(
     List<String> columns,
     Object? value, {
-    String operator = '=',
+    String comparator = '=',
   }) {
     _wheres.add({
       'type': 'any',
       'columns': columns,
-      'operator': operator,
+      'comparator': comparator,
       'value': value,
       'boolean': 'or',
     });
@@ -1001,20 +1068,31 @@ class QueryBuilder {
     return this;
   }
 
+  /// Adds a raw GROUP BY expression.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.groupByRaw('YEAR(created_at)');
+  /// ```
+  QueryBuilder groupByRaw(String sql) {
+    _groups.add(sql);
+    return this;
+  }
+
   /// Adds a HAVING clause to the query.
   ///
   /// [column] is the column name (usually an aggregate).
   /// [value] is the value to compare.
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   ///
   /// Example:
   /// ```dart
-  /// query.groupBy('account_id').having('account_id', 100, operator: '>')
+  /// query.groupBy('account_id').having('account_id', 100, comparator: '>')
   /// ```
-  QueryBuilder having(String column, Object? value, {String operator = '='}) {
+  QueryBuilder having(String column, Object? value, {String comparator = '='}) {
     _havings.add({
       'column': column,
-      'operator': operator,
+      'comparator': comparator,
       'value': value,
       'boolean': 'and',
     });
@@ -1025,17 +1103,44 @@ class QueryBuilder {
   ///
   /// [column] is the column name (usually an aggregate).
   /// [value] is the value to compare.
-  /// [operator] is the comparison operator (defaults to '=').
+  /// [comparator] is the comparison operator (defaults to '=').
   ///
   /// Example:
   /// ```dart
-  /// query.groupBy('account_id').having('account_id', 100, operator: '>').orHaving('account_id', 50, operator: '<')
+  /// query.groupBy('account_id').having('account_id', 100, comparator: '>').orHaving('account_id', 50, comparator: '<')
   /// ```
-  QueryBuilder orHaving(String column, Object? value, {String operator = '='}) {
+  QueryBuilder orHaving(String column, Object? value, {String comparator = '='}) {
     _havings.add({
       'column': column,
-      'operator': operator,
+      'comparator': comparator,
       'value': value,
+      'boolean': 'or',
+    });
+    return this;
+  }
+
+  /// Adds a raw HAVING condition.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.groupBy('account_id').havingRaw('SUM(amount) > ?', [1000]);
+  /// ```
+  QueryBuilder havingRaw(String sql, [List<Object?> bindings = const []]) {
+    _havings.add({
+      'type': 'raw',
+      'sql': sql,
+      'bindings': bindings,
+      'boolean': 'and',
+    });
+    return this;
+  }
+
+  /// Adds an OR raw HAVING condition.
+  QueryBuilder orHavingRaw(String sql, [List<Object?> bindings = const []]) {
+    _havings.add({
+      'type': 'raw',
+      'sql': sql,
+      'bindings': bindings,
       'boolean': 'or',
     });
     return this;

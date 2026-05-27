@@ -418,11 +418,11 @@ void main() {
       expect(results.length, 3);
     });
 
-    test('whereColumn compares columns with operator', () async {
+    test('whereColumn compares columns with comparator', () async {
       var results =
           await laconic
               .table(postTable)
-              .whereColumn('user_id', 'id', operator: '!=')
+              .whereColumn('user_id', 'id', comparator: '!=')
               .get();
       expect(results.length, 2);
     });
@@ -439,11 +439,11 @@ void main() {
       expect(results.length, 2);
     });
 
-    test('whereAny with like operator', () async {
+    test('whereAny with like comparator', () async {
       var results =
           await laconic
               .table(userTable)
-              .whereAny(['name', 'gender'], '%oh%', operator: 'like')
+              .whereAny(['name', 'gender'], '%oh%', comparator: 'like')
               .get();
       expect(results.length, 1);
       expect(results.first['name'], 'John');
