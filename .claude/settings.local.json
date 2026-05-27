@@ -17,7 +17,8 @@
       "WebFetch(domain:github.com)",
       "mcp__dart-mcp-server__hover",
       "Bash(dart test:*)",
-      "mcp__dart-mcp-server__dart_format"
+      "mcp__dart-mcp-server__dart_format",
+      "Bash(git *)"
     ]
   }
 }

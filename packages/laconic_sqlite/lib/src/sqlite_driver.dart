@@ -36,7 +36,7 @@ class SqliteDriver implements DatabaseDriver {
     try {
       final stmt = _db.prepare(sql);
       final results = stmt.select(params);
-      stmt.dispose();
+      stmt.close();
       return results
           .map(
             (row) =>
@@ -53,7 +53,7 @@ class SqliteDriver implements DatabaseDriver {
     try {
       final stmt = _db.prepare(sql);
       stmt.execute(params);
-      stmt.dispose();
+      stmt.close();
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
@@ -67,7 +67,7 @@ class SqliteDriver implements DatabaseDriver {
     try {
       final stmt = _db.prepare(sql);
       stmt.execute(params);
-      stmt.dispose();
+      stmt.close();
       // Get the last inserted row ID
       final result = _db.select('SELECT last_insert_rowid() as id');
       if (result.isEmpty) {
@@ -108,7 +108,7 @@ class SqliteDriver implements DatabaseDriver {
   @override
   Future<void> close() async {
     if (_database != null) {
-      _database!.dispose();
+      _database!.close();
       _database = null;
     }
   }

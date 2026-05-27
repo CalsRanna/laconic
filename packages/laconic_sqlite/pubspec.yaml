@@ -11,7 +11,7 @@ resolution: workspace
 
 dependencies:
   laconic: ^2.0.0
-  sqlite3: ^2.7.5
+  sqlite3: ^3.3.2
 
 dev_dependencies:
   lints: ^5.1.1
