@@ -109,6 +109,9 @@ class QueryBuilder {
 
   /// Returns the first record matching the query.
   ///
+  /// Always appends `LIMIT 1` for efficiency, regardless of any
+  /// previously set [limit] on the builder.
+  ///
   /// Throws [LaconicException] if no record is found.
   Future<LaconicResult> first() async {
     final compiled = _grammar.compileSelect(
@@ -120,7 +123,7 @@ class QueryBuilder {
       groups: _groups,
       havings: _havings,
       distinct: _distinct,
-      limit: _limit,
+      limit: 1,
       offset: _offset,
     );
 
@@ -477,7 +480,7 @@ class QueryBuilder {
       groups: _groups,
       havings: _havings,
       distinct: _distinct,
-      limit: _limit,
+      limit: 2,
       offset: _offset,
     );
 
