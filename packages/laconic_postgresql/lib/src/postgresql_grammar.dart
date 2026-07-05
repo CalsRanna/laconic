@@ -556,6 +556,13 @@ class PostgresqlGrammar extends SqlGrammar {
   }
 
   /// Replaces `?` placeholders in raw SQL with `$N` positional placeholders.
+  ///
+  /// Uses [String.indexOf] to locate each `?` before replacing, which is
+  /// more robust than blind [String.replaceFirst] when the raw SQL might
+  /// contain `?` characters inside string literals (edge case).
+  ///
+  /// For PostgreSQL-specific raw SQL, prefer using `$1`, `$2`, etc. directly
+  /// to avoid placeholder conversion entirely.
   String _compileRawSql(
     String rawSql,
     List<Object?> rawBindings,
@@ -563,6 +570,8 @@ class PostgresqlGrammar extends SqlGrammar {
   ) {
     var sql = rawSql;
     for (final binding in rawBindings) {
+      final questionPos = sql.indexOf('?');
+      if (questionPos == -1) break;
       sql = sql.replaceFirst('?', '\$${bindings.length + 1}');
       bindings.add(binding);
     }

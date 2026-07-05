@@ -20,6 +20,11 @@ class MysqlDriver implements DatabaseDriver {
   static final _grammar = MysqlGrammar();
   static final _txConnKey = Object();
 
+  /// Cache of prepared statements keyed by connection hash + SQL.
+  /// Avoids the PREPARE → DEALLOCATE round-trip per query.
+  final Map<String, dynamic> _stmtCache = {};
+  static const int _maxCachedStatements = 50;
+
   /// Creates a new MySQL driver with the given configuration.
   MysqlDriver(this.config);
 
@@ -56,9 +61,11 @@ class MysqlDriver implements DatabaseDriver {
   ///
   /// When there are parameters, uses MySQL prepared statements (binary protocol)
   /// via [MySQLConnection.prepare] for safe parameter binding and efficient
-  /// binary transfer. When there are no parameters, uses the text protocol
-  /// directly since MySQL's COM_STMT_PREPARE does not support all statement
-  /// types (e.g., DDL like CREATE DATABASE).
+  /// binary transfer. Prepared statements are cached to avoid the
+  /// PREPARE → DEALLOCATE round-trip on repeated queries.
+  ///
+  /// When there are no parameters, uses the text protocol directly since
+  /// MySQL's COM_STMT_PREPARE does not support all statement types (e.g., DDL).
   Future<IResultSet> _executeOnConn(
     MySQLConnection conn,
     String sql,
@@ -67,11 +74,25 @@ class MysqlDriver implements DatabaseDriver {
     if (params.isEmpty) {
       return conn.execute(sql);
     }
-    final stmt = await conn.prepare(sql);
+
+    final cacheKey = '${identityHashCode(conn)}:$sql';
+    dynamic stmt = _stmtCache[cacheKey];
+    if (stmt == null) {
+      stmt = await conn.prepare(sql);
+      // Evict oldest entry if cache is full
+      if (_stmtCache.length >= _maxCachedStatements) {
+        _stmtCache.remove(_stmtCache.keys.first);
+      }
+      _stmtCache[cacheKey] = stmt;
+    }
+
     try {
       return await stmt.execute(params);
-    } finally {
-      await stmt.deallocate();
+    } catch (e) {
+      // Prepared statement may be stale (connection re-established).
+      // Remove from cache and let the caller handle the error.
+      _stmtCache.remove(cacheKey);
+      rethrow;
     }
   }
 
@@ -130,6 +151,7 @@ class MysqlDriver implements DatabaseDriver {
 
   @override
   Future<void> close() async {
+    _stmtCache.clear();
     if (_pool != null) {
       await _pool!.close();
       _pool = null;

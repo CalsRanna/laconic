@@ -24,6 +24,14 @@ class PostgresqlDriver implements DatabaseDriver {
   static final _grammar = PostgresqlGrammar();
   static final _txSessionKey = Object();
 
+  /// Pre-compiled regex to detect existing $N placeholders in SQL.
+  /// Avoids re-compiling the regex on every query.
+  static final _positionalParamRE = RegExp(r'\$\d+');
+
+  /// Cache of prepared statements keyed by session hash + SQL.
+  final Map<String, dynamic> _stmtCache = {};
+  static const int _maxCachedStatements = 50;
+
   /// Creates a new PostgreSQL driver with the given configuration.
   PostgresqlDriver(this.config);
 
@@ -56,7 +64,7 @@ class PostgresqlDriver implements DatabaseDriver {
   /// Only converts if the SQL contains `?` placeholders.
   String _convertPlaceholders(String sql) {
     // If SQL already contains positional params ($1, $2, etc.), don't convert
-    if (RegExp(r'\$\d+').hasMatch(sql)) {
+    if (_positionalParamRE.hasMatch(sql)) {
       return sql;
     }
     int paramIndex = 0;
@@ -67,12 +75,26 @@ class PostgresqlDriver implements DatabaseDriver {
   }
 
   /// Runs a prepared statement on a given session.
-  Future<Result> _executeOnConn(Session session, String sql, List<Object?> params) async {
-    final stmt = await session.prepare(Sql(sql));
+  ///
+  /// Prepared statements are cached to avoid the Parse → Close round-trip
+  /// on repeated queries. They are tied to the session they were created on.
+  Future<Result> _executeOnConn(
+      Session session, String sql, List<Object?> params) async {
+    final cacheKey = '${identityHashCode(session)}:$sql';
+    dynamic stmt = _stmtCache[cacheKey];
+    if (stmt == null) {
+      stmt = await session.prepare(Sql(sql));
+      if (_stmtCache.length >= _maxCachedStatements) {
+        _stmtCache.remove(_stmtCache.keys.first);
+      }
+      _stmtCache[cacheKey] = stmt;
+    }
+
     try {
       return await stmt.run(params);
-    } finally {
-      await stmt.dispose();
+    } catch (e) {
+      _stmtCache.remove(cacheKey);
+      rethrow;
     }
   }
 
@@ -160,6 +182,7 @@ class PostgresqlDriver implements DatabaseDriver {
 
   @override
   Future<void> close() async {
+    _stmtCache.clear();
     if (_pool != null) {
       await _pool!.close();
       _pool = null;

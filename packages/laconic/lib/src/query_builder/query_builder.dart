@@ -48,8 +48,37 @@ class QueryBuilder {
   /// Returns the count of records matching the query.
   ///
   /// Uses SQL COUNT(*) aggregate function for optimal performance.
-  /// If GROUP BY is used, returns the number of groups.
+  /// When GROUP BY is present, wraps the query in a subquery to count
+  /// groups server-side instead of fetching all rows.
   Future<int> count() async {
+    if (_hasEmptyWhereIn()) return 0;
+
+    if (_groups.isNotEmpty) {
+      // Wrap grouped query in a subquery to count groups server-side.
+      // This avoids fetching all grouped rows over the network.
+      final innerCompiled = _grammar.compileSelect(
+        table: _table,
+        columns: ['1'],
+        wheres: _wheres,
+        joins: _joins,
+        orders: [],
+        groups: _groups,
+        havings: _havings,
+        distinct: false,
+        limit: null,
+        offset: null,
+      );
+      final sql = 'SELECT COUNT(*) as aggregate FROM (${innerCompiled.sql}) as laconic_sub';
+      final results = await _laconic.select(sql, innerCompiled.bindings);
+
+      if (results.isEmpty) return 0;
+      final value = results.first['aggregate'];
+      if (value == null) return 0;
+      if (value is int) return value;
+      if (value is String) return int.tryParse(value) ?? 0;
+      return 0;
+    }
+
     final compiled = _grammar.compileSelect(
       table: _table,
       columns: ['COUNT(*) as aggregate'],
@@ -65,26 +94,13 @@ class QueryBuilder {
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
 
-    if (results.isEmpty) {
-      return 0;
-    }
+    if (results.isEmpty) return 0;
 
-    // If GROUP BY is used, return the number of groups
-    if (_groups.isNotEmpty) {
-      return results.length;
-    }
-
-    // Otherwise return the COUNT(*) value
     final value = results.first['aggregate'];
-    if (value == null) {
-      return 0;
-    }
+    if (value == null) return 0;
 
-    if (value is int) {
-      return value;
-    } else if (value is String) {
-      return int.tryParse(value) ?? 0;
-    }
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value) ?? 0;
 
     return 0;
   }
@@ -114,6 +130,7 @@ class QueryBuilder {
   ///
   /// Throws [LaconicException] if no record is found.
   Future<LaconicResult> first() async {
+    if (_hasEmptyWhereIn()) throw LaconicException('No record found');
     final compiled = _grammar.compileSelect(
       table: _table,
       columns: _columns,
@@ -138,6 +155,8 @@ class QueryBuilder {
 
   /// Returns all records matching the query.
   Future<List<LaconicResult>> get() async {
+    if (_hasEmptyWhereIn()) return [];
+
     final compiled = _grammar.compileSelect(
       table: _table,
       columns: _columns,
@@ -471,6 +490,7 @@ class QueryBuilder {
   /// final user = await query.where('email', 'john@example.com').sole();
   /// ```
   Future<LaconicResult> sole() async {
+    if (_hasEmptyWhereIn()) throw LaconicException('No record found');
     final compiled = _grammar.compileSelect(
       table: _table,
       columns: _columns,
@@ -501,8 +521,11 @@ class QueryBuilder {
 
   /// Updates records matching the query.
   ///
-  /// [data] is a map of column-value pairs to update.
+  /// [data] is a map of column-value pairs to update. Must be non-empty.
   Future<void> update(Map<String, Object?> data) async {
+    if (data.isEmpty) {
+      throw LaconicException('Cannot update with an empty data map');
+    }
     final compiled = _grammar.compileUpdate(
       table: _table,
       data: data,
@@ -1209,16 +1232,22 @@ class QueryBuilder {
   }
 
   /// Helper method for aggregate functions.
+  ///
+  /// Preserves all query clauses. When GROUP BY is present, returns the
+  /// aggregate value from the first group only. For grouped aggregates
+  /// that require all group values, use [get] with [selectRaw] instead.
   Future<double?> _aggregate(String function, String column) async {
+    if (_hasEmptyWhereIn()) return null;
+
     final compiled = _grammar.compileSelect(
       table: _table,
       columns: ['$function($column) as aggregate'],
       wheres: _wheres,
       joins: _joins,
       orders: [],
-      groups: [],
-      havings: [],
-      distinct: false,
+      groups: _groups,
+      havings: _havings,
+      distinct: _distinct,
       limit: null,
       offset: null,
     );
@@ -1255,6 +1284,7 @@ class QueryBuilder {
   /// final hasActiveUsers = await query.where('status', 'active').exists();
   /// ```
   Future<bool> exists() async {
+    if (_hasEmptyWhereIn()) return false;
     final compiled = _grammar.compileSelect(
       table: _table,
       columns: ['1'],
@@ -1298,6 +1328,9 @@ class QueryBuilder {
   /// final nameMap = await query.pluck('name', key: 'id') as Map<Object?, Object?>;
   /// ```
   Future<dynamic> pluck(String column, {String? key}) async {
+    if (_hasEmptyWhereIn()) {
+      return key != null ? <Object?, Object?>{} : <Object?>[];
+    }
     final columns = key != null ? [key, column] : [column];
 
     final compiled = _grammar.compileSelect(
@@ -1337,6 +1370,7 @@ class QueryBuilder {
   /// final email = await query.where('name', 'John').value('email');
   /// ```
   Future<Object?> value(String column) async {
+    if (_hasEmptyWhereIn()) return null;
     final compiled = _grammar.compileSelect(
       table: _table,
       columns: [column],
@@ -1429,5 +1463,33 @@ class QueryBuilder {
     );
 
     await _laconic.statement(compiled.sql, compiled.bindings);
+  }
+
+  /// Returns true if the query has an impossible WHERE condition that
+  /// guarantees zero results — specifically, an AND-condition [whereIn]
+  /// (not [whereNotIn]) with an empty values list.
+  ///
+  /// This allows the query builder to short-circuit and skip the database
+  /// round-trip entirely.
+  bool _hasEmptyWhereIn() {
+    return _checkEmptyWhereIn(_wheres);
+  }
+
+  bool _checkEmptyWhereIn(List<Map<String, dynamic>> conditions) {
+    for (final c in conditions) {
+      if (c['type'] == 'in' &&
+          c['boolean'] == 'and' &&
+          !(c['not'] as bool) &&
+          (c['values'] as List).isEmpty) {
+        return true;
+      }
+      if (c['type'] == 'nested') {
+        if (_checkEmptyWhereIn(
+            c['conditions'] as List<Map<String, dynamic>>)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 }
