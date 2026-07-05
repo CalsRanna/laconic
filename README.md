@@ -8,10 +8,16 @@ A Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and Postgr
 
 ## Features
 
-- **Laravel-style API** - Familiar query builder syntax with 57 methods covering ~75% of Laravel Query Builder's core functionality
-- **Multi-database Support** - Support for MySQL, SQLite, and PostgreSQL via separate driver packages
+- **Laravel-style API** - Familiar query builder syntax with 80+ methods covering ~90% of Laravel Query Builder's core functionality
+- **Multi-database Support** - MySQL, SQLite, and PostgreSQL via separate driver packages
 - **Driver Abstraction** - Clean separation between core query builder and database-specific implementations
-- **Complete JOIN Support** - INNER, LEFT, RIGHT, CROSS JOIN with comprehensive condition methods
+- **Complete JOIN Support** - INNER, LEFT, RIGHT, CROSS JOIN with EXISTS subqueries and 30+ condition methods
+- **Subqueries** - WHERE EXISTS, UNION, nested WHERE groups
+- **Row Locking** - `FOR UPDATE` and `FOR SHARE` support
+- **Upsert** - `INSERT ... ON CONFLICT DO UPDATE` across all three databases
+- **Date WHERE** - `whereDate`, `whereTime`, `whereDay`, `whereMonth`, `whereYear`
+- **Chunking** - Process large result sets in batches with `chunk`, `chunkById`, `each`
+- **Debugging** - `toSql()`, `getBindings()`, `dump()`, `dd()` for query inspection
 - **Chainable Methods** - Fluent query building experience
 - **Parameterized Queries** - Automatic SQL injection prevention
 - **Transaction Support** - Complete transaction management
@@ -21,10 +27,10 @@ A Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and Postgr
 
 | Package | Description | Version |
 |---------|-------------|---------|
-| [laconic](https://pub.dev/packages/laconic) | Core query builder | 2.2.0 |
-| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite driver | 1.1.0 |
-| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL driver | 1.2.0 |
-| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL driver | 1.2.0 |
+| [laconic](https://pub.dev/packages/laconic) | Core query builder | 2.3.0 |
+| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite driver | 1.3.0 |
+| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL driver | 1.3.0 |
+| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL driver | 1.3.0 |
 
 ## Installation
 
@@ -32,10 +38,10 @@ Add the core package and the driver you need:
 
 ```yaml
 dependencies:
-  laconic: ^2.2.0
-  laconic_sqlite: ^1.1.0    # For SQLite
-  # laconic_mysql: ^1.2.0   # For MySQL
-  # laconic_postgresql: ^1.2.0  # For PostgreSQL
+  laconic: ^2.3.0
+  laconic_sqlite: ^1.3.0    # For SQLite
+  # laconic_mysql: ^1.3.0   # For MySQL
+  # laconic_postgresql: ^1.3.0  # For PostgreSQL
 ```
 
 Then run:
@@ -123,6 +129,12 @@ final laconic = Laconic(
 // Get all records
 final users = await laconic.table('users').get();
 
+// Get by primary key (shorthand)
+final user = await laconic.table('users').find(1);
+
+// Get first matching record (shorthand)
+final admin = await laconic.table('users').firstWhere('role', 'admin');
+
 // Get first record (throws if none found)
 final user = await laconic.table('users').first();
 
@@ -137,6 +149,16 @@ final count = await laconic.table('users').count();
 
 // Check if records exist
 final exists = await laconic.table('users').where('id', 1).exists();
+
+// Pluck column values
+final names = await laconic.table('users').pluck('name');           // List
+final map = await laconic.table('users').pluck('name', key: 'id');  // Map<id, name>
+
+// Debug query (prints SQL + bindings, returns this)
+laconic.table('users').where('active', true).dump();
+
+// Get SQL without executing
+final sql = laconic.table('users').where('age', 18, comparator: '>').toSql();
 ```
 
 ### WHERE Clauses
@@ -159,7 +181,7 @@ final users = await laconic.table('users')
     .orWhere('role', 'moderator')
     .get();
 
-// WHERE IN
+// WHERE IN / NOT IN
 final users = await laconic.table('users')
     .whereIn('id', [1, 2, 3])
     .get();
@@ -173,6 +195,34 @@ final usersWithEmail = await laconic.table('users')
 final users = await laconic.table('users')
     .whereBetween('age', min: 18, max: 30)
     .get();
+
+// LIKE / NOT LIKE (sugar)
+final matches = await laconic.table('users')
+    .whereLike('name', 'John%')
+    .get();
+
+// Nested WHERE groups (parenthesized sub-conditions)
+final users = await laconic.table('users')
+    .where('status', 'active')
+    .whereNested((q) => q.where('age', 30).orWhere('role', 'admin'))
+    .get();
+// SQL: WHERE status = ? AND (age = ? OR role = ?)
+
+// Date WHERE clauses
+final todayUsers = await laconic.table('users').whereDate('created_at', DateTime.now()).get();
+final janUsers = await laconic.table('users').whereMonth('created_at', 1).get();
+final year2025 = await laconic.table('users').whereYear('created_at', 2025).get();
+
+// WHERE EXISTS subquery
+final usersWithPosts = await laconic.table('users u')
+    .whereExists((q) => q.from('posts p').whereColumn('p.user_id', 'u.id'))
+    .get();
+
+// Conditional WHERE (Laravel's when/unless)
+final searchName = 'John';
+final users = await laconic.table('users')
+    .when(searchName.isNotEmpty, (q) => q.where('name', searchName))
+    .get();
 ```
 
 ### JOIN Operations
@@ -184,16 +234,35 @@ final results = await laconic.table('users u')
     .join('posts p', (join) => join.on('u.id', 'p.user_id'))
     .get();
 
-// LEFT JOIN with conditions
+// LEFT JOIN with WHERE + LIKE conditions
 final results = await laconic.table('users u')
     .select(['u.name', 'p.title'])
     .leftJoin(
       'posts p',
       (join) => join
           .on('u.id', 'p.user_id')
-          .where('p.status', 'published'),
+          .where('p.status', 'published')
+          .whereLike('p.title', '%Dart%'),
     )
     .get();
+
+// RIGHT JOIN
+final results = await laconic.table('users u')
+    .rightJoin('posts p', (join) => join.on('u.id', 'p.user_id'))
+    .get();
+
+// CROSS JOIN
+final results = await laconic.table('users').crossJoin('roles').get();
+```
+
+### Aggregates
+
+```dart
+final count = await laconic.table('users').count();
+final total = await laconic.table('orders').sum('amount');
+final average = await laconic.table('products').avg('price');
+final highest = await laconic.table('scores').max('score');
+final lowest = await laconic.table('scores').min('score');
 ```
 
 ### Insert / Update / Delete
@@ -204,25 +273,104 @@ await laconic.table('users').insert([
   {'name': 'John', 'age': 25},
 ]);
 
+// Insert (ignore duplicates)
+await laconic.table('users').insertOrIgnore([
+  {'email': 'john@example.com', 'name': 'John'},
+]);
+
 // Insert and get ID
 final id = await laconic.table('users').insertGetId({
   'name': 'Jane',
   'age': 30,
 });
 
+// Upsert (insert or update on conflict)
+await laconic.table('users').upsert(
+  [{'email': 'john@example.com', 'name': 'John Updated'}],
+  uniqueBy: ['email'],
+  update: ['name'],
+);
+
 // Update
 await laconic.table('users')
     .where('id', 1)
     .update({'name': 'New Name'});
+
+// Increment / Decrement
+await laconic.table('posts').where('id', 1).increment('views');
+await laconic.table('products').where('id', 1).decrement('stock', amount: 5);
 
 // Delete
 await laconic.table('users')
     .where('id', 99)
     .delete();
 
+// Truncate (remove all rows, reset auto-increment)
+await laconic.table('logs').truncate();
+
 // Note: delete(), increment(), and decrement() require a WHERE clause by default
-// to prevent accidental mass operations. To explicitly allow without WHERE:
-// await laconic.table('users').delete(allowWithoutWhere: true);
+// to prevent accidental mass operations.
+
+// Row Locking
+final locked = await laconic.table('users')
+    .where('status', 'pending')
+    .lockForUpdate()   // FOR UPDATE (all DBs)
+    .get();
+
+final shared = await laconic.table('users')
+    .where('id', 5)
+    .sharedLock()      // FOR SHARE (PG) / LOCK IN SHARE MODE (MySQL)
+    .get();
+```
+
+### Ordering and Limiting
+
+```dart
+final users = await laconic.table('users')
+    .orderBy('name')
+    .orderByDesc('created_at')      // sugar for orderBy(col, direction: 'desc')
+    .latest()                        // orderByDesc('created_at')
+    .oldest('updated_at')            // orderBy('updated_at')
+    .inRandomOrder()                 // RANDOM() ordering
+    .skip(10)                        // alias for offset(10)
+    .take(5)                         // alias for limit(5)
+    .forPage(3, perPage: 15)        // limit(15).offset(30)
+    .get();
+```
+
+### UNION
+
+```dart
+final results = await laconic.table('users')
+    .where('role', 'admin')
+    .union((q) => q.from('users').where('role', 'moderator'))
+    .get();
+```
+
+### Chunking Large Results
+
+```dart
+// Process 100 records at a time
+await laconic.table('users').chunk(100, (users) async {
+  for (final user in users) {
+    await processUser(user);
+  }
+});
+
+// ID-based chunking (avoids large OFFSET)
+await laconic.table('users').chunkById(100, (users) async {
+  // ...
+});
+
+// Per-row callback with automatic chunking
+await laconic.table('users').each((user) async {
+  await sendWelcomeEmail(user['email']);
+});
+
+// Clone builder for reusable query scopes
+final activeQuery = laconic.table('users').where('active', true);
+final count = await activeQuery.clone().count();
+final results = await activeQuery.clone().get();
 ```
 
 ### Transactions
