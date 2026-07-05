@@ -29,6 +29,7 @@ abstract class SqlGrammar {
     required bool distinct,
     int? limit,
     int? offset,
+    List<Map<String, dynamic>> locks = const [],
   });
 
   /// Compiles an INSERT query.
@@ -109,5 +110,22 @@ abstract class SqlGrammar {
     required int amount,
     Map<String, Object?>? extra,
     required List<Map<String, dynamic>> wheres,
+  });
+
+  /// Compiles a TRUNCATE query.
+  CompiledQuery compileTruncate({required String table});
+
+  /// Compiles an INSERT OR IGNORE query.
+  CompiledQuery compileInsertOrIgnore({
+    required String table,
+    required List<Map<String, Object?>> data,
+  });
+
+  /// Compiles an UPSERT (INSERT ... ON CONFLICT / ON DUPLICATE KEY UPDATE) query.
+  CompiledQuery compileUpsert({
+    required String table,
+    required List<Map<String, Object?>> data,
+    required List<String> uniqueBy,
+    List<String>? update,
   });
 }

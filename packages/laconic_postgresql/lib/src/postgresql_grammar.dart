@@ -18,6 +18,7 @@ class PostgresqlGrammar extends SqlGrammar {
     required bool distinct,
     int? limit,
     int? offset,
+    List<Map<String, dynamic>> locks = const [],
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
@@ -59,6 +60,14 @@ class PostgresqlGrammar extends SqlGrammar {
     if (offset != null) {
       buffer.write(' offset \$${bindings.length + 1}');
       bindings.add(offset);
+    }
+
+    for (final lock in locks) {
+      if (lock['type'] == 'for_update') {
+        buffer.write(' for update');
+      } else if (lock['type'] == 'for_share') {
+        buffer.write(' for share');
+      }
     }
 
     return CompiledQuery(sql: buffer.toString(), bindings: bindings);
@@ -219,6 +228,49 @@ class PostgresqlGrammar extends SqlGrammar {
     return CompiledQuery(sql: buffer.toString(), bindings: bindings);
   }
 
+  @override
+  CompiledQuery compileTruncate({required String table}) {
+    return CompiledQuery(
+      sql: 'truncate table $table restart identity',
+      bindings: [],
+    );
+  }
+
+  @override
+  CompiledQuery compileInsertOrIgnore({
+    required String table,
+    required List<Map<String, Object?>> data,
+  }) {
+    final compiled = compileInsert(table: table, data: data);
+    return CompiledQuery(
+      sql: '${compiled.sql} on conflict do nothing',
+      bindings: compiled.bindings,
+    );
+  }
+
+  @override
+  CompiledQuery compileUpsert({
+    required String table,
+    required List<Map<String, Object?>> data,
+    required List<String> uniqueBy,
+    List<String>? update,
+  }) {
+    final compiled = compileInsert(table: table, data: data);
+    final conflictCols = uniqueBy.join(', ');
+    final updateCols = update ?? data.first.keys.where((k) => !uniqueBy.contains(k)).toList();
+    if (updateCols.isEmpty) {
+      return CompiledQuery(
+        sql: '${compiled.sql} on conflict($conflictCols) do nothing',
+        bindings: compiled.bindings,
+      );
+    }
+    final setClauses = updateCols.map((c) => '$c = excluded.$c').join(', ');
+    return CompiledQuery(
+      sql: '${compiled.sql} on conflict($conflictCols) do update set $setClauses',
+      bindings: compiled.bindings,
+    );
+  }
+
   /// Compiles column names for SELECT clause.
   String _compileColumns(List<String> columns) {
     if (columns.isEmpty || (columns.length == 1 && columns[0] == '*')) {
@@ -351,6 +403,14 @@ class PostgresqlGrammar extends SqlGrammar {
           bindings,
         );
         parts.add('$boolean($convertedSql)');
+      } else if (type == 'exists') {
+        final not = condition['not'] as bool;
+        final keyword = not ? 'not exists' : 'exists';
+        final subSql = condition['sql'] as String;
+        final subBindings = condition['bindings'] as List<Object?>;
+        final offsetSql = _offsetSubqueryPlaceholders(subSql, bindings.length);
+        bindings.addAll(subBindings);
+        parts.add('$boolean$keyword ($offsetSql)');
       }
     }
 
@@ -478,10 +538,33 @@ class PostgresqlGrammar extends SqlGrammar {
           bindings,
         );
         parts.add('$boolean($convertedSql)');
+      } else if (type == 'exists') {
+        final not = where['not'] as bool;
+        final keyword = not ? 'not exists' : 'exists';
+        final subSql = where['sql'] as String;
+        final subBindings = where['bindings'] as List<Object?>;
+        final offsetSql = _offsetSubqueryPlaceholders(subSql, bindings.length);
+        bindings.addAll(subBindings);
+        parts.add('$boolean$keyword ($offsetSql)');
+      } else if (type == 'date') {
+        final func = _dateFunction(where['dateType'] as String);
+        parts.add('$boolean$func(${where['column']}) = \$${bindings.length + 1}');
+        bindings.add(where['value']);
       }
     }
 
     return parts.join('');
+  }
+
+  String _dateFunction(String dateType) {
+    switch (dateType) {
+      case 'date': return 'date';
+      case 'time': return 'cast(';
+      case 'day': return 'extract(day from ';
+      case 'month': return 'extract(month from ';
+      case 'year': return 'extract(year from ';
+      default: return dateType;
+    }
   }
 
   /// Compiles ORDER BY clauses.
@@ -576,5 +659,16 @@ class PostgresqlGrammar extends SqlGrammar {
       bindings.add(binding);
     }
     return sql;
+  }
+
+  /// Offsets \$N positional parameters in a subquery SQL by [offset].
+  /// This is needed when embedding a subquery into an outer query, since
+  /// the outer query already has its own \$N parameters.
+  String _offsetSubqueryPlaceholders(String sql, int offset) {
+    if (offset == 0) return sql;
+    return sql.replaceAllMapped(RegExp(r'\$(\d+)'), (m) {
+      final num = int.parse(m.group(1)!);
+      return '\$${num + offset}';
+    });
   }
 }

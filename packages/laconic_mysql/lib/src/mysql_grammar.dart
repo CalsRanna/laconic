@@ -16,6 +16,7 @@ class MysqlGrammar extends SqlGrammar {
     required bool distinct,
     int? limit,
     int? offset,
+    List<Map<String, dynamic>> locks = const [],
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
@@ -57,6 +58,14 @@ class MysqlGrammar extends SqlGrammar {
     if (offset != null) {
       buffer.write(' offset ?');
       bindings.add(offset);
+    }
+
+    for (final lock in locks) {
+      if (lock['type'] == 'for_update') {
+        buffer.write(' for update');
+      } else if (lock['type'] == 'for_share') {
+        buffer.write(' lock in share mode');
+      }
     }
 
     return CompiledQuery(sql: buffer.toString(), bindings: bindings);
@@ -210,6 +219,42 @@ class MysqlGrammar extends SqlGrammar {
     return CompiledQuery(sql: buffer.toString(), bindings: bindings);
   }
 
+  @override
+  CompiledQuery compileTruncate({required String table}) {
+    return CompiledQuery(sql: 'truncate table $table', bindings: []);
+  }
+
+  @override
+  CompiledQuery compileInsertOrIgnore({
+    required String table,
+    required List<Map<String, Object?>> data,
+  }) {
+    final compiled = compileInsert(table: table, data: data);
+    return CompiledQuery(
+      sql: compiled.sql.replaceFirst('insert into', 'insert ignore into'),
+      bindings: compiled.bindings,
+    );
+  }
+
+  @override
+  CompiledQuery compileUpsert({
+    required String table,
+    required List<Map<String, Object?>> data,
+    required List<String> uniqueBy,
+    List<String>? update,
+  }) {
+    final compiled = compileInsert(table: table, data: data);
+    final updateCols = update ?? data.first.keys.where((k) => !uniqueBy.contains(k)).toList();
+    if (updateCols.isEmpty) {
+      return compiled;
+    }
+    final setClauses = updateCols.map((c) => '$c = values($c)').join(', ');
+    return CompiledQuery(
+      sql: '${compiled.sql} on duplicate key update $setClauses',
+      bindings: compiled.bindings,
+    );
+  }
+
   /// Compiles column names for SELECT clause.
   String _compileColumns(List<String> columns) {
     if (columns.isEmpty || (columns.length == 1 && columns[0] == '*')) {
@@ -329,6 +374,11 @@ class MysqlGrammar extends SqlGrammar {
       } else if (type == 'raw') {
         parts.add('$boolean(${condition['sql']})');
         bindings.addAll(condition['bindings'] as List<Object?>);
+      } else if (type == 'exists') {
+        final not = condition['not'] as bool;
+        final keyword = not ? 'not exists' : 'exists';
+        parts.add('$boolean$keyword (${condition['sql']})');
+        bindings.addAll(condition['bindings'] as List<Object?>);
       }
     }
 
@@ -442,10 +492,30 @@ class MysqlGrammar extends SqlGrammar {
       } else if (type == 'raw') {
         parts.add('$boolean(${where['sql']})');
         bindings.addAll(where['bindings'] as List<Object?>);
+      } else if (type == 'exists') {
+        final not = where['not'] as bool;
+        final keyword = not ? 'not exists' : 'exists';
+        parts.add('$boolean$keyword (${where['sql']})');
+        bindings.addAll(where['bindings'] as List<Object?>);
+      } else if (type == 'date') {
+        final func = _dateFunction(where['dateType'] as String);
+        parts.add('$boolean$func(${where['column']}) = ?');
+        bindings.add(where['value']);
       }
     }
 
     return parts.join('');
+  }
+
+  String _dateFunction(String dateType) {
+    switch (dateType) {
+      case 'date': return 'date';
+      case 'time': return 'time';
+      case 'day': return 'day';
+      case 'month': return 'month';
+      case 'year': return 'year';
+      default: return dateType;
+    }
   }
 
   /// Compiles ORDER BY clauses.

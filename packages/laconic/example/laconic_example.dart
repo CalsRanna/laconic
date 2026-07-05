@@ -77,6 +77,7 @@ class _MockGrammar extends SqlGrammar {
     required bool distinct,
     int? limit,
     int? offset,
+    List<Map<String, dynamic>> locks = const [],
   }) {
     final sql = StringBuffer('SELECT ');
     if (distinct) sql.write('DISTINCT ');
@@ -148,6 +149,29 @@ class _MockGrammar extends SqlGrammar {
       sql: 'UPDATE $table SET $column = $column - $amount ...',
       bindings: [],
     );
+  }
+
+  @override
+  CompiledQuery compileTruncate({required String table}) {
+    return CompiledQuery(sql: 'TRUNCATE $table', bindings: []);
+  }
+
+  @override
+  CompiledQuery compileInsertOrIgnore({
+    required String table,
+    required List<Map<String, Object?>> data,
+  }) {
+    return CompiledQuery(sql: 'INSERT OR IGNORE INTO $table ...', bindings: []);
+  }
+
+  @override
+  CompiledQuery compileUpsert({
+    required String table,
+    required List<Map<String, Object?>> data,
+    required List<String> uniqueBy,
+    List<String>? update,
+  }) {
+    return CompiledQuery(sql: 'UPSERT INTO $table ...', bindings: []);
   }
 }
 

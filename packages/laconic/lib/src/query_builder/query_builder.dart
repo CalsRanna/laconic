@@ -1,6 +1,7 @@
 import 'package:laconic/src/exception.dart';
 import 'package:laconic/src/laconic.dart';
 import 'package:laconic/src/grammar/grammar.dart';
+import 'package:laconic/src/grammar/compiled_query.dart';
 import 'package:laconic/src/query_builder/join_clause.dart';
 import 'package:laconic/src/result.dart';
 
@@ -10,7 +11,7 @@ class QueryBuilder {
   final SqlGrammar _grammar;
 
   /// The table name for the query.
-  final String _table;
+  String _table;
 
   /// The columns to select.
   List<String> _columns = ['*'];
@@ -33,11 +34,17 @@ class QueryBuilder {
   /// Whether to select distinct records.
   bool _distinct = false;
 
+  /// UNION clauses.
+  final List<Map<String, dynamic>> _unions = [];
+
   /// The LIMIT value.
   int? _limit;
 
   /// The OFFSET value.
   int? _offset;
+
+  /// Lock clauses (FOR UPDATE / FOR SHARE).
+  final List<Map<String, dynamic>> _locks = [];
 
   /// Creates a new query builder instance.
   QueryBuilder({required Laconic laconic, required String table})
@@ -67,6 +74,7 @@ class QueryBuilder {
         distinct: false,
         limit: null,
         offset: null,
+      locks: _locks,
       );
       final sql = 'SELECT COUNT(*) as aggregate FROM (${innerCompiled.sql}) as laconic_sub';
       final results = await _laconic.select(sql, innerCompiled.bindings);
@@ -90,6 +98,7 @@ class QueryBuilder {
       distinct: false,
       limit: null,
       offset: null,
+      locks: _locks,
     );
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
@@ -123,6 +132,13 @@ class QueryBuilder {
     await _laconic.statement(compiled.sql, compiled.bindings);
   }
 
+  /// Truncates the table, removing all rows and resetting auto-increment.
+  /// Unlike [delete], this does not require a WHERE clause.
+  Future<void> truncate() async {
+    final compiled = _grammar.compileTruncate(table: _table);
+    await _laconic.statement(compiled.sql, compiled.bindings);
+  }
+
   /// Returns the first record matching the query.
   ///
   /// Always appends `LIMIT 1` for efficiency, regardless of any
@@ -142,6 +158,7 @@ class QueryBuilder {
       distinct: _distinct,
       limit: 1,
       offset: _offset,
+      locks: _locks,
     );
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
@@ -168,9 +185,34 @@ class QueryBuilder {
       distinct: _distinct,
       limit: _limit,
       offset: _offset,
+      locks: _locks,
     );
 
-    return await _laconic.select(compiled.sql, compiled.bindings);
+    if (_unions.isEmpty) {
+      return await _laconic.select(compiled.sql, compiled.bindings);
+    }
+
+    // Build UNIONs
+    final sql = StringBuffer(compiled.sql);
+    final allBindings = List<Object?>.from(compiled.bindings);
+    for (final u in _unions) {
+      sql.write(u['all'] == true ? ' union all ' : ' union ');
+      sql.write(u['sql'] as String);
+      allBindings.addAll(u['bindings'] as List<Object?>);
+    }
+    return await _laconic.select(sql.toString(), allBindings);
+  }
+
+  /// Returns the first record with the given [id]
+  /// (shorthand for `where('id', id).first()`).
+  Future<LaconicResult> find(Object? id) async {
+    return where('id', id).first();
+  }
+
+  /// Returns the first record where [column] matches [value]
+  /// (shorthand for `where(column, value).first()`).
+  Future<LaconicResult> firstWhere(String column, Object? value) async {
+    return where(column, value).first();
   }
 
   /// Inserts records into the database.
@@ -201,6 +243,33 @@ class QueryBuilder {
     return await _laconic.insertAndGetId(compiled.sql, compiled.bindings);
   }
 
+  /// Inserts records while ignoring duplicate key errors.
+  /// For SQLite: `INSERT OR IGNORE INTO ...`. For MySQL: `INSERT IGNORE INTO ...`.
+  Future<void> insertOrIgnore(List<Map<String, Object?>> data) async {
+    if (data.isEmpty) throw LaconicException('Cannot insert an empty list of data');
+    final compiled = _grammar.compileInsertOrIgnore(table: _table, data: data);
+    await _laconic.statement(compiled.sql, compiled.bindings);
+  }
+
+  /// Performs an upsert: inserts new records or updates existing ones.
+  ///
+  /// [uniqueBy] lists the columns that determine uniqueness.
+  /// If [update] is null, all non-unique columns are updated on conflict.
+  Future<void> upsert(
+    List<Map<String, Object?>> data, {
+    required List<String> uniqueBy,
+    List<String>? update,
+  }) async {
+    if (data.isEmpty) throw LaconicException('Cannot upsert an empty list of data');
+    final compiled = _grammar.compileUpsert(
+      table: _table,
+      data: data,
+      uniqueBy: uniqueBy,
+      update: update,
+    );
+    await _laconic.statement(compiled.sql, compiled.bindings);
+  }
+
   /// Adds an INNER JOIN clause to the query.
   ///
   /// [targetTable] is the table to join.
@@ -226,7 +295,7 @@ class QueryBuilder {
   /// })
   /// ```
   QueryBuilder join(String targetTable, void Function(JoinClause) builder) {
-    final joinClause = JoinClause();
+    final joinClause = JoinClause(_laconic);
     builder(joinClause);
 
     _joins.add({
@@ -251,7 +320,7 @@ class QueryBuilder {
   /// query.leftJoin('posts p', (join) => join.on('u.id', 'p.user_id'))
   /// ```
   QueryBuilder leftJoin(String targetTable, void Function(JoinClause) builder) {
-    final joinClause = JoinClause();
+    final joinClause = JoinClause(_laconic);
     builder(joinClause);
 
     _joins.add({
@@ -281,7 +350,7 @@ class QueryBuilder {
     String targetTable,
     void Function(JoinClause) builder,
   ) {
-    final joinClause = JoinClause();
+    final joinClause = JoinClause(_laconic);
     builder(joinClause);
 
     _joins.add({
@@ -314,6 +383,12 @@ class QueryBuilder {
     return this;
   }
 
+  /// Sets the table for this query (useful for subqueries and EXISTS clauses).
+  QueryBuilder from(String table) {
+    _table = table;
+    return this;
+  }
+
   /// Sets the LIMIT for the query.
   QueryBuilder limit(int limit) {
     _limit = limit;
@@ -324,6 +399,32 @@ class QueryBuilder {
   QueryBuilder offset(int offset) {
     _offset = offset;
     return this;
+  }
+
+  /// Adds a `FOR UPDATE` lock to the query.
+  QueryBuilder lockForUpdate() {
+    _locks.add({'type': 'for_update'});
+    return this;
+  }
+
+  /// Adds a `FOR SHARE` (PG) / `LOCK IN SHARE MODE` (MySQL) lock.
+  QueryBuilder sharedLock() {
+    _locks.add({'type': 'for_share'});
+    return this;
+  }
+
+  /// Adds a UNION clause. [all] = true for UNION ALL.
+  QueryBuilder union(void Function(QueryBuilder) callback, {bool all = false}) {
+    final uq = QueryBuilder(laconic: _laconic, table: '');
+    callback(uq);
+    final compiled = uq.compileAsSubquery();
+    _unions.add({'sql': compiled.sql, 'bindings': compiled.bindings, 'all': all});
+    return this;
+  }
+
+  /// Adds a UNION ALL clause.
+  QueryBuilder unionAll(void Function(QueryBuilder) callback) {
+    return union(callback, all: true);
   }
 
   /// Adds an ORDER BY clause to the query.
@@ -347,6 +448,47 @@ class QueryBuilder {
     return this;
   }
 
+  /// Adds an ORDER BY ... DESC clause (shorthand).
+  QueryBuilder orderByDesc(String column) {
+    return orderBy(column, direction: 'desc');
+  }
+
+  /// Orders by `created_at` descending (most recent first).
+  QueryBuilder latest({String column = 'created_at'}) {
+    return orderBy(column, direction: 'desc');
+  }
+
+  /// Orders by `created_at` ascending (oldest first).
+  QueryBuilder oldest({String column = 'created_at'}) {
+    return orderBy(column, direction: 'asc');
+  }
+
+  /// Orders results in random order.
+  QueryBuilder inRandomOrder() {
+    return orderByRaw('RANDOM()');
+  }
+
+  /// Removes all previously set ORDER BY clauses.
+  QueryBuilder reorder() {
+    _orders.clear();
+    return this;
+  }
+
+  /// Alias for [offset]. Skips the specified number of records.
+  QueryBuilder skip(int count) {
+    return offset(count);
+  }
+
+  /// Alias for [limit]. Takes the specified number of records.
+  QueryBuilder take(int count) {
+    return limit(count);
+  }
+
+  /// Sets LIMIT and OFFSET for a given page number (1-indexed).
+  QueryBuilder forPage(int page, {int perPage = 15}) {
+    return limit(perPage).offset((page - 1) * perPage);
+  }
+
   /// Adds an OR WHERE condition to the query.
   ///
   /// [column] is the column name.
@@ -365,6 +507,21 @@ class QueryBuilder {
       'boolean': 'or',
     });
     return this;
+  }
+
+  /// Adds an OR WHERE NOT EQUAL condition.
+  QueryBuilder orWhereNot(String column, Object? value) {
+    return orWhere(column, value, comparator: '!=');
+  }
+
+  /// Adds an OR WHERE LIKE condition.
+  QueryBuilder orWhereLike(String column, Object? value) {
+    return orWhere(column, value, comparator: 'like');
+  }
+
+  /// Adds an OR WHERE NOT LIKE condition.
+  QueryBuilder orWhereNotLike(String column, Object? value) {
+    return orWhere(column, value, comparator: 'not like');
   }
 
   /// Adds a raw WHERE condition.
@@ -401,6 +558,159 @@ class QueryBuilder {
       'boolean': 'or',
     });
     return this;
+  }
+
+  /// Adds a nested WHERE group (parenthesized sub-conditions).
+  ///
+  /// The [callback] receives a fresh [QueryBuilder] for building the
+  /// sub-group's conditions. Conditions are joined with AND.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.where('status', 'active')
+  ///      .whereNested((q) => q.where('age', 30).orWhere('role', 'admin'));
+  /// // SQL: WHERE status = ? AND (age = ? OR role = ?)
+  /// ```
+  QueryBuilder whereNested(void Function(QueryBuilder) callback) {
+    return _nestedWhere(callback, 'and');
+  }
+
+  /// Adds an OR nested WHERE group.
+  QueryBuilder orWhereNested(void Function(QueryBuilder) callback) {
+    return _nestedWhere(callback, 'or');
+  }
+
+  QueryBuilder _nestedWhere(
+    void Function(QueryBuilder) callback,
+    String boolean,
+  ) {
+    final nested = QueryBuilder(laconic: _laconic, table: _table);
+    callback(nested);
+    _wheres.add({
+      'type': 'nested',
+      'conditions': nested._wheres,
+      'boolean': boolean,
+    });
+    return this;
+  }
+
+  /// Adds a WHERE EXISTS clause with a subquery.
+  ///
+  /// The [callback] receives a fresh [QueryBuilder] for building the
+  /// subquery. Use [from] to set the table.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.whereExists((q) =>
+  ///   q.from('orders').whereColumn('orders.user_id', 'users.id'));
+  /// ```
+  QueryBuilder whereExists(void Function(QueryBuilder) callback) {
+    return _addExists(callback, 'and', false);
+  }
+
+  /// Adds an OR WHERE EXISTS clause.
+  QueryBuilder orWhereExists(void Function(QueryBuilder) callback) {
+    return _addExists(callback, 'or', false);
+  }
+
+  /// Adds a WHERE NOT EXISTS clause.
+  QueryBuilder whereNotExists(void Function(QueryBuilder) callback) {
+    return _addExists(callback, 'and', true);
+  }
+
+  /// Adds an OR WHERE NOT EXISTS clause.
+  QueryBuilder orWhereNotExists(void Function(QueryBuilder) callback) {
+    return _addExists(callback, 'or', true);
+  }
+
+  QueryBuilder _addExists(
+    void Function(QueryBuilder) callback,
+    String boolean,
+    bool not,
+  ) {
+    final subQuery = QueryBuilder(laconic: _laconic, table: '');
+    callback(subQuery);
+    final compiled = subQuery.compileAsSubquery();
+    _wheres.add({
+      'type': 'exists',
+      'sql': compiled.sql,
+      'bindings': compiled.bindings,
+      'boolean': boolean,
+      'not': not,
+    });
+    return this;
+  }
+
+  /// Compiles this builder's current state as a SELECT subquery.
+  /// @internal Used by [JoinClause] for EXISTS subqueries.
+  CompiledQuery compileAsSubquery() {
+    return _grammar.compileSelect(
+      table: _table,
+      columns: ['1'],
+      wheres: _wheres,
+      joins: _joins,
+      orders: [],
+      groups: [],
+      havings: [],
+      distinct: false,
+      limit: null,
+      offset: null,
+      locks: _locks,
+    );
+  }
+
+  /// Processes query results in chunks to avoid memory issues.
+  Future<void> chunk(int count, Future<void> Function(List<LaconicResult>) callback) async {
+    var page = 1;
+    while (true) {
+      final results = await clone().forPage(page, perPage: count).get();
+      if (results.isEmpty) break;
+      await callback(results);
+      if (results.length < count) break;
+      page++;
+    }
+  }
+
+  /// Processes results in chunks using ID-based pagination (avoids large OFFSET).
+  Future<void> chunkById(int count, Future<void> Function(List<LaconicResult>) callback,
+      {String column = 'id', String? alias}) async {
+    final col = alias != null ? '$alias.$column' : column;
+    Object? lastId;
+    while (true) {
+      final q = clone();
+      if (lastId != null) q.where(col, lastId, comparator: '>');
+      final results = await q.orderBy(col).limit(count).get();
+      if (results.isEmpty) break;
+      await callback(results);
+      if (results.length < count) break;
+      lastId = results.last[column];
+    }
+  }
+
+  /// Iterates over each result using chunking.
+  Future<void> each(Future<void> Function(LaconicResult) callback, {int count = 1000}) async {
+    await chunk(count, (results) async {
+      for (final row in results) {
+        await callback(row);
+      }
+    });
+  }
+
+  /// Returns a deep copy of this QueryBuilder for reuse.
+  QueryBuilder clone() {
+    final copy = QueryBuilder(laconic: _laconic, table: _table)
+      .._columns = List<String>.from(_columns)
+      .._wheres.addAll(_wheres.map((w) => Map<String, dynamic>.from(w)))
+      .._joins.addAll(_joins.map((j) => Map<String, dynamic>.from(j)))
+      .._orders.addAll(_orders.map((o) => Map<String, dynamic>.from(o)))
+      .._groups.addAll(_groups)
+      .._havings.addAll(_havings.map((h) => Map<String, dynamic>.from(h)))
+      .._distinct = _distinct
+      .._limit = _limit
+      .._offset = _offset
+      .._locks.addAll(_locks.map((l) => Map<String, dynamic>.from(l)))
+      .._unions.addAll(_unions.map((u) => Map<String, dynamic>.from(u)));
+    return copy;
   }
 
   /// Specifies the columns to select.
@@ -479,6 +789,18 @@ class QueryBuilder {
     return this;
   }
 
+  /// Executes a callback when the given condition is false.
+  ///
+  /// The inverse of [when]. [callback] is executed if [condition] is false.
+  /// [otherwise] is optionally executed if [condition] is true.
+  QueryBuilder unless(
+    bool condition,
+    void Function(QueryBuilder) callback, {
+    void Function(QueryBuilder)? otherwise,
+  }) {
+    return when(!condition, callback, otherwise: otherwise);
+  }
+
   /// Returns a single record matching the query.
   ///
   /// Throws [LaconicException] if no record is found or if multiple records are found.
@@ -502,6 +824,7 @@ class QueryBuilder {
       distinct: _distinct,
       limit: 2,
       offset: _offset,
+      locks: _locks,
     );
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
@@ -549,6 +872,21 @@ class QueryBuilder {
       'boolean': 'and',
     });
     return this;
+  }
+
+  /// Adds a WHERE NOT EQUAL condition (shorthand).
+  QueryBuilder whereNot(String column, Object? value) {
+    return where(column, value, comparator: '!=');
+  }
+
+  /// Adds a WHERE LIKE condition (shorthand).
+  QueryBuilder whereLike(String column, Object? value) {
+    return where(column, value, comparator: 'like');
+  }
+
+  /// Adds a WHERE NOT LIKE condition (shorthand).
+  QueryBuilder whereNotLike(String column, Object? value) {
+    return where(column, value, comparator: 'not like');
   }
 
   /// Adds a WHERE clause comparing two columns.
@@ -929,6 +1267,57 @@ class QueryBuilder {
     return this;
   }
 
+  /// WHERE DATE(col) = value.
+  QueryBuilder whereDate(String column, Object? value) {
+    _wheres.add({'type': 'date', 'dateType': 'date', 'column': column, 'value': value, 'boolean': 'and'});
+    return this;
+  }
+  /// OR WHERE DATE(col) = value.
+  QueryBuilder orWhereDate(String column, Object? value) {
+    _wheres.add({'type': 'date', 'dateType': 'date', 'column': column, 'value': value, 'boolean': 'or'});
+    return this;
+  }
+  /// WHERE TIME(col) = value.
+  QueryBuilder whereTime(String column, Object? value) {
+    _wheres.add({'type': 'date', 'dateType': 'time', 'column': column, 'value': value, 'boolean': 'and'});
+    return this;
+  }
+  /// OR WHERE TIME(col) = value.
+  QueryBuilder orWhereTime(String column, Object? value) {
+    _wheres.add({'type': 'date', 'dateType': 'time', 'column': column, 'value': value, 'boolean': 'or'});
+    return this;
+  }
+  /// WHERE DAY(col) = value.
+  QueryBuilder whereDay(String column, Object? value) {
+    _wheres.add({'type': 'date', 'dateType': 'day', 'column': column, 'value': value, 'boolean': 'and'});
+    return this;
+  }
+  /// OR WHERE DAY(col) = value.
+  QueryBuilder orWhereDay(String column, Object? value) {
+    _wheres.add({'type': 'date', 'dateType': 'day', 'column': column, 'value': value, 'boolean': 'or'});
+    return this;
+  }
+  /// WHERE MONTH(col) = value.
+  QueryBuilder whereMonth(String column, Object? value) {
+    _wheres.add({'type': 'date', 'dateType': 'month', 'column': column, 'value': value, 'boolean': 'and'});
+    return this;
+  }
+  /// OR WHERE MONTH(col) = value.
+  QueryBuilder orWhereMonth(String column, Object? value) {
+    _wheres.add({'type': 'date', 'dateType': 'month', 'column': column, 'value': value, 'boolean': 'or'});
+    return this;
+  }
+  /// WHERE YEAR(col) = value.
+  QueryBuilder whereYear(String column, Object? value) {
+    _wheres.add({'type': 'date', 'dateType': 'year', 'column': column, 'value': value, 'boolean': 'and'});
+    return this;
+  }
+  /// OR WHERE YEAR(col) = value.
+  QueryBuilder orWhereYear(String column, Object? value) {
+    _wheres.add({'type': 'date', 'dateType': 'year', 'column': column, 'value': value, 'boolean': 'or'});
+    return this;
+  }
+
   /// Adds an OR WHERE BETWEEN condition to the query.
   ///
   /// [column] is the column name.
@@ -1250,6 +1639,7 @@ class QueryBuilder {
       distinct: _distinct,
       limit: null,
       offset: null,
+      locks: _locks,
     );
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
@@ -1296,6 +1686,7 @@ class QueryBuilder {
       distinct: false,
       limit: 1,
       offset: null,
+      locks: _locks,
     );
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
@@ -1344,6 +1735,7 @@ class QueryBuilder {
       distinct: _distinct,
       limit: _limit,
       offset: _offset,
+      locks: _locks,
     );
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
@@ -1382,6 +1774,7 @@ class QueryBuilder {
       distinct: _distinct,
       limit: 1,
       offset: _offset,
+      locks: _locks,
     );
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
@@ -1463,6 +1856,59 @@ class QueryBuilder {
     );
 
     await _laconic.statement(compiled.sql, compiled.bindings);
+  }
+
+  /// Returns the compiled SQL for the current query without executing it.
+  String toSql() {
+    final compiled = _grammar.compileSelect(
+      table: _table,
+      columns: _columns,
+      wheres: _wheres,
+      joins: _joins,
+      orders: _orders,
+      groups: _groups,
+      havings: _havings,
+      distinct: _distinct,
+      limit: _limit,
+      offset: _offset,
+      locks: _locks,
+    );
+    return compiled.sql;
+  }
+
+  /// Returns the parameter bindings for the current query without executing it.
+  List<Object?> getBindings() {
+    final compiled = _grammar.compileSelect(
+      table: _table,
+      columns: _columns,
+      wheres: _wheres,
+      joins: _joins,
+      orders: _orders,
+      groups: _groups,
+      havings: _havings,
+      distinct: _distinct,
+      limit: _limit,
+      offset: _offset,
+      locks: _locks,
+    );
+    return compiled.bindings;
+  }
+
+  /// Dumps the compiled SQL and bindings to the console and returns [this]
+  /// for continued chaining.
+  QueryBuilder dump() {
+    // ignore: avoid_print
+    print('SQL: ${toSql()}');
+    // ignore: avoid_print
+    print('Bindings: ${getBindings()}');
+    return this;
+  }
+
+  /// Dumps the compiled SQL and bindings to the console and throws
+  /// a [LaconicException] to halt execution.
+  Never dd() {
+    dump();
+    throw LaconicException('QueryBuilder.dd() called — execution halted');
   }
 
   /// Returns true if the query has an impossible WHERE condition that

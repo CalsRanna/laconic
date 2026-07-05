@@ -1,4 +1,6 @@
 import 'package:laconic/src/exception.dart';
+import 'package:laconic/src/laconic.dart';
+import 'package:laconic/src/query_builder/query_builder.dart';
 
 /// Helper class for building JOIN clause conditions.
 ///
@@ -20,6 +22,9 @@ import 'package:laconic/src/exception.dart';
 /// ```
 class JoinClause {
   final List<Map<String, dynamic>> _conditions = [];
+  final Laconic _laconic;
+
+  JoinClause(this._laconic);
 
   /// Gets the list of join conditions.
   List<Map<String, dynamic>> get conditions {
@@ -117,6 +122,64 @@ class JoinClause {
       'comparator': comparator,
       'value': value,
       'boolean': 'or',
+    });
+    return this;
+  }
+
+  /// Adds a WHERE LIKE condition within the JOIN clause.
+  JoinClause whereLike(String column, Object? value) {
+    return where(column, value, comparator: 'like');
+  }
+
+  /// Adds an OR WHERE LIKE condition within the JOIN clause.
+  JoinClause orWhereLike(String column, Object? value) {
+    return orWhere(column, value, comparator: 'like');
+  }
+
+  /// Adds a WHERE NOT LIKE condition within the JOIN clause.
+  JoinClause whereNotLike(String column, Object? value) {
+    return where(column, value, comparator: 'not like');
+  }
+
+  /// Adds an OR WHERE NOT LIKE condition within the JOIN clause.
+  JoinClause orWhereNotLike(String column, Object? value) {
+    return orWhere(column, value, comparator: 'not like');
+  }
+
+  /// Adds a WHERE EXISTS condition within the JOIN clause.
+  JoinClause whereExists(void Function(QueryBuilder) callback) {
+    return _addJoinExists(callback, 'and', false);
+  }
+
+  /// Adds an OR WHERE EXISTS condition within the JOIN clause.
+  JoinClause orWhereExists(void Function(QueryBuilder) callback) {
+    return _addJoinExists(callback, 'or', false);
+  }
+
+  /// Adds a WHERE NOT EXISTS condition within the JOIN clause.
+  JoinClause whereNotExists(void Function(QueryBuilder) callback) {
+    return _addJoinExists(callback, 'and', true);
+  }
+
+  /// Adds an OR WHERE NOT EXISTS condition within the JOIN clause.
+  JoinClause orWhereNotExists(void Function(QueryBuilder) callback) {
+    return _addJoinExists(callback, 'or', true);
+  }
+
+  JoinClause _addJoinExists(
+    void Function(QueryBuilder) callback,
+    String boolean,
+    bool not,
+  ) {
+    final subQuery = QueryBuilder(laconic: _laconic, table: '');
+    callback(subQuery);
+    final compiled = subQuery.compileAsSubquery();
+    _conditions.add({
+      'type': 'exists',
+      'sql': compiled.sql,
+      'bindings': compiled.bindings,
+      'boolean': boolean,
+      'not': not,
     });
     return this;
   }
