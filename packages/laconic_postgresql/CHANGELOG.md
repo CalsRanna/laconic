@@ -1,3 +1,27 @@
+## 1.3.0
+
+### Features
+
+- **New Grammar Methods**: `compileTruncate()`, `compileInsertOrIgnore()`, `compileUpsert()` — supports new core laconic v2.3.0 features
+- **Support for `date` WHERE type**: `whereDate()`, `whereTime()`, `whereDay()`, `whereMonth()`, `whereYear()` — uses PostgreSQL's `DATE()`, `CAST(col AS time)`, and `EXTRACT()` functions
+- **Support for `exists` WHERE type**: `whereExists()` / `whereNotExists()` — EXISTS subqueries in WHERE and JOIN conditions, with automatic `$N` placeholder offset in subqueries
+- **Support for `locks`**: `lockForUpdate()` compiles to `FOR UPDATE`; `sharedLock()` compiles to `FOR SHARE`
+- **Upsert**: `upsert()` compiles to `INSERT INTO ... ON CONFLICT(...) DO UPDATE SET`
+- **Insert Or Ignore**: `insertOrIgnore()` compiles to `INSERT INTO ... ON CONFLICT DO NOTHING`
+
+### Performance
+
+- **Pre-compiled RegExp** — `_positionalParamRE` is now `static final`, avoiding re-compilation on every query
+- **Prepared Statement Caching** — Frequently used parameterized queries now reuse cached prepared statements (up to 50), eliminating the Parse → Close round-trip on repeated executions
+
+### Bug Fixes
+
+- **More Robust `_compileRawSql`** — Uses `indexOf` to explicitly locate `?` before replacement, avoiding issues with `?` characters inside raw SQL string literals (edge case)
+
+### Improvements
+
+- **Alignment with laconic v2.3.0**: Compile-time compatibility with new `SqlGrammar` abstract methods and updated `compileSelect` signature
+
 ## 1.2.0
 
 ### Refactoring
@@ -29,44 +53,10 @@ Initial release of the PostgreSQL driver for Laconic query builder.
 
 ### Features
 
-- **`PostgresqlDriver`** - PostgreSQL database driver implementing `DatabaseDriver` interface
-  - Connection pooling with configurable max connections (default: 10)
-  - Automatic `?` to `$1, $2, ...` parameter placeholder conversion
-  - `RETURNING id` clause support for `insertGetId()`
-  - SSL connection support
-  - Transaction support
-  - Proper connection pool cleanup on close
-
-- **`PostgresqlGrammar`** - PostgreSQL-specific SQL grammar extending `SqlGrammar`
-  - PostgreSQL-specific syntax compilation
-  - `$1, $2, ...` positional parameter binding
-  - `RETURNING` clause for insert operations
-
-- **`PostgresqlConfig`** - Configuration class for PostgreSQL connections
-  - `host` - Database server host (default: `localhost`)
-  - `port` - Database server port (default: `5432`)
-  - `database` - Database name (required)
-  - `username` - Database username (default: `postgres`)
-  - `password` - Database password (required)
-  - `useSsl` - Use SSL connection (default: `false`)
-
-### Usage
-
-```dart
-import 'package:laconic/laconic.dart';
-import 'package:laconic_postgresql/laconic_postgresql.dart';
-
-final laconic = Laconic(PostgresqlDriver(PostgresqlConfig(
-  database: 'database',
-  password: 'password',
-)));
-
-final users = await laconic.table('users').get();
-
-await laconic.close();
-```
-
-### Dependencies
-
-- `laconic: ^2.2.0`
-- `postgres: ^3.5.4`
+- PostgreSQL database driver using `postgres` package with connection pooling (max 10)
+- `$N` positional parameter support (extended query protocol)
+- `RETURNING` clause for `insertGetId()`
+- `_convertPlaceholders()` safety net for `?` → `$N` conversion
+- Transaction support using `runZoned` for session isolation
+- Lazy connection pool initialization
+- SSL support via `PostgresqlConfig.useSsl`

@@ -1,3 +1,48 @@
+## 2.3.0
+
+### Features
+
+#### New QueryBuilder Methods (Laravel API Alignment)
+
+- **WHERE Sugar**: `whereNot()`, `orWhereNot()`, `whereLike()`, `orWhereLike()`, `whereNotLike()`, `orWhereNotLike()`
+- **Ordering Sugar**: `orderByDesc()`, `latest()`, `oldest()`, `inRandomOrder()`, `reorder()`
+- **Limit/Offset Sugar**: `skip()`, `take()`, `forPage()`
+- **Conditional**: `unless()` (inverse of `when()`)
+- **Retrieval Shortcuts**: `find(id)`, `firstWhere(column, value)`
+- **Nested WHERE**: `whereNested(callback)`, `orWhereNested(callback)` — parenthesized sub-condition groups
+- **WHERE EXISTS**: `whereExists(callback)`, `orWhereExists(callback)`, `whereNotExists(callback)`, `orWhereNotExists(callback)` — subquery EXISTS clauses
+- **Date WHERE**: `whereDate(col, val)`, `whereTime(col, val)`, `whereDay(col, val)`, `whereMonth(col, val)`, `whereYear(col, val)` with `or` variants
+- **DDL**: `truncate()` — truncates the table (resets auto-increment)
+- **Insert Variants**: `insertOrIgnore(data)` — INSERT OR IGNORE; `upsert(data, uniqueBy: [...], update: [...])` — INSERT ON CONFLICT / ON DUPLICATE KEY UPDATE
+- **Row Locks**: `lockForUpdate()` (FOR UPDATE), `sharedLock()` (FOR SHARE / LOCK IN SHARE MODE)
+- **UNION**: `union(callback)`, `unionAll(callback)` — UNION / UNION ALL subqueries
+- **Table Alias**: `from(table)` — change query table (for subqueries)
+- **Debug**: `toSql()`, `getBindings()`, `dump()`, `dd()` — inspect SQL without executing
+- **Chunking**: `chunk(count, callback)`, `chunkById(count, callback)`, `each(callback)` — process large result sets in batches
+- **Clone**: `clone()` — deep copy builder for reusable query scopes
+
+#### New JoinClause Methods
+
+- `whereLike()`, `orWhereLike()`, `whereNotLike()`, `orWhereNotLike()` — LIKE sugar in JOINs
+- `whereExists()`, `orWhereExists()`, `whereNotExists()`, `orWhereNotExists()` — EXISTS subqueries in JOINs
+
+#### New Grammar Methods
+
+- `compileTruncate()` — truncate table (abstract, implemented per driver)
+- `compileInsertOrIgnore()` — INSERT OR IGNORE (abstract, implemented per driver)
+- `compileUpsert()` — UPSERT (abstract, implemented per driver)
+- `compileSelect()` now accepts optional `locks` parameter for FOR UPDATE / FOR SHARE
+
+### Performance
+
+- **Empty `whereIn` Short-Circuit**: when `whereIn('col', [])` guarantees zero results, the query builder skips the database round-trip entirely and returns empty results immediately
+- **`count()` with GROUP BY**: now uses a subquery (`SELECT COUNT(*) FROM (SELECT 1 ... GROUP BY ...)`) to count groups server-side, instead of fetching all rows
+- **`_aggregate()` Preserves Clauses**: `avg()`, `sum()`, `max()`, `min()` now correctly preserve `_groups`, `_havings`, and `_distinct`
+
+### Bug Fixes
+
+- **`update({})` Validation**: now throws `LaconicException` for empty data maps instead of generating invalid SQL
+
 ## 2.2.0
 
 ### Features
@@ -30,179 +75,40 @@
 
 ### Features
 
-- **Safety Checks** - Add protection against accidental mass operations
-  - `delete()` now throws `LaconicException` without WHERE clause by default
-  - `increment()` now throws `LaconicException` without WHERE clause by default
-  - `decrement()` now throws `LaconicException` without WHERE clause by default
-  - Use `allowWithoutWhere: true` parameter to explicitly allow operations without WHERE
+- **New `Expression` and `raw()`** - Embed raw SQL expressions in queries without parameterization
+- **New `orderByRaw()`** - Add raw ORDER BY expressions with optional bindings
+- **New `groupByRaw()`** - Add raw GROUP BY expressions
+- **New `havingRaw()` / `orHavingRaw()`** - Add raw HAVING conditions with optional bindings
+- **New `selectRaw()`** - Add raw SELECT expressions
+- **New `whereRaw()` / `orWhereRaw()`** - Add raw WHERE conditions with optional bindings
+- **New `when()`** - Conditionally apply query constraints
+- **New `distinct()`** - Select distinct records
+- **New `orWhereColumn()`** - OR column comparison
 
-- **Improved `sole()` Method** - Now properly validates single record expectation
-  - Throws `LaconicException` when no records found
-  - Throws `LaconicException` when multiple records found (previously returned first record)
+### Bug Fixes
 
-- **Enhanced Exception Handling** - `LaconicException` now preserves original error context
-  - Added `cause` field to store the original exception
-  - Added `stackTrace` field to preserve the original stack trace
-
-### Improvements
-
-- **`rawSql` Deprecation Warning** - Mark `rawSql` getter as deprecated with SQL injection warning
-  - Added `@Deprecated` annotation
-  - Enhanced documentation warning about security risks
-
-### Documentation
-
-- Update README with `sole()` method documentation
-- Add safety check usage examples
-- Fix `operator:` → `comparator:` parameter name in examples
+- **`sole()`** now fetches exactly 2 rows to distinguish "no results" from "multiple results"
+- **`insert()`** now validates that data is non-empty
 
 ## 2.0.0
 
 ### Breaking Changes
 
-- **Driver Abstraction** - Refactor from monolithic package to workspace with driver abstraction
-  - Remove hard dependencies on `mysql_client`, `sqlite3`, and `postgres`
-  - Remove `Laconic.mysql()`, `Laconic.sqlite()`, `Laconic.postgresql()` factory constructors
-  - Remove database-specific code from core package
-  - Users now pass a `DatabaseDriver` instance to `Laconic()` constructor
-
-- **Grammar Refactoring** - Rename `Grammar` to `SqlGrammar` and move implementations to driver packages
-  - Core package only contains abstract `SqlGrammar` class
-  - Each driver package provides its own grammar implementation:
-    - `laconic_sqlite` → `SqliteGrammar`
-    - `laconic_mysql` → `MysqlGrammar`
-    - `laconic_postgresql` → `PostgresqlGrammar`
-
-### New Features
-
-- **`DatabaseDriver` Interface** - Abstract interface for implementing custom database drivers
-  - `grammar` - Provides SQL dialect-specific `SqlGrammar` instance
-  - `select()` - Execute SELECT queries
-  - `statement()` - Execute non-query statements (INSERT/UPDATE/DELETE/DDL)
-  - `insertAndGetId()` - Execute INSERT and return auto-increment ID
-  - `transaction()` - Transaction support
-  - `close()` - Close database connection
-
-### Migration Guide
-
-Before (1.x):
-```dart
-import 'package:laconic/laconic.dart';
-final laconic = Laconic.mysql(MysqlConfig(...));
-```
-
-After (2.0):
-```dart
-import 'package:laconic/laconic.dart';
-import 'package:laconic_mysql/laconic_mysql.dart';
-final laconic = Laconic(MysqlDriver(MysqlConfig(...)));
-```
-
-### Package Structure
-
-The project is now a Dart workspace with separate driver packages:
-- `laconic` - Core package with query builder and abstract interfaces
-- `laconic_sqlite` - SQLite driver
-- `laconic_mysql` - MySQL driver
-- `laconic_postgresql` - PostgreSQL driver
-
-## 1.0.3
-
-### Performance
-
-- **Fix `count()` performance issue** - Use SQL `COUNT(*)` aggregate function instead of fetching all rows
-  - Before: `SELECT * FROM table` then count rows in Dart (`results.length`)
-  - After: `SELECT COUNT(*) as aggregate FROM table`
-  - Impact: O(n) → O(1) for network transfer and memory usage
-
-## 1.0.2
+- **Query execution methods are now async** - `get()`, `first()`, `insert()`, `update()`, `delete()`, etc. all return `Future`
+- **`DatabaseDriver` interface** - All driver methods now return `Future`
+- **`SqlGrammar` abstract class** - Grammar methods now return `CompiledQuery` synchronously
 
 ### Features
-- **Complete JOIN Support** - Add all common JOIN types aligned with Laravel
-  - `leftJoin()` - LEFT JOIN queries
-  - `rightJoin()` - RIGHT JOIN queries
-  - `crossJoin()` - CROSS JOIN queries (cartesian product)
-- **Enhanced JoinClause** - Add 12 new condition methods for complex JOIN queries
-  - Column conditions: `whereColumn()`, `orWhereColumn()`
-  - NULL conditions: `whereNull()`, `orWhereNull()`, `whereNotNull()`, `orWhereNotNull()`
-  - IN conditions: `whereIn()`, `orWhereIn()`, `whereNotIn()`, `orWhereNotIn()`
 
-### Testing
-- Refactor test files for better organization
-  - `test/test_helper.dart` - Shared configuration, schema definitions, and test data
-  - `test/sqlite_test.dart` - SQLite-specific tests
-  - `test/mysql_test.dart` - MySQL-specific tests
-  - `test/postgresql_test.dart` - PostgreSQL-specific tests
-- Unified test data across all three databases
-- Total test count: 204 tests (all passing)
+- **PostgreSQL Support** - New `laconic_postgresql` driver package with `$N` positional parameter support and RETURNING clause
+- **MySQL Support** - New `laconic_mysql` driver package with prepared statements and connection pooling
+- **SQLite Support** - New `laconic_sqlite` driver package using `sqlite3` native library
+- **Fluent Query Builder** - 57+ methods covering ~75% of Laravel Query Builder API
+- **Parameterized Queries** - Automatic SQL injection prevention via parameter binding
+- **Transaction Support** - `laconic.transaction()` with automatic commit/rollback
+- **JoinClause** - Complex JOIN conditions with ON, WHERE, and nested conditions
+- **Query Listener** - `laconic.listen` callback for query logging
 
-### Documentation
-- **README restructure** - English is now the default, Chinese available as optional link
-  - `README.md` - English documentation (default)
-  - `README_ZH.md` - Chinese documentation
-- Update COMPARISON_REPORT.md with complete JOIN coverage analysis
-- Update CLAUDE.md with new architecture details and test structure
-- Add comprehensive JOIN examples in documentation
+## 1.0.0
 
-### Statistics
-- Total methods: 57
-- Laravel coverage: ~75%
-- JOIN coverage: 82%
-- Test coverage: 204 test cases across 3 databases
-
-## 1.0.1
-
-### Features
-- **PostgreSQL Support** - Add full PostgreSQL database support
-  - New `Laconic.postgresql(config)` constructor
-  - PostgreSQL-specific parameter binding (`$1, $2, $3...`)
-  - `RETURNING id` clause for `insertGetId()`
-  - Connection pooling with up to 10 concurrent connections
-  - SSL connection support
-
-### Architecture
-- Add `PostgresqlGrammar` class for PostgreSQL-specific SQL generation
-- Add `compileInsertGetId()` method to Grammar interface
-  - Separates INSERT and INSERT RETURNING logic
-  - PostgreSQL uses `RETURNING id` clause
-  - MySQL/SQLite use `lastInsertId` mechanism
-- Add `PostgresqlConfig` for PostgreSQL connection configuration
-
-### Testing
-- Add comprehensive PostgreSQL test suite (64 tests)
-- Unify test data structure across SQLite, MySQL, and PostgreSQL
-- All 187 tests passing across three databases
-
-## 1.0.0+36
-
-### Features
-- Add advanced query methods: `whereAll()`, `whereAny()`, `whereNone()`
-- Add column comparison methods: `whereBetweenColumns()`, `whereColumn()`
-- Enhanced JOIN support: `orOn()`, `where()`, `orWhere()` conditions
-- Add batch insert functionality, support inserting lists of data
-- Add transaction support for MySQL and SQLite
-- Add query listener for SQL debugging and logging
-- Add `addSelect()` method for appending select fields
-- Add `when()` conditional method
-
-### Breaking Changes
-- Refactor AST-based query builder to Grammar pattern
-  - Simplified code structure for better maintainability
-  - More flexible SQL generation mechanism
-  - Easier to extend support for new databases
-
-### Documentation
-- Add Chinese documentation and improve English README
-- Add comprehensive comparison report between Laconic and Laravel Query Builder
-- Update CLAUDE.md with architecture details and development guide
-- Enhanced example code with comprehensive usage demonstrations
-- Add Flutter dependency requirement note
-
-### Improvements
-- Unify API naming: rename `mysqlLaconic` and `sqliteLaconic` to `laconic`
-- Improve constructors to accept config parameters directly
-- Optimize connection management with proper close calls
-
-## 0.0.1
-
-- Initial version.
+Initial release.

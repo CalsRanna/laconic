@@ -102,6 +102,25 @@ final users = await laconic.table('users')
 final users = await laconic.table('users')
     .whereColumn('created_at', 'updated_at', operator: '<')
     .get();
+
+// 嵌套 WHERE 分组
+final users = await laconic.table('users')
+    .where('status', 'active')
+    .whereNested((q) => q.where('age', 30).orWhere('role', 'admin'))
+    .get();
+
+// 日期 WHERE
+final todayUsers = await laconic.table('users').whereDate('created_at', DateTime.now()).get();
+final janUsers = await laconic.table('users').whereMonth('created_at', 1).get();
+
+// WHERE EXISTS 子查询
+final usersWithPosts = await laconic.table('users u')
+    .whereExists((q) => q.from('posts p').whereColumn('p.user_id', 'u.id'))
+    .get();
+
+// 调试查询
+final sql = laconic.table('users').where('active', true).toSql();
+print(sql); // SELECT * FROM users WHERE active = ?
 ```
 
 ### JOIN 操作

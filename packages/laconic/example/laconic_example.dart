@@ -192,6 +192,42 @@ void main() async {
   print('\n--- Query with WHERE ---');
   await laconic.table('users').where('active', true).get();
 
+  // Nested WHERE group
+  print('\n--- Nested WHERE ---');
+  await laconic.table('users')
+      .where('status', 'active')
+      .whereNested((q) => q.where('age', 18, comparator: '>=').orWhere('role', 'admin'))
+      .get();
+
+  // Debug: toSql() / dump()
+  print('\n--- Debug ---');
+  laconic.table('users').where('name', 'John').dump();
+  print('SQL: ${laconic.table('users').where('age', 18, comparator: '>').toSql()}');
+
+  // WHERE EXISTS
+  print('\n--- WHERE EXISTS ---');
+  await laconic.table('users u')
+      .whereExists((q) => q.from('orders o').whereColumn('o.user_id', 'u.id'))
+      .get();
+
+  // Upsert
+  print('\n--- Upsert ---');
+  await laconic.table('users').upsert(
+    [{'email': 'john@example.com', 'name': 'John Updated'}],
+    uniqueBy: ['email'],
+    update: ['name'],
+  );
+
+  // Locking
+  print('\n--- Locking ---');
+  await laconic.table('users').where('status', 'pending').lockForUpdate().get();
+
+  // Union
+  print('\n--- Union ---');
+  await laconic.table('users').where('role', 'admin')
+      .union((q) => q.from('users').where('role', 'moderator'))
+      .get();
+
   // Insert and get ID
   print('\n--- Insert ---');
   final id = await laconic.table('users').insertGetId({
@@ -207,6 +243,19 @@ void main() async {
       {'name': 'Jane'},
     ]);
   });
+
+  // Chunking
+  print('\n--- Chunking ---');
+  await laconic.table('users').chunk(2, (batch) async {
+    print('Processing ${batch.length} users...');
+  });
+
+  // Clone (reusable query scope)
+  print('\n--- Clone ---');
+  final activeQuery = laconic.table('users').where('active', true).select(['id', 'name']);
+  final count = await activeQuery.clone().count();
+  final results = await activeQuery.clone().get();
+  print('Active users: $count (fetched ${results.length})');
 
   // Close connection
   await laconic.close();

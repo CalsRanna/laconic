@@ -1,3 +1,16 @@
+## 1.3.0
+
+### Features
+
+- **New Grammar Methods**: `compileTruncate()`, `compileInsertOrIgnore()`, `compileUpsert()` — supports new core laconic v2.3.0 features
+- **Support for `date` WHERE type**: `whereDate()`, `whereTime()`, `whereDay()`, `whereMonth()`, `whereYear()` — uses SQLite's `date()`, `time()`, and `strftime()` functions
+- **Support for `exists` WHERE type**: `whereExists()` / `whereNotExists()` — EXISTS subqueries in WHERE and JOIN conditions
+- **Support for `locks`**: `lockForUpdate()` compiles to `FOR UPDATE`; `sharedLock()` throws (not supported by SQLite)
+
+### Improvements
+
+- **Alignment with laconic v2.3.0**: Compile-time compatibility with new `SqlGrammar` abstract methods and updated `compileSelect` signature
+
 ## 1.2.0
 
 ### Bug Fixes
@@ -28,33 +41,8 @@ Initial release of the SQLite driver for Laconic query builder.
 
 ### Features
 
-- **`SqliteDriver`** - SQLite database driver implementing `DatabaseDriver` interface
-  - Lazy database connection initialization
-  - Parameterized query support with `?` placeholders
-  - Transaction support
-  - Proper resource cleanup on close
-
-- **`SqliteGrammar`** - SQLite-specific SQL grammar extending `SqlGrammar`
-  - Standard SQL syntax compilation
-  - `?` placeholder parameter binding
-
-- **`SqliteConfig`** - Configuration class for SQLite connections
-  - `path` - Database file path (use `:memory:` for in-memory database)
-
-### Usage
-
-```dart
-import 'package:laconic/laconic.dart';
-import 'package:laconic_sqlite/laconic_sqlite.dart';
-
-final laconic = Laconic(SqliteDriver(SqliteConfig('app.db')));
-
-final users = await laconic.table('users').get();
-
-await laconic.close();
-```
-
-### Dependencies
-
-- `laconic: ^2.2.0`
-- `sqlite3: ^2.7.5`
+- SQLite database driver using `sqlite3` native library
+- Parameterized queries with `?` placeholders
+- Transaction support with BEGIN/COMMIT/ROLLBACK
+- Lazy database connection initialization
+- Auto-increment ID retrieval via `last_insert_rowid()`

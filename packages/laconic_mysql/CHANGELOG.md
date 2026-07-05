@@ -1,3 +1,22 @@
+## 1.3.0
+
+### Features
+
+- **New Grammar Methods**: `compileTruncate()`, `compileInsertOrIgnore()`, `compileUpsert()` — supports new core laconic v2.3.0 features
+- **Support for `date` WHERE type**: `whereDate()`, `whereTime()`, `whereDay()`, `whereMonth()`, `whereYear()` — uses MySQL's native `DATE()`, `TIME()`, `DAY()`, `MONTH()`, `YEAR()` functions
+- **Support for `exists` WHERE type**: `whereExists()` / `whereNotExists()` — EXISTS subqueries in WHERE and JOIN conditions
+- **Support for `locks`**: `lockForUpdate()` compiles to `FOR UPDATE`; `sharedLock()` compiles to `LOCK IN SHARE MODE`
+- **Upsert**: `upsert()` compiles to `INSERT INTO ... ON DUPLICATE KEY UPDATE`
+- **Insert Or Ignore**: `insertOrIgnore()` compiles to `INSERT IGNORE INTO`
+
+### Performance
+
+- **Prepared Statement Caching** — Frequently used parameterized queries now reuse cached prepared statements (up to 50), eliminating the PREPARE → DEALLOCATE round-trip on repeated executions
+
+### Improvements
+
+- **Alignment with laconic v2.3.0**: Compile-time compatibility with new `SqlGrammar` abstract methods and updated `compileSelect` signature
+
 ## 1.2.0
 
 ### Refactoring
@@ -28,7 +47,6 @@
 ### Improvements
 
 - **Grammar Singleton** - `MysqlGrammar` is now a static singleton instance, avoiding unnecessary allocations on each access
-- **Enhanced Exception Handling** - All catch blocks now preserve the original exception `cause` and `stackTrace` in `LaconicException`
 
 ## 1.0.0
 
@@ -36,41 +54,9 @@ Initial release of the MySQL driver for Laconic query builder.
 
 ### Features
 
-- **`MysqlDriver`** - MySQL database driver implementing `DatabaseDriver` interface
-  - Connection pooling with configurable max connections (default: 10)
-  - Automatic `?` to `:p0, :p1, ...` parameter placeholder conversion
-  - Transaction support
-  - Proper connection pool cleanup on close
-
-- **`MysqlGrammar`** - MySQL-specific SQL grammar extending `SqlGrammar`
-  - Standard SQL syntax compilation
-  - `?` placeholder parameter binding
-
-- **`MysqlConfig`** - Configuration class for MySQL connections
-  - `host` - Database server host (default: `localhost`)
-  - `port` - Database server port (default: `3306`)
-  - `database` - Database name (required)
-  - `username` - Database username (default: `root`)
-  - `password` - Database password (required)
-  - `secure` - Use secure connection (default: `true`)
-
-### Usage
-
-```dart
-import 'package:laconic/laconic.dart';
-import 'package:laconic_mysql/laconic_mysql.dart';
-
-final laconic = Laconic(MysqlDriver(MysqlConfig(
-  database: 'database',
-  password: 'password',
-)));
-
-final users = await laconic.table('users').get();
-
-await laconic.close();
-```
-
-### Dependencies
-
-- `laconic: ^2.2.0`
-- `mysql_client: ^0.0.27`
+- MySQL database driver using `mysql_client` package with connection pooling (max 10)
+- Prepared statement support (binary protocol) for parameterized queries
+- Text protocol fallback for DDL statements (no parameters)
+- Transaction support using `runZoned` for connection isolation
+- Lazy connection pool initialization
+- Auto-increment ID retrieval via `lastInsertId`
