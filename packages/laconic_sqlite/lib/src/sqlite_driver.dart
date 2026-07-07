@@ -8,6 +8,9 @@ import 'package:sqlite3/sqlite3.dart';
 /// This driver uses the sqlite3 package for database operations.
 /// The database connection is lazily opened on first use.
 ///
+/// Prepared statements are cached (up to 50) to avoid the
+/// parse → codegen → finalize cycle on repeated queries.
+///
 /// Example:
 /// ```dart
 /// final driver = SqliteDriver(SqliteConfig('app.db'));
@@ -17,6 +20,11 @@ class SqliteDriver implements DatabaseDriver {
   final SqliteConfig config;
   Database? _database;
   static final _grammar = SqliteGrammar();
+
+  /// Cache of prepared statements keyed by SQL string.
+  /// Avoids re-parsing SQL on every execution of the same query.
+  final Map<String, PreparedStatement> _stmtCache = {};
+  static const int _maxCachedStatements = 50;
 
   /// Creates a new SQLite driver with the given configuration.
   SqliteDriver(this.config);
@@ -28,21 +36,52 @@ class SqliteDriver implements DatabaseDriver {
     return _database ??= sqlite3.open(config.path);
   }
 
+  /// Returns a cached or newly-prepared statement for [sql].
+  ///
+  /// DDL statements (CREATE, DROP, ALTER) are never cached because
+  /// they are typically executed once and would invalidate other cached
+  /// statements when the schema changes.
+  PreparedStatement _prepare(String sql) {
+    final stmt = _stmtCache[sql];
+    if (stmt != null) return stmt;
+
+    final newStmt = _db.prepare(sql);
+    if (_stmtCache.length >= _maxCachedStatements) {
+      // Evict the oldest entry (Map preserves insertion order)
+      final oldestKey = _stmtCache.keys.first;
+      _stmtCache[oldestKey]!.close();
+      _stmtCache.remove(oldestKey);
+    }
+    _stmtCache[sql] = newStmt;
+    return newStmt;
+  }
+
+  /// Whether [sql] is a DDL statement that changes the schema.
+  bool _isDDL(String sql) {
+    final upper = sql.trimLeft().toUpperCase();
+    return upper.startsWith('CREATE') ||
+        upper.startsWith('DROP') ||
+        upper.startsWith('ALTER');
+  }
+
   @override
   Future<List<LaconicResult>> select(
     String sql, [
     List<Object?> params = const [],
   ]) async {
     try {
-      final stmt = _db.prepare(sql);
-      final results = stmt.select(params);
-      stmt.close();
-      return results
-          .map(
-            (row) =>
-                LaconicResult.fromMap(Map.fromIterables(row.keys, row.values)),
-          )
-          .toList();
+      final stmt = _prepare(sql);
+      try {
+        final rows = stmt.select(params);
+        return rows
+            .map((row) => LaconicResult.fromMap(
+                Map.fromIterables(row.keys, row.values)))
+            .toList();
+      } catch (e) {
+        // Schema may have changed; evict and let the caller handle the error.
+        _stmtCache.remove(sql)?.close();
+        rethrow;
+      }
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
@@ -51,9 +90,25 @@ class SqliteDriver implements DatabaseDriver {
   @override
   Future<void> statement(String sql, [List<Object?> params = const []]) async {
     try {
-      final stmt = _db.prepare(sql);
-      stmt.execute(params);
-      stmt.close();
+      // DDL is not cached — it runs once and may invalidate other statements.
+      if (_isDDL(sql)) {
+        _invalidateCache();
+        final stmt = _db.prepare(sql);
+        try {
+          stmt.execute(params);
+        } finally {
+          stmt.close();
+        }
+        return;
+      }
+
+      final stmt = _prepare(sql);
+      try {
+        stmt.execute(params);
+      } catch (e) {
+        _stmtCache.remove(sql)?.close();
+        rethrow;
+      }
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
@@ -65,9 +120,13 @@ class SqliteDriver implements DatabaseDriver {
     List<Object?> params = const [],
   ]) async {
     try {
-      final stmt = _db.prepare(sql);
-      stmt.execute(params);
-      stmt.close();
+      final stmt = _prepare(sql);
+      try {
+        stmt.execute(params);
+      } catch (e) {
+        _stmtCache.remove(sql)?.close();
+        rethrow;
+      }
       // Get the last inserted row ID
       final result = _db.select('SELECT last_insert_rowid() as id');
       if (result.isEmpty) {
@@ -81,6 +140,14 @@ class SqliteDriver implements DatabaseDriver {
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }
+  }
+
+  /// Closes and removes all cached prepared statements.
+  void _invalidateCache() {
+    for (final stmt in _stmtCache.values) {
+      stmt.close();
+    }
+    _stmtCache.clear();
   }
 
   @override
@@ -107,6 +174,7 @@ class SqliteDriver implements DatabaseDriver {
 
   @override
   Future<void> close() async {
+    _invalidateCache();
     if (_database != null) {
       _database!.close();
       _database = null;
