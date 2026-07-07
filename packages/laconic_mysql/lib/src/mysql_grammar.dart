@@ -498,8 +498,8 @@ class MysqlGrammar extends SqlGrammar {
         parts.add('$boolean$keyword (${where['sql']})');
         bindings.addAll(where['bindings'] as List<Object?>);
       } else if (type == 'date') {
-        final func = _dateFunction(where['dateType'] as String);
-        parts.add('$boolean$func(${where['column']}) = ?');
+        final expr = _dateExpression(where['dateType'] as String, where['column'] as String);
+        parts.add('$boolean$expr = ?');
         bindings.add(where['value']);
       }
     }
@@ -507,14 +507,16 @@ class MysqlGrammar extends SqlGrammar {
     return parts.join('');
   }
 
-  String _dateFunction(String dateType) {
+  /// Returns a complete SQL expression for a date-part extraction.
+  /// The returned string already includes the column reference.
+  String _dateExpression(String dateType, String column) {
     switch (dateType) {
-      case 'date': return 'date';
-      case 'time': return 'time';
-      case 'day': return 'day';
-      case 'month': return 'month';
-      case 'year': return 'year';
-      default: return dateType;
+      case 'date': return 'date($column)';
+      case 'time': return 'time($column)';
+      case 'day': return 'day($column)';
+      case 'month': return 'month($column)';
+      case 'year': return 'year($column)';
+      default: return '$dateType($column)';
     }
   }
 

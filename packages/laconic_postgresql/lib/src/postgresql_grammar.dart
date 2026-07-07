@@ -547,8 +547,8 @@ class PostgresqlGrammar extends SqlGrammar {
         bindings.addAll(subBindings);
         parts.add('$boolean$keyword ($offsetSql)');
       } else if (type == 'date') {
-        final func = _dateFunction(where['dateType'] as String);
-        parts.add('$boolean$func(${where['column']}) = \$${bindings.length + 1}');
+        final expr = _dateExpression(where['dateType'] as String, where['column'] as String);
+        parts.add('$boolean$expr = \$${bindings.length + 1}');
         bindings.add(where['value']);
       }
     }
@@ -556,14 +556,16 @@ class PostgresqlGrammar extends SqlGrammar {
     return parts.join('');
   }
 
-  String _dateFunction(String dateType) {
+  /// Returns a complete SQL expression for a date-part extraction.
+  /// The returned string already includes the column reference.
+  String _dateExpression(String dateType, String column) {
     switch (dateType) {
-      case 'date': return 'date';
-      case 'time': return 'cast(';
-      case 'day': return 'extract(day from ';
-      case 'month': return 'extract(month from ';
-      case 'year': return 'extract(year from ';
-      default: return dateType;
+      case 'date': return 'date($column)';
+      case 'time': return '$column::time';
+      case 'day': return 'extract(day from $column)';
+      case 'month': return 'extract(month from $column)';
+      case 'year': return 'extract(year from $column)';
+      default: return '$dateType($column)';
     }
   }
 

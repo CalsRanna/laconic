@@ -10,9 +10,9 @@ const String commentTable = 'comments';
 
 /// Test users data - same across all databases
 final List<Map<String, Object?>> testUsers = [
-  {'name': 'John', 'age': 25, 'gender': 'male'},
-  {'name': 'Jane', 'age': 30, 'gender': 'female'},
-  {'name': 'Jack', 'age': 35, 'gender': 'male'},
+  {'name': 'John', 'age': 25, 'gender': 'male', 'created_at': '2024-06-15 10:30:00'},
+  {'name': 'Jane', 'age': 30, 'gender': 'female', 'created_at': '2024-07-20 14:00:00'},
+  {'name': 'Jack', 'age': 35, 'gender': 'male', 'created_at': '2023-06-15 10:30:00'},
 ];
 
 /// Test posts data - same across all databases
@@ -36,7 +36,8 @@ class SqliteSchema {
       id integer primary key autoincrement,
       name varchar(255),
       age int,
-      gender varchar(255)
+      gender varchar(255),
+      created_at text
     )
   ''';
 

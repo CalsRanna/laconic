@@ -63,10 +63,14 @@ class PostgresqlDriver implements DatabaseDriver {
   /// Converts `?` placeholders to PostgreSQL positional parameters ($1, $2, etc.)
   /// Only converts if the SQL contains `?` placeholders.
   String _convertPlaceholders(String sql) {
-    // If SQL already contains positional params ($1, $2, etc.), don't convert
-    if (_positionalParamRE.hasMatch(sql)) {
-      return sql;
-    }
+    // Fast path: if there are no '?' characters, no conversion is needed.
+    // Grammar-generated SQL uses $N already, so this is the common case.
+    if (!sql.contains('?')) return sql;
+
+    // If SQL already contains positional params ($1, $2, etc.), don't convert.
+    // This handles raw SQL that uses both $N and ?.
+    if (_positionalParamRE.hasMatch(sql)) return sql;
+
     int paramIndex = 0;
     return sql.replaceAllMapped(RegExp(r'\?'), (match) {
       paramIndex++;

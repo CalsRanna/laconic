@@ -700,8 +700,8 @@ class QueryBuilder {
   QueryBuilder clone() {
     final copy = QueryBuilder(laconic: _laconic, table: _table)
       .._columns = List<String>.from(_columns)
-      .._wheres.addAll(_wheres.map((w) => Map<String, dynamic>.from(w)))
-      .._joins.addAll(_joins.map((j) => Map<String, dynamic>.from(j)))
+      .._wheres.addAll(_wheres.map(_deepCopyWhere))
+      .._joins.addAll(_joins.map(_deepCopyJoin))
       .._orders.addAll(_orders.map((o) => Map<String, dynamic>.from(o)))
       .._groups.addAll(_groups)
       .._havings.addAll(_havings.map((h) => Map<String, dynamic>.from(h)))
@@ -710,6 +710,29 @@ class QueryBuilder {
       .._offset = _offset
       .._locks.addAll(_locks.map((l) => Map<String, dynamic>.from(l)))
       .._unions.addAll(_unions.map((u) => Map<String, dynamic>.from(u)));
+    return copy;
+  }
+
+  /// Deep-copies a WHERE condition map, recursively copying nested conditions.
+  static Map<String, dynamic> _deepCopyWhere(Map<String, dynamic> where) {
+    final copy = Map<String, dynamic>.from(where);
+    if (copy['type'] == 'nested') {
+      copy['conditions'] = (copy['conditions'] as List)
+          .map((c) => _deepCopyWhere(Map<String, dynamic>.from(c)))
+          .toList();
+    }
+    return copy;
+  }
+
+  /// Deep-copies a JOIN condition map, recursively copying nested conditions.
+  static Map<String, dynamic> _deepCopyJoin(Map<String, dynamic> join) {
+    final copy = Map<String, dynamic>.from(join);
+    final conditions = copy['conditions'] as List<Map<String, dynamic>>?;
+    if (conditions != null) {
+      copy['conditions'] = conditions
+          .map((c) => Map<String, dynamic>.from(c))
+          .toList();
+    }
     return copy;
   }
 
@@ -1860,47 +1883,22 @@ class QueryBuilder {
 
   /// Returns the compiled SQL for the current query without executing it.
   String toSql() {
-    final compiled = _grammar.compileSelect(
-      table: _table,
-      columns: _columns,
-      wheres: _wheres,
-      joins: _joins,
-      orders: _orders,
-      groups: _groups,
-      havings: _havings,
-      distinct: _distinct,
-      limit: _limit,
-      offset: _offset,
-      locks: _locks,
-    );
-    return compiled.sql;
+    return _compileForDebug().sql;
   }
 
   /// Returns the parameter bindings for the current query without executing it.
   List<Object?> getBindings() {
-    final compiled = _grammar.compileSelect(
-      table: _table,
-      columns: _columns,
-      wheres: _wheres,
-      joins: _joins,
-      orders: _orders,
-      groups: _groups,
-      havings: _havings,
-      distinct: _distinct,
-      limit: _limit,
-      offset: _offset,
-      locks: _locks,
-    );
-    return compiled.bindings;
+    return _compileForDebug().bindings;
   }
 
   /// Dumps the compiled SQL and bindings to the console and returns [this]
   /// for continued chaining.
   QueryBuilder dump() {
+    final compiled = _compileForDebug();
     // ignore: avoid_print
-    print('SQL: ${toSql()}');
+    print('SQL: ${compiled.sql}');
     // ignore: avoid_print
-    print('Bindings: ${getBindings()}');
+    print('Bindings: ${compiled.bindings}');
     return this;
   }
 
@@ -1909,6 +1907,24 @@ class QueryBuilder {
   Never dd() {
     dump();
     throw LaconicException('QueryBuilder.dd() called — execution halted');
+  }
+
+  /// Compiles the current query state into a [CompiledQuery] for
+  /// inspection via [toSql], [getBindings], or [dump].
+  CompiledQuery _compileForDebug() {
+    return _grammar.compileSelect(
+      table: _table,
+      columns: _columns,
+      wheres: _wheres,
+      joins: _joins,
+      orders: _orders,
+      groups: _groups,
+      havings: _havings,
+      distinct: _distinct,
+      limit: _limit,
+      offset: _offset,
+      locks: _locks,
+    );
   }
 
   /// Returns true if the query has an impossible WHERE condition that

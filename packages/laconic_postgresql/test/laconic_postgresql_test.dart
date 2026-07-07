@@ -569,5 +569,107 @@ void main() {
       expect(results.length, 2);
       expect(results.every((r) => r['name'] == 'John'), isTrue);
     });
+
+    // ==================== Date Functions ====================
+
+    test('whereYear filters by year', () async {
+      var results = await laconic
+          .table(userTable)
+          .whereYear('created_at', 2024)
+          .get();
+      expect(results.length, 2);
+      expect(results.any((r) => r['name'] == 'John'), isTrue);
+      expect(results.any((r) => r['name'] == 'Jane'), isTrue);
+    });
+
+    test('whereMonth filters by month', () async {
+      var results = await laconic
+          .table(userTable)
+          .whereMonth('created_at', 6)
+          .get();
+      expect(results.length, 2);
+      expect(results.any((r) => r['name'] == 'John'), isTrue);
+      expect(results.any((r) => r['name'] == 'Jack'), isTrue);
+    });
+
+    test('whereDay filters by day', () async {
+      var results = await laconic
+          .table(userTable)
+          .whereDay('created_at', 15)
+          .get();
+      expect(results.length, 2);
+      expect(results.any((r) => r['name'] == 'John'), isTrue);
+      expect(results.any((r) => r['name'] == 'Jack'), isTrue);
+    });
+
+    test('whereDate filters by full date', () async {
+      var results = await laconic
+          .table(userTable)
+          .whereDate('created_at', '2024-07-20')
+          .get();
+      expect(results.length, 1);
+      expect(results.first['name'], 'Jane');
+    });
+
+    test('whereTime filters by time', () async {
+      var results = await laconic
+          .table(userTable)
+          .whereTime('created_at', '10:30:00')
+          .get();
+      expect(results.length, 2);
+      expect(results.any((r) => r['name'] == 'John'), isTrue);
+      expect(results.any((r) => r['name'] == 'Jack'), isTrue);
+    });
+
+    test('orWhereDate combines with where', () async {
+      var results = await laconic
+          .table(userTable)
+          .where('age', 25)
+          .orWhereDate('created_at', '2024-07-20')
+          .get();
+      expect(results.length, 2);
+      expect(results.any((r) => r['name'] == 'John'), isTrue);
+      expect(results.any((r) => r['name'] == 'Jane'), isTrue);
+    });
+
+    test('orWhereYear combines with where', () async {
+      var results = await laconic
+          .table(userTable)
+          .where('name', 'Jack')
+          .orWhereYear('created_at', 2024)
+          .get();
+      expect(results.length, 3);
+    });
+
+    test('orWhereMonth combines with where', () async {
+      var results = await laconic
+          .table(userTable)
+          .where('age', 25)
+          .orWhereMonth('created_at', 7)
+          .get();
+      expect(results.length, 2);
+      expect(results.any((r) => r['name'] == 'John'), isTrue);
+      expect(results.any((r) => r['name'] == 'Jane'), isTrue);
+    });
+
+    test('orWhereDay combines with where', () async {
+      var results = await laconic
+          .table(userTable)
+          .where('age', 30)
+          .orWhereDay('created_at', 15)
+          .get();
+      expect(results.length, 3);
+    });
+
+    test('orWhereTime combines with where', () async {
+      var results = await laconic
+          .table(userTable)
+          .where('age', 35)
+          .orWhereTime('created_at', '10:30:00')
+          .get();
+      expect(results.length, 2);
+      expect(results.any((r) => r['name'] == 'Jack'), isTrue);
+      expect(results.any((r) => r['name'] == 'John'), isTrue);
+    });
   });
 }

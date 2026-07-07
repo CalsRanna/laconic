@@ -503,8 +503,8 @@ class SqliteGrammar extends SqlGrammar {
         parts.add('$boolean$keyword (${where['sql']})');
         bindings.addAll(where['bindings'] as List<Object?>);
       } else if (type == 'date') {
-        final func = _dateFunction(where['dateType'] as String);
-        parts.add('$boolean$func(${where['column']}) = ?');
+        final expr = _dateExpression(where['dateType'] as String, where['column'] as String);
+        parts.add('$boolean$expr = ?');
         bindings.add(where['value']);
       }
     }
@@ -512,14 +512,16 @@ class SqliteGrammar extends SqlGrammar {
     return parts.join('');
   }
 
-  String _dateFunction(String dateType) {
+  /// Returns a complete SQL expression for a date-part extraction.
+  /// The returned string already includes the column reference.
+  String _dateExpression(String dateType, String column) {
     switch (dateType) {
-      case 'date': return 'date';
-      case 'time': return 'time';
-      case 'day': return "strftime('%d',";  // SQLite uses strftime for day
-      case 'month': return "strftime('%m',";
-      case 'year': return "strftime('%Y',";
-      default: return dateType;
+      case 'date': return 'date($column)';
+      case 'time': return 'time($column)';
+      case 'day': return "CAST(strftime('%d', $column) AS INTEGER)";
+      case 'month': return "CAST(strftime('%m', $column) AS INTEGER)";
+      case 'year': return "CAST(strftime('%Y', $column) AS INTEGER)";
+      default: return '$dateType($column)';
     }
   }
 
