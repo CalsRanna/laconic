@@ -1,3 +1,9 @@
+## 1.3.1
+
+### Changes
+
+- Refactored `_dateFunction` → `_dateExpression(column)` for consistency with other drivers (no behavioral change)
+
 ## 1.3.0
 
 ### Features

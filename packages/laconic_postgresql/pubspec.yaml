@@ -1,6 +1,6 @@
 name: laconic_postgresql
 description: PostgreSQL driver for the Laconic query builder.
-version: 1.3.0
+version: 1.3.1
 homepage: https://github.com/CalsRanna/laconic
 repository: https://github.com/CalsRanna/laconic
 

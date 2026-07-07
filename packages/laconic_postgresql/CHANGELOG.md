@@ -1,9 +1,21 @@
+## 1.3.1
+
+### Bug Fixes
+
+- **`whereTime` invalid SQL** — Fixed `CAST()` expression missing closing parenthesis and type specifier; now uses `col::time` syntax
+- **`whereDay` / `whereMonth` / `whereYear` invalid SQL** — Fixed `EXTRACT()` expressions missing closing parenthesis
+- Refactored `_dateFunction` → `_dateExpression(column)` to return complete SQL expressions
+
+### Performance
+
+- **`_convertPlaceholders` fast-path** — Added `String.contains('?')` check before regex matching, eliminating unnecessary regex evaluation for Grammar-generated `$N` SQL
+
 ## 1.3.0
 
 ### Features
 
 - **New Grammar Methods**: `compileTruncate()`, `compileInsertOrIgnore()`, `compileUpsert()` — supports new core laconic v2.3.0 features
-- **Support for `date` WHERE type**: `whereDate()`, `whereTime()`, `whereDay()`, `whereMonth()`, `whereYear()` — uses PostgreSQL's `DATE()`, `CAST(col AS time)`, and `EXTRACT()` functions
+- **Support for `date` WHERE type**: `whereDate()`, `whereTime()`, `whereDay()`, `whereMonth()`, `whereYear()` — uses PostgreSQL's `DATE()`, `col::time`, and `EXTRACT()` functions
 - **Support for `exists` WHERE type**: `whereExists()` / `whereNotExists()` — EXISTS subqueries in WHERE and JOIN conditions, with automatic `$N` placeholder offset in subqueries
 - **Support for `locks`**: `lockForUpdate()` compiles to `FOR UPDATE`; `sharedLock()` compiles to `FOR SHARE`
 - **Upsert**: `upsert()` compiles to `INSERT INTO ... ON CONFLICT(...) DO UPDATE SET`

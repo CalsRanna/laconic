@@ -1,3 +1,10 @@
+## 1.3.1
+
+### Bug Fixes
+
+- **`whereDay` / `whereMonth` / `whereYear` invalid SQL** — Fixed `strftime()` expressions missing closing parenthesis and producing type-mismatched comparisons. Now wraps `strftime()` with `CAST(... AS INTEGER)` for correct type coercion.
+- Refactored `_dateFunction` → `_dateExpression(column)` to return complete SQL expressions
+
 ## 1.3.0
 
 ### Features

@@ -21,7 +21,7 @@
 
 ```yaml
 dependencies:
-  laconic: ^2.2.0
+  laconic: ^2.3.1
   laconic_sqlite: ^1.1.0  # 或其他驱动
 ```
 

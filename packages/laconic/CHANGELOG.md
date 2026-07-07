@@ -1,3 +1,10 @@
+## 2.3.1
+
+### Bug Fixes
+
+- **`clone()` nested WHERE** — `clone()` now recursively deep-copies nested WHERE conditions (`type: 'nested'`), preventing original and cloned builders from sharing nested condition lists
+- **`dump()` double compilation** — `toSql()`, `getBindings()`, and `dump()` now share a single compilation via `_compileForDebug()`, eliminating redundant grammar passes
+
 ## 2.3.0
 
 ### Features

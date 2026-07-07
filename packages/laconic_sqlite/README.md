@@ -6,8 +6,8 @@ SQLite driver for the [Laconic](https://pub.dev/packages/laconic) query builder.
 
 ```yaml
 dependencies:
-  laconic: ^2.2.0
-  laconic_sqlite: ^1.2.0
+  laconic: ^2.3.1
+  laconic_sqlite: ^1.3.1
 ```
 
 ## Usage
