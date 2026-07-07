@@ -74,7 +74,7 @@ class QueryBuilder {
         distinct: false,
         limit: null,
         offset: null,
-      locks: _locks,
+        locks: const [],
       );
       final sql = 'SELECT COUNT(*) as aggregate FROM (${innerCompiled.sql}) as laconic_sub';
       final results = await _laconic.select(sql, innerCompiled.bindings);
@@ -98,7 +98,7 @@ class QueryBuilder {
       distinct: false,
       limit: null,
       offset: null,
-      locks: _locks,
+      locks: const [],
     );
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
@@ -1662,7 +1662,7 @@ class QueryBuilder {
       distinct: _distinct,
       limit: null,
       offset: null,
-      locks: _locks,
+      locks: const [],
     );
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
