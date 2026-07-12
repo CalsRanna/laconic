@@ -2,6 +2,8 @@
 
 [Laconic](https://pub.dev/packages/laconic) 查询构建器的 MySQL 驱动。
 
+[English](README.md)
+
 ## 安装
 
 ```yaml
@@ -23,6 +25,7 @@ void main() async {
     database: 'my_database',
     username: 'root',
     password: 'password',
+    // maxConnections: 10, // 可选，默认 10
   )));
 
   // 查询用户
@@ -60,7 +63,14 @@ void main() async {
 
 ## 连接池
 
-MySQL 驱动内部使用连接池以提升性能。每次查询或事务结束后（**包括 SQL 抛错时**）连接都会归还到池中，避免重复失败导致连接槽位耗尽。
+驱动内部维护轻量连接池：
+
+- 首次查询时惰性创建连接
+- 非事务查询借用连接后**始终**归还（**包括 SQL 抛错时**）
+- 事务通过 Zone 在回调期间固定同一连接
+- 应用退出时调用 `close()` 关闭连接池
+
+这样可避免连续查询失败导致连接槽位耗尽、后续请求永久等待。
 
 ## 查询监听器
 

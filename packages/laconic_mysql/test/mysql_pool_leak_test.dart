@@ -8,8 +8,6 @@ import 'package:test/test.dart';
 /// connection when the callback threw. After maxConnections failures the pool
 /// hung forever on the next acquire. Laconic now uses [MysqlPool] with
 /// try/finally so slots are always returned.
-///
-/// See `doc/mysql_connection_pool_leak.md`.
 void main() {
   group('MySQL connection pool leak regression:', () {
     const maxConnections = 2;

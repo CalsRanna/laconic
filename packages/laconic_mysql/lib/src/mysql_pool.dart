@@ -9,8 +9,6 @@ import 'package:mysql_client/mysql_client.dart';
 /// this pool always returns connections to the idle list in a `finally`
 /// block, so SQL errors (or any thrown exception) cannot leak connection
 /// slots and exhaust the pool.
-///
-/// See `doc/mysql_connection_pool_leak.md` for background.
 class MysqlPool {
   final String host;
   final int port;

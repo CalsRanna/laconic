@@ -2,6 +2,8 @@
 
 MySQL driver for the [Laconic](https://pub.dev/packages/laconic) query builder.
 
+[中文文档](README_ZH.md)
+
 ## Installation
 
 ```yaml
@@ -23,6 +25,7 @@ void main() async {
     database: 'my_database',
     username: 'root',
     password: 'password',
+    // maxConnections: 10, // optional, default 10
   )));
 
   // Query users
@@ -60,7 +63,14 @@ void main() async {
 
 ## Connection Pooling
 
-The MySQL driver uses an internal connection pool for better performance. Connections are always returned to the pool after each query or transaction, including when SQL errors are thrown (this avoids slot exhaustion on repeated failures).
+The driver maintains a small internal connection pool:
+
+- Connections are created lazily on first use
+- Each non-transaction query borrows a connection and **always** returns it, including when SQL errors are thrown
+- Transactions pin one connection for the duration of the callback via Zone isolation
+- Call `close()` to shut down the pool when the application exits
+
+This avoids connection-slot exhaustion after repeated query failures.
 
 ## Query Listener
 
