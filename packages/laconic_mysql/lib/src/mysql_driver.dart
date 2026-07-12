@@ -3,11 +3,15 @@ import 'dart:async';
 import 'package:laconic/laconic.dart';
 import 'package:laconic_mysql/src/mysql_config.dart';
 import 'package:laconic_mysql/src/mysql_grammar.dart';
+import 'package:laconic_mysql/src/mysql_pool.dart';
 import 'package:mysql_client/mysql_client.dart';
 
 /// MySQL driver implementation for Laconic.
 ///
-/// This driver uses the mysql_client package with connection pooling.
+/// This driver uses a lightweight connection pool that always returns
+/// connections after use (including when queries throw). This avoids the
+/// slot-leak in `mysql_client` 0.0.27's [MySQLConnectionPool.withConnection].
+///
 /// The connection pool is lazily created on first use.
 ///
 /// Uses MySQL prepared statements (binary protocol) via [MySQLConnection.prepare]
@@ -16,7 +20,7 @@ import 'package:mysql_client/mysql_client.dart';
 /// COM_STMT_PREPARE does not support all statement types.
 class MysqlDriver implements DatabaseDriver {
   final MysqlConfig config;
-  MySQLConnectionPool? _pool;
+  MysqlPool? _pool;
   static final _grammar = MysqlGrammar();
   static final _txConnKey = Object();
 
@@ -31,14 +35,15 @@ class MysqlDriver implements DatabaseDriver {
   @override
   SqlGrammar get grammar => _grammar;
 
-  MySQLConnectionPool get _connectionPool {
-    return _pool ??= MySQLConnectionPool(
+  MysqlPool get _connectionPool {
+    return _pool ??= MysqlPool(
       databaseName: config.database,
       host: config.host,
-      maxConnections: 10,
+      maxConnections: config.maxConnections,
       password: config.password,
       port: config.port,
       userName: config.username,
+      onConnectionRemoved: _evictStatementsForConnection,
     );
   }
 
@@ -94,6 +99,12 @@ class MysqlDriver implements DatabaseDriver {
       _stmtCache.remove(cacheKey);
       rethrow;
     }
+  }
+
+  /// Drops all cached prepared statements for [conn].
+  void _evictStatementsForConnection(MySQLConnection conn) {
+    final prefix = '${identityHashCode(conn)}:';
+    _stmtCache.removeWhere((key, _) => key.startsWith(prefix));
   }
 
   List<LaconicResult> _toResults(IResultSet results) {

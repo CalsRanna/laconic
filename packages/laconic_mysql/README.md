@@ -7,7 +7,7 @@ MySQL driver for the [Laconic](https://pub.dev/packages/laconic) query builder.
 ```yaml
 dependencies:
   laconic: ^2.3.1
-  laconic_mysql: ^1.3.1
+  laconic_mysql: ^1.3.2
 ```
 
 ## Usage
@@ -56,10 +56,11 @@ void main() async {
 | `port` | `int` | `3306` | Connection port |
 | `username` | `String` | `'root'` | Connection username |
 | `password` | `String` | required | Connection password |
+| `maxConnections` | `int` | `10` | Maximum connections in the pool |
 
 ## Connection Pooling
 
-The MySQL driver uses connection pooling internally for better performance. Connections are managed automatically and released back to the pool after each query.
+The MySQL driver uses an internal connection pool for better performance. Connections are always returned to the pool after each query or transaction, including when SQL errors are thrown (this avoids slot exhaustion on repeated failures).
 
 ## Query Listener
 

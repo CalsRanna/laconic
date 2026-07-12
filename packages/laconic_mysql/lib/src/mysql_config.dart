@@ -6,6 +6,11 @@ class MysqlConfig {
   /// MySQL host address.
   final String host;
 
+  /// Maximum number of connections in the pool.
+  ///
+  /// Defaults to 10 for compatibility with previous releases.
+  final int maxConnections;
+
   /// Connection password.
   final String password;
 
@@ -19,6 +24,7 @@ class MysqlConfig {
   const MysqlConfig({
     required this.database,
     this.host = '127.0.0.1',
+    this.maxConnections = 10,
     required this.password,
     this.port = 3306,
     this.username = 'root',

@@ -1,3 +1,13 @@
+## 1.3.2
+
+### Bug Fixes
+
+- **Fix connection pool slot leak on query errors** — Replaced use of `mysql_client` 0.0.27's `MySQLConnectionPool.withConnection`, which did not return connections when the callback threw. After ~`maxConnections` failed queries the pool could hang forever. Laconic now uses an internal `MysqlPool` that always releases connections in `finally` (including failed transactions and prepared-statement errors). See `doc/mysql_connection_pool_leak.md`.
+
+### Features
+
+- **`MysqlConfig.maxConnections`** — Optional pool size (default `10`, same as before). Useful for tests and tuning.
+
 ## 1.3.1
 
 ### Changes

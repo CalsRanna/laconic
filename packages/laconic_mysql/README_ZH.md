@@ -7,7 +7,7 @@
 ```yaml
 dependencies:
   laconic: ^2.3.1
-  laconic_mysql: ^1.3.1
+  laconic_mysql: ^1.3.2
 ```
 
 ## 使用
@@ -56,10 +56,11 @@ void main() async {
 | `port` | `int` | `3306` | 连接端口 |
 | `username` | `String` | `'root'` | 用户名 |
 | `password` | `String` | 必填 | 密码 |
+| `maxConnections` | `int` | `10` | 连接池最大连接数 |
 
 ## 连接池
 
-MySQL 驱动内部使用连接池以提升性能。连接会自动管理，每次查询后释放回池中。
+MySQL 驱动内部使用连接池以提升性能。每次查询或事务结束后（**包括 SQL 抛错时**）连接都会归还到池中，避免重复失败导致连接槽位耗尽。
 
 ## 查询监听器
 
