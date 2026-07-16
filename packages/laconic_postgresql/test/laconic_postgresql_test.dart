@@ -90,7 +90,8 @@ void main() {
     });
 
     test('table(users).where("id", 1).update()', () async {
-      await laconic.table(userTable).where('id', 1).update({'age': 26});
+      final affected = await laconic.table(userTable).where('id', 1).update({'age': 26});
+      expect(affected, 1);
       var user = await laconic.table(userTable).where('id', 1).first();
       expect(user['age'], 26);
       await laconic.table(userTable).where('id', 1).update({'age': 25});
@@ -98,7 +99,8 @@ void main() {
 
     test('table(users).where("id", 99).delete()', () async {
       var countBefore = await laconic.table(userTable).count();
-      await laconic.table(userTable).where('id', 99).delete();
+      final affected = await laconic.table(userTable).where('id', 99).delete();
+      expect(affected, 0);
       var countAfter = await laconic.table(userTable).count();
       expect(countBefore, countAfter);
     });
@@ -320,7 +322,8 @@ void main() {
     // ==================== Increment/Decrement ====================
 
     test('increment increases column value', () async {
-      await laconic.table(userTable).where('id', 1).increment('age');
+      final affected = await laconic.table(userTable).where('id', 1).increment('age');
+      expect(affected, 1);
       var user = await laconic.table(userTable).where('id', 1).first();
       expect(user['age'], 26);
       await laconic.table(userTable).where('id', 1).update({'age': 25});
@@ -348,7 +351,8 @@ void main() {
     });
 
     test('decrement decreases column value', () async {
-      await laconic.table(userTable).where('id', 2).decrement('age');
+      final affected = await laconic.table(userTable).where('id', 2).decrement('age');
+      expect(affected, 1);
       var user = await laconic.table(userTable).where('id', 2).first();
       expect(user['age'], 29);
       await laconic.table(userTable).where('id', 2).update({'age': 30});

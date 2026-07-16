@@ -33,6 +33,14 @@ abstract class DatabaseDriver {
   /// [params] are the parameter values to bind to the placeholders.
   Future<void> statement(String sql, [List<Object?> params = const []]);
 
+  /// Executes an UPDATE/DELETE statement and returns the affected row count.
+  ///
+  /// [sql] is the SQL statement string using `?` as placeholders.
+  /// [params] are the parameter values to bind to the placeholders.
+  ///
+  /// The returned value is the affected row count reported by the database.
+  Future<int> affectingStatement(String sql, [List<Object?> params = const []]);
+
   /// Executes an INSERT statement and returns the auto-increment ID.
   ///
   /// [sql] is the SQL INSERT statement using `?` as placeholders.

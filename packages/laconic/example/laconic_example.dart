@@ -34,6 +34,16 @@ class MockDriver implements DatabaseDriver {
   }
 
   @override
+  Future<int> affectingStatement(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async {
+    print('AFFECTING STATEMENT: $sql');
+    print('Params: $params');
+    return 0;
+  }
+
+  @override
   Future<int> insertAndGetId(
     String sql, [
     List<Object?> params = const [],

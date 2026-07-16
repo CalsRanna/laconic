@@ -119,7 +119,9 @@ class QueryBuilder {
   /// By default, calling delete() without a WHERE clause will throw a
   /// [LaconicException] to prevent accidental deletion of all records.
   /// Set [allowWithoutWhere] to `true` to explicitly allow this.
-  Future<void> delete({bool allowWithoutWhere = false}) async {
+  ///
+  /// Returns the number of affected rows reported by the database.
+  Future<int> delete({bool allowWithoutWhere = false}) async {
     if (_wheres.isEmpty && !allowWithoutWhere) {
       throw LaconicException(
         'Calling delete() without WHERE clause will delete all records. '
@@ -129,7 +131,7 @@ class QueryBuilder {
 
     final compiled = _grammar.compileDelete(table: _table, wheres: _wheres);
 
-    await _laconic.statement(compiled.sql, compiled.bindings);
+    return _laconic.affectingStatement(compiled.sql, compiled.bindings);
   }
 
   /// Truncates the table, removing all rows and resetting auto-increment.
@@ -868,7 +870,8 @@ class QueryBuilder {
   /// Updates records matching the query.
   ///
   /// [data] is a map of column-value pairs to update. Must be non-empty.
-  Future<void> update(Map<String, Object?> data) async {
+  /// Returns the number of affected rows reported by the database.
+  Future<int> update(Map<String, Object?> data) async {
     if (data.isEmpty) {
       throw LaconicException('Cannot update with an empty data map');
     }
@@ -878,7 +881,7 @@ class QueryBuilder {
       wheres: _wheres,
     );
 
-    await _laconic.statement(compiled.sql, compiled.bindings);
+    return _laconic.affectingStatement(compiled.sql, compiled.bindings);
   }
 
   /// Adds a WHERE condition to the query.
@@ -1814,6 +1817,7 @@ class QueryBuilder {
   /// [column] is the column name to increment.
   /// [amount] is the amount to increment by (defaults to 1).
   /// [extra] is an optional map of additional columns to update.
+  /// Returns the number of affected rows reported by the database.
   ///
   /// Example:
   /// ```dart
@@ -1821,7 +1825,7 @@ class QueryBuilder {
   /// await query.where('id', 1).increment('votes', amount: 5);
   /// await query.where('id', 1).increment('votes', extra: {'updated_at': DateTime.now()});
   /// ```
-  Future<void> increment(
+  Future<int> increment(
     String column, {
     int amount = 1,
     Map<String, Object?>? extra,
@@ -1842,7 +1846,7 @@ class QueryBuilder {
       wheres: _wheres,
     );
 
-    await _laconic.statement(compiled.sql, compiled.bindings);
+    return _laconic.affectingStatement(compiled.sql, compiled.bindings);
   }
 
   /// Decrements a column's value by a given amount.
@@ -1850,6 +1854,7 @@ class QueryBuilder {
   /// [column] is the column name to decrement.
   /// [amount] is the amount to decrement by (defaults to 1).
   /// [extra] is an optional map of additional columns to update.
+  /// Returns the number of affected rows reported by the database.
   ///
   /// Example:
   /// ```dart
@@ -1857,7 +1862,7 @@ class QueryBuilder {
   /// await query.where('id', 1).decrement('votes', amount: 5);
   /// await query.where('id', 1).decrement('votes', extra: {'updated_at': DateTime.now()});
   /// ```
-  Future<void> decrement(
+  Future<int> decrement(
     String column, {
     int amount = 1,
     Map<String, Object?>? extra,
@@ -1878,7 +1883,7 @@ class QueryBuilder {
       wheres: _wheres,
     );
 
-    await _laconic.statement(compiled.sql, compiled.bindings);
+    return _laconic.affectingStatement(compiled.sql, compiled.bindings);
   }
 
   /// Returns the compiled SQL for the current query without executing it.

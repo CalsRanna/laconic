@@ -361,6 +361,7 @@ class MockDriver implements DatabaseDriver {
   final List<String> executedSql = [];
   final List<List<Object?>> executedParams = [];
   List<Map<String, Object?>> mockResults = [];
+  int affectedRows = 0;
 
   @override
   SqlGrammar get grammar => MockGrammar();
@@ -379,6 +380,16 @@ class MockDriver implements DatabaseDriver {
   Future<void> statement(String sql, [List<Object?> params = const []]) async {
     executedSql.add(sql);
     executedParams.add(params);
+  }
+
+  @override
+  Future<int> affectingStatement(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async {
+    executedSql.add(sql);
+    executedParams.add(params);
+    return affectedRows;
   }
 
   @override
@@ -445,8 +456,10 @@ void main() {
     });
 
     test('update query is compiled correctly', () async {
-      await laconic.table('users').where('id', 1).update({'name': 'Jane'});
+      driver.affectedRows = 1;
+      final affected = await laconic.table('users').where('id', 1).update({'name': 'Jane'});
 
+      expect(affected, 1);
       expect(
         driver.executedSql.first,
         'update users set name = ? where id = ?',
@@ -455,8 +468,10 @@ void main() {
     });
 
     test('delete query is compiled correctly', () async {
-      await laconic.table('users').where('id', 1).delete();
+      driver.affectedRows = 1;
+      final affected = await laconic.table('users').where('id', 1).delete();
 
+      expect(affected, 1);
       expect(driver.executedSql.first, 'delete from users where id = ?');
       expect(driver.executedParams.first, [1]);
     });

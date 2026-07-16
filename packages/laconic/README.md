@@ -211,17 +211,21 @@ await laconic.table('users').upsert(
   update: ['name'],
 );
 
-// Update
-await laconic.table('users')
+// Update (returns the affected row count)
+final updated = await laconic.table('users')
     .where('id', 1)
     .update({'name': 'New Name'});
 
-// Increment / Decrement
-await laconic.table('posts').where('id', 1).increment('views');
-await laconic.table('products').where('id', 1).decrement('stock', amount: 5);
+// Increment / Decrement (return the affected row count)
+final incremented =
+    await laconic.table('posts').where('id', 1).increment('views');
+final decremented = await laconic
+    .table('products')
+    .where('id', 1)
+    .decrement('stock', amount: 5);
 
-// Delete
-await laconic.table('users')
+// Delete (returns the affected row count)
+final deleted = await laconic.table('users')
     .where('id', 99)
     .delete();
 
@@ -316,6 +320,14 @@ class MyDriver implements DatabaseDriver {
   @override
   Future<void> statement(String sql, [List<Object?> params = const []]) async {
     // Implementation
+  }
+
+  @override
+  Future<int> affectingStatement(
+    String sql,
+    [List<Object?> params = const []],
+  ) async {
+    // Execute UPDATE/DELETE and return the affected row count
   }
 
   @override

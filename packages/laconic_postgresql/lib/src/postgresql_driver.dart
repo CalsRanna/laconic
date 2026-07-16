@@ -146,6 +146,19 @@ class PostgresqlDriver implements DatabaseDriver {
   }
 
   @override
+  Future<int> affectingStatement(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async {
+    try {
+      final results = await _executeQuery(sql, params);
+      return results.affectedRows;
+    } catch (e, stackTrace) {
+      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    }
+  }
+
+  @override
   Future<int> insertAndGetId(
     String sql, [
     List<Object?> params = const [],

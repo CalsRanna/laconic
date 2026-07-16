@@ -61,6 +61,18 @@ class Laconic {
     return _driver.statement(sql, params);
   }
 
+  /// Executes an UPDATE/DELETE statement and returns the affected row count.
+  ///
+  /// [sql] is the SQL statement string using `?` as placeholders.
+  /// [params] are the parameter values to bind to the placeholders.
+  Future<int> affectingStatement(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async {
+    listen?.call(LaconicQuery(bindings: params, sql: sql));
+    return _driver.affectingStatement(sql, params);
+  }
+
   /// Executes an INSERT statement and returns the last inserted ID.
   ///
   /// [sql] is the SQL INSERT statement using `?` as placeholders.

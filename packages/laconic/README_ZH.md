@@ -178,17 +178,21 @@ final id = await laconic.table('users').insertGetId({
   'age': 30,
 });
 
-// 更新
-await laconic.table('users')
+// 更新（返回受影响行数）
+final updated = await laconic.table('users')
     .where('id', 1)
     .update({'name': 'New Name'});
 
-// 自增 / 自减
-await laconic.table('posts').where('id', 1).increment('views');
-await laconic.table('products').where('id', 1).decrement('stock', amount: 5);
+// 自增 / 自减（返回受影响行数）
+final incremented =
+    await laconic.table('posts').where('id', 1).increment('views');
+final decremented = await laconic
+    .table('products')
+    .where('id', 1)
+    .decrement('stock', amount: 5);
 
-// 删除
-await laconic.table('users')
+// 删除（返回受影响行数）
+final deleted = await laconic.table('users')
     .where('id', 99)
     .delete();
 
@@ -239,6 +243,14 @@ class MyDriver implements DatabaseDriver {
   @override
   Future<void> statement(String sql, [List<Object?> params = const []]) async {
     // 实现
+  }
+
+  @override
+  Future<int> affectingStatement(
+    String sql,
+    [List<Object?> params = const []],
+  ) async {
+    // 执行 UPDATE/DELETE 并返回受影响行数
   }
 
   @override

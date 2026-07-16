@@ -115,6 +115,25 @@ class SqliteDriver implements DatabaseDriver {
   }
 
   @override
+  Future<int> affectingStatement(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async {
+    try {
+      final stmt = _prepare(sql);
+      try {
+        stmt.execute(params);
+        return _db.updatedRows;
+      } catch (e) {
+        _stmtCache.remove(sql)?.close();
+        rethrow;
+      }
+    } catch (e, stackTrace) {
+      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    }
+  }
+
+  @override
   Future<int> insertAndGetId(
     String sql, [
     List<Object?> params = const [],
