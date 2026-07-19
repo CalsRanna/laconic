@@ -6,8 +6,8 @@ PostgreSQL driver for the [Laconic](https://pub.dev/packages/laconic) query buil
 
 ```yaml
 dependencies:
-  laconic: ^2.3.1
-  laconic_postgresql: ^1.3.1
+  laconic: ^3.0.0
+  laconic_postgresql: ^2.0.0
 ```
 
 ## Usage
@@ -34,11 +34,12 @@ void main() async {
     'age': 25,
   });
 
-  // Update data
-  await laconic.table('users').where('id', id).update({'age': 26});
+  // Update data and get the affected row count
+  final updated =
+      await laconic.table('users').where('id', id).update({'age': 26});
 
-  // Delete data
-  await laconic.table('users').where('id', id).delete();
+  // Delete data and get the affected row count
+  final deleted = await laconic.table('users').where('id', id).delete();
 
   // Don't forget to close
   await laconic.close();

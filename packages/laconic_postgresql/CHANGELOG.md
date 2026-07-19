@@ -1,3 +1,13 @@
+## 2.0.0
+
+### Breaking Changes
+
+- Requires `laconic: ^3.0.0` and implements the new `DatabaseDriver.affectingStatement()` contract
+
+### Features
+
+- `update()`, `delete()`, `increment()`, and `decrement()` now return the affected row count reported by PostgreSQL
+
 ## 1.3.1
 
 ### Bug Fixes

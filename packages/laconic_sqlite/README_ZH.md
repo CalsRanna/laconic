@@ -6,8 +6,8 @@
 
 ```yaml
 dependencies:
-  laconic: ^2.3.1
-  laconic_sqlite: ^1.3.1
+  laconic: ^3.0.0
+  laconic_sqlite: ^2.0.0
 ```
 
 ## 使用
@@ -32,11 +32,12 @@ void main() async {
     'age': 25,
   });
 
-  // 更新数据
-  await laconic.table('users').where('id', id).update({'age': 26});
+  // 更新数据并获取受影响行数
+  final updated =
+      await laconic.table('users').where('id', id).update({'age': 26});
 
-  // 删除数据
-  await laconic.table('users').where('id', id).delete();
+  // 删除数据并获取受影响行数
+  final deleted = await laconic.table('users').where('id', id).delete();
 
   // 别忘了关闭连接
   await laconic.close();

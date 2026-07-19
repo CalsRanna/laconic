@@ -1,3 +1,14 @@
+## 3.0.0
+
+### Breaking Changes
+
+- **Affected row counts** — `QueryBuilder.update()`, `delete()`, `increment()`, and `decrement()` now return `Future<int>` with the affected row count instead of `Future<void>`
+- **Custom driver API** — `DatabaseDriver` implementations must now implement `affectingStatement(String sql, [List<Object?> params])` and return the affected row count reported by the database
+
+### Features
+
+- Added `Laconic.affectingStatement()` to execute UPDATE/DELETE statements, notify the query listener, and return the affected row count
+
 ## 2.3.1
 
 ### Bug Fixes

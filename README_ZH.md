@@ -27,10 +27,10 @@
 
 | 包 | 描述 | 版本 |
 |---|------|------|
-| [laconic](https://pub.dev/packages/laconic) | 核心查询构建器 | 2.3.1 |
-| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite 驱动 | 1.3.1 |
-| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 1.3.1 |
-| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 1.3.1 |
+| [laconic](https://pub.dev/packages/laconic) | 核心查询构建器 | 3.0.0 |
+| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite 驱动 | 2.0.0 |
+| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 2.0.0 |
+| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 2.0.0 |
 
 ## 安装
 
@@ -38,10 +38,10 @@
 
 ```yaml
 dependencies:
-  laconic: ^2.3.1
-  laconic_sqlite: ^1.3.1    # SQLite
-  # laconic_mysql: ^1.3.1   # MySQL
-  # laconic_postgresql: ^1.3.1  # PostgreSQL
+  laconic: ^3.0.0
+  laconic_sqlite: ^2.0.0    # SQLite
+  # laconic_mysql: ^2.0.0   # MySQL
+  # laconic_postgresql: ^2.0.0  # PostgreSQL
 ```
 
 然后运行：
