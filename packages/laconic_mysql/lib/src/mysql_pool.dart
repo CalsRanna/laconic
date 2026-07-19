@@ -1,14 +1,13 @@
 import 'dart:async';
 import 'dart:collection';
 
-import 'package:mysql_client/mysql_client.dart';
+import 'package:laconic_mysql/src/client/mysql_client.dart';
 
 /// Lightweight MySQL connection pool with safe borrow/release semantics.
 ///
-/// Unlike [MySQLConnectionPool.withConnection] in `mysql_client` 0.0.27,
-/// this pool always returns connections to the idle list in a `finally`
-/// block, so SQL errors (or any thrown exception) cannot leak connection
-/// slots and exhaust the pool.
+/// This pool always returns connections to the idle list in a `finally` block,
+/// so SQL errors (or any thrown exception) cannot leak connection slots and
+/// exhaust the pool.
 class MysqlPool {
   final String host;
   final int port;

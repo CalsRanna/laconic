@@ -1,3 +1,11 @@
+## 2.1.0
+
+### Features
+
+- `update()` now returns the number of rows matched by its `WHERE` clause. Updating an existing row to its current values returns `1`, while a missing row returns `0`.
+- The maintained MySQL client fork is now embedded as a private implementation detail, so consumers no longer need a separate `mysql_client` dependency or override.
+- MySQL exception types are exported from `package:laconic_mysql/laconic_mysql.dart` for driver-specific error handling.
+
 ## 2.0.0
 
 ### Breaking Changes

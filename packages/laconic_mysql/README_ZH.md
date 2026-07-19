@@ -9,7 +9,7 @@
 ```yaml
 dependencies:
   laconic: ^3.0.0
-  laconic_mysql: ^2.0.0
+  laconic_mysql: ^2.1.0
 ```
 
 ## 使用
@@ -37,7 +37,7 @@ void main() async {
     'age': 25,
   });
 
-  // 更新数据并获取受影响行数
+  // 更新数据并获取 WHERE 条件匹配的行数
   final updated =
       await laconic.table('users').where('id', id).update({'age': 26});
 
@@ -72,6 +72,15 @@ void main() async {
 - 应用退出时调用 `close()` 关闭连接池
 
 这样可避免连续查询失败导致连接槽位耗尽、后续请求永久等待。
+
+## UPDATE 返回值
+
+MySQL 更新采用“匹配行数”语义。只要 `WHERE` 条件匹配到一行，即使提交的值
+与数据库现有值完全相同，也返回 `1`；原记录不存在时返回 `0`。调用方因此可以
+区分“记录存在但数据未变化”和“记录已被并发删除”。
+
+本包将维护的 MySQL 客户端 fork 作为私有实现直接内嵌，应用无需额外依赖或
+覆盖 `mysql_client`。
 
 ## 查询监听器
 

@@ -1,16 +1,16 @@
 import 'dart:async';
 
 import 'package:laconic/laconic.dart';
+import 'package:laconic_mysql/src/client/mysql_client.dart';
 import 'package:laconic_mysql/src/mysql_config.dart';
 import 'package:laconic_mysql/src/mysql_grammar.dart';
 import 'package:laconic_mysql/src/mysql_pool.dart';
-import 'package:mysql_client/mysql_client.dart';
 
 /// MySQL driver implementation for Laconic.
 ///
 /// This driver uses a lightweight connection pool that always returns
 /// connections after use (including when queries throw). This avoids the
-/// slot-leak in `mysql_client` 0.0.27's [MySQLConnectionPool.withConnection].
+/// slot leak in the upstream client's connection pool.
 ///
 /// The connection pool is lazily created on first use.
 ///

@@ -1,0 +1,42 @@
+import 'dart:typed_data';
+
+import 'package:laconic_mysql/src/client/mysql_protocol.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('plain and TLS handshakes request CLIENT_FOUND_ROWS', () {
+    final initialHandshake = MySQLPacketInitialHandshake(
+      protocolVersion: 10,
+      serverVersion: '8.0-test',
+      connectionID: 1,
+      authPluginDataPart1: Uint8List(8),
+      authPluginDataPart2: Uint8List(12),
+      capabilityFlags:
+          mysqlCapFlagClientProtocol41 |
+          mysqlCapFlagClientSecureConnection |
+          mysqlCapFlagClientPluginAuth,
+      charset: 45,
+      statusFlags: Uint8List(2),
+      authPluginName: 'mysql_native_password',
+    );
+
+    final handshake = MySQLPacketHandshakeResponse41.createWithNativePassword(
+      username: 'test',
+      password: 'test',
+      initialHandshakePayload: initialHandshake,
+    );
+    final sslRequest = MySQLPacketSSLRequest.createDefault(
+      initialHandshakePayload: initialHandshake,
+      connectWithDB: true,
+    );
+
+    expect(
+      handshake.capabilityFlags & mysqlCapFlagClientFoundRows,
+      mysqlCapFlagClientFoundRows,
+    );
+    expect(
+      sslRequest.capabilityFlags & mysqlCapFlagClientFoundRows,
+      mysqlCapFlagClientFoundRows,
+    );
+  });
+}

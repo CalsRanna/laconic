@@ -96,6 +96,24 @@ void main() {
       await laconic.table(userTable).where('id', 1).update({'age': 25});
     });
 
+    test(
+      'update returns matched rows for unchanged and missing records',
+      () async {
+        await laconic.table(userTable).where('id', 1).update({'age': 25});
+
+        final unchanged = await laconic.table(userTable).where('id', 1).update({
+          'age': 25,
+        });
+        final missing = await laconic
+            .table(userTable)
+            .where('id', 999999)
+            .update({'age': 25});
+
+        expect(unchanged, 1);
+        expect(missing, 0);
+      },
+    );
+
     test('table(users).where("id", 99).delete()', () async {
       var countBefore = await laconic.table(userTable).count();
       final affected = await laconic.table(userTable).where('id', 99).delete();

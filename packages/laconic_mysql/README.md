@@ -9,7 +9,7 @@ MySQL driver for the [Laconic](https://pub.dev/packages/laconic) query builder.
 ```yaml
 dependencies:
   laconic: ^3.0.0
-  laconic_mysql: ^2.0.0
+  laconic_mysql: ^2.1.0
 ```
 
 ## Usage
@@ -37,7 +37,7 @@ void main() async {
     'age': 25,
   });
 
-  // Update data and get the affected row count
+  // Update data and get the matched row count
   final updated =
       await laconic.table('users').where('id', id).update({'age': 26});
 
@@ -72,6 +72,16 @@ The driver maintains a small internal connection pool:
 - Call `close()` to shut down the pool when the application exits
 
 This avoids connection-slot exhaustion after repeated query failures.
+
+## Update Results
+
+MySQL updates use matched-row semantics. An update whose `WHERE` clause finds
+one row returns `1` even when the submitted values are already stored. A
+missing row returns `0`. This lets callers distinguish an unchanged existing
+record from a record that was concurrently deleted.
+
+The package privately embeds its maintained MySQL client fork. Applications
+do not need to depend on or override `mysql_client`.
 
 ## Query Listener
 

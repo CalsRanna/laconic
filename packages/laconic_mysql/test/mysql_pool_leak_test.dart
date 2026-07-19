@@ -2,7 +2,7 @@ import 'package:laconic/laconic.dart';
 import 'package:laconic_mysql/laconic_mysql.dart';
 import 'package:test/test.dart';
 
-/// Regression tests for the mysql_client 0.0.27 connection-slot leak.
+/// Regression tests for the upstream mysql_client connection-slot leak.
 ///
 /// Background: `MySQLConnectionPool.withConnection` did not release the
 /// connection when the callback threw. After maxConnections failures the pool
@@ -75,7 +75,9 @@ void main() {
             .select('SELECT ? AS ok', [42])
             .timeout(const Duration(seconds: 10));
         expect(rows, isNotEmpty);
-        expect(rows.first['ok'], 42);
+        // The embedded client currently binds prepared values as strings, so
+        // MySQL reports the result column as VAR_STRING.
+        expect(rows.first['ok'], '42');
       },
       timeout: const Timeout(Duration(seconds: 30)),
     );

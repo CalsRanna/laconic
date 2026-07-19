@@ -1,6 +1,6 @@
 name: laconic_mysql
 description: MySQL driver for the Laconic query builder.
-version: 2.0.0
+version: 2.1.0
 homepage: https://github.com/CalsRanna/laconic
 repository: https://github.com/CalsRanna/laconic
 
@@ -10,8 +10,10 @@ environment:
 resolution: workspace
 
 dependencies:
+  buffer: ^1.1.1
+  crypto: ^3.0.1
   laconic: ^3.0.0
-  mysql_client: ^0.0.27
+  tuple: ^2.0.0
 
 dev_dependencies:
   lints: ^5.1.1
