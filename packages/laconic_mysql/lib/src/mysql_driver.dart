@@ -4,7 +4,6 @@ import 'package:laconic/laconic.dart';
 import 'package:laconic_mysql/src/client/mysql_client.dart';
 import 'package:laconic_mysql/src/mysql_config.dart';
 import 'package:laconic_mysql/src/mysql_grammar.dart';
-import 'package:laconic_mysql/src/mysql_pool.dart';
 
 /// MySQL driver implementation for Laconic.
 ///
@@ -20,7 +19,7 @@ import 'package:laconic_mysql/src/mysql_pool.dart';
 /// COM_STMT_PREPARE does not support all statement types.
 class MysqlDriver implements DatabaseDriver {
   final MysqlConfig config;
-  MysqlPool? _pool;
+  MySQLConnectionPool? _pool;
   static final _grammar = MysqlGrammar();
   static final _txConnKey = Object();
 
@@ -35,8 +34,8 @@ class MysqlDriver implements DatabaseDriver {
   @override
   SqlGrammar get grammar => _grammar;
 
-  MysqlPool get _connectionPool {
-    return _pool ??= MysqlPool(
+  MySQLConnectionPool get _connectionPool {
+    return _pool ??= MySQLConnectionPool(
       databaseName: config.database,
       host: config.host,
       maxConnections: config.maxConnections,

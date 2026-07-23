@@ -1,7 +1,9 @@
 import 'dart:async';
-import 'package:laconic_mysql/src/client/mysql_client.dart';
+import 'dart:collection';
 
-/// Class to create and manage pool of database connections
+import 'connection.dart';
+
+/// Class to create and safely manage a pool of database connections.
 class MySQLConnectionPool {
   final String host;
   final int port;
@@ -13,142 +15,165 @@ class MySQLConnectionPool {
   final String collation;
   final int timeoutMs;
 
+  /// Called when a connection is removed from the pool (closed or discarded).
+  final void Function(MySQLConnection conn)? onConnectionRemoved;
+
   final List<MySQLConnection> _activeConnections = [];
   final List<MySQLConnection> _idleConnections = [];
+  final Queue<Completer<void>> _waiters = Queue();
 
-  /// Creates new pool
+  bool _closed = false;
+
+  /// Creates a new pool.
   ///
-  /// Almost all parameters are identical to [MySQLConnection.createConnection]
-  /// Pass [maxConnections] to tell pool maximum number of connections it can use
-  /// You can specify [timeoutMs], it will be passed to [MySQLConnection.connect] method when creating new connections
+  /// Almost all parameters are identical to [MySQLConnection.createConnection].
+  /// Pass [maxConnections] to set the maximum number of connections.
+  /// [timeoutMs] is passed to [MySQLConnection.connect] for new connections.
   MySQLConnectionPool({
     required this.host,
     required this.port,
     required this.userName,
-    required password,
+    required String password,
     required this.maxConnections,
     this.databaseName,
     this.secure = true,
     this.collation = 'utf8_general_ci',
     this.timeoutMs = 10000,
+    this.onConnectionRemoved,
   }) : _password = password;
 
-  /// Number of active connections in this pool
-  /// Active are connections which are currently interacting with the database
+  /// Number of connections currently borrowed from the pool.
   int get activeConnectionsQty => _activeConnections.length;
 
-  /// Number of idle connections in this pool
-  /// Idle are connections which are currently not interacting with the database and ready to be used
+  /// Number of connected, idle connections ready to be borrowed.
   int get idleConnectionsQty => _idleConnections.length;
 
-  /// Active + Idle connections
+  /// Total number of active and idle connections.
   int get allConnectionsQty => activeConnectionsQty + idleConnectionsQty;
 
-  List<MySQLConnection> get _allConnections =>
-      _idleConnections + _activeConnections;
-
-  /// See [MySQLConnection.execute]
-  Future<IResultSet> execute(
-    String query, [
-    Map<String, dynamic>? params,
-    bool iterable = false,
-  ]) async {
-    final conn = await _getFreeConnection();
+  /// Borrows a connection and always returns it after [callback] completes.
+  Future<T> withConnection<T>(
+    FutureOr<T> Function(MySQLConnection conn) callback,
+  ) async {
+    final conn = await _acquire();
     try {
-      final result = await conn.execute(query, params, iterable);
-      _releaseConnection(conn);
-      return result;
-    } catch (e) {
-      _releaseConnection(conn);
-      rethrow;
+      return await callback(conn);
+    } finally {
+      _release(conn);
     }
   }
 
-  /// Closes all connections in this pool and frees resources
+  /// Runs [callback] inside a transaction on a pooled connection.
+  Future<T> transactional<T>(
+    FutureOr<T> Function(MySQLConnection conn) callback,
+  ) {
+    return withConnection((conn) => conn.transactional(callback));
+  }
+
+  /// Closes every connection and rejects pending connection requests.
   Future<void> close() async {
-    for (final conn in _allConnections) {
-      await conn.close();
+    _closed = true;
+
+    while (_waiters.isNotEmpty) {
+      final waiter = _waiters.removeFirst();
+      if (!waiter.isCompleted) {
+        waiter.completeError(StateError('MySQLConnectionPool is closed'));
+      }
     }
+
+    final allConnections = [..._idleConnections, ..._activeConnections];
     _idleConnections.clear();
     _activeConnections.clear();
-  }
 
-  /// See [MySQLConnection.prepare]
-  Future<PreparedStmt> prepare(String query, [bool iterable = false]) async {
-    final conn = await _getFreeConnection();
-    try {
-      final stmt = conn.prepare(query, iterable);
-      _releaseConnection(conn);
-      return stmt;
-    } catch (e) {
-      _releaseConnection(conn);
-      rethrow;
+    for (final conn in allConnections) {
+      try {
+        await conn.close();
+      } catch (_) {
+        // Best-effort close; ignore secondary failures during shutdown.
+      }
+      onConnectionRemoved?.call(conn);
     }
   }
 
-  /// Get free connection from this pool (possibly new connection) and invoke callback function with this connection
-  ///
-  /// After callback completes, connection is returned into pool as idle connection
-  /// This function returns callback result
-  FutureOr<T> withConnection<T>(
-      FutureOr<T> Function(MySQLConnection conn) callback) async {
-    final conn = await _getFreeConnection();
-    final result = await callback(conn);
-    _releaseConnection(conn);
-    return result;
+  Future<MySQLConnection> _acquire() async {
+    if (_closed) {
+      throw StateError('MySQLConnectionPool is closed');
+    }
+
+    while (true) {
+      while (_idleConnections.isNotEmpty) {
+        final conn = _idleConnections.removeAt(0);
+        if (!conn.connected) {
+          onConnectionRemoved?.call(conn);
+          continue;
+        }
+        _activeConnections.add(conn);
+        return conn;
+      }
+
+      if (allConnectionsQty < maxConnections) {
+        final conn = await _createConnection();
+        _activeConnections.add(conn);
+        return conn;
+      }
+
+      final waiter = Completer<void>();
+      _waiters.add(waiter);
+      await waiter.future;
+
+      if (_closed) {
+        throw StateError('MySQLConnectionPool is closed');
+      }
+    }
   }
 
-  /// See [MySQLConnection.transactional]
-  Future<T> transactional<T>(
-      FutureOr<T> Function(MySQLConnection conn) callback) async {
-    return withConnection((conn) {
-      return conn.transactional(callback);
+  Future<MySQLConnection> _createConnection() async {
+    final conn = await MySQLConnection.createConnection(
+      host: host,
+      port: port,
+      userName: userName,
+      password: _password,
+      databaseName: databaseName,
+      secure: secure,
+      collation: collation,
+    );
+
+    await conn.connect(timeoutMs: timeoutMs);
+
+    conn.onClose(() {
+      _idleConnections.remove(conn);
+      _activeConnections.remove(conn);
+      onConnectionRemoved?.call(conn);
+      _notifyWaiter();
     });
+
+    return conn;
   }
 
-  Future<MySQLConnection> _getFreeConnection() async {
-    // if there is idle connection, return it
-    if (_idleConnections.isNotEmpty) {
-      final conn = _idleConnections.first;
-      _idleConnections.remove(conn);
-      _activeConnections.add(conn);
-      return conn;
+  void _release(MySQLConnection conn) {
+    final wasActive = _activeConnections.remove(conn);
+    if (!wasActive) {
+      _notifyWaiter();
+      return;
     }
 
-    if (allConnectionsQty < maxConnections) {
-      final conn = await MySQLConnection.createConnection(
-        host: host,
-        port: port,
-        userName: userName,
-        password: _password,
-        databaseName: databaseName,
-        secure: secure,
-        collation: collation,
-      );
-
-      await conn.connect(timeoutMs: timeoutMs);
-      _activeConnections.add(conn);
-
-      // remove connection from pool, if connection is closed
-      conn.onClose(() {
-        _idleConnections.remove(conn);
-        _activeConnections.remove(conn);
-      });
-
-      return conn;
-    } else {
-      // wait for idle connection
-      await Future.doWhile(() => idleConnectionsQty == 0);
-      final conn = _idleConnections.first;
-      _idleConnections.remove(conn);
-      _activeConnections.add(conn);
-      return conn;
+    if (_closed || !conn.connected) {
+      onConnectionRemoved?.call(conn);
+      _notifyWaiter();
+      return;
     }
-  }
 
-  void _releaseConnection(MySQLConnection conn) {
-    // remove from active
-    _activeConnections.remove(conn);
     _idleConnections.add(conn);
+    _notifyWaiter();
+  }
+
+  void _notifyWaiter() {
+    while (_waiters.isNotEmpty) {
+      final waiter = _waiters.removeFirst();
+      if (!waiter.isCompleted) {
+        waiter.complete();
+        return;
+      }
+    }
   }
 }
