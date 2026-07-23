@@ -1,6 +1,9 @@
 import 'dart:typed_data';
 
-import 'package:laconic_mysql/src/client/mysql_protocol.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_packet.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_handshake_response_41.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_initial_handshake.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_ssl_request.dart';
 import 'package:test/test.dart';
 
 void main() {

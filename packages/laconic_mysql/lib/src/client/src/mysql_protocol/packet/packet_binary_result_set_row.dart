@@ -1,6 +1,8 @@
 import 'dart:typed_data';
-import 'package:laconic_mysql/src/client/mysql_protocol.dart';
 import 'package:laconic_mysql/src/client/exception.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_column_type.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_packet.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_column_definition.dart';
 
 class MySQLBinaryResultSetRowPacket extends MySQLPacketPayload {
   List<Object?> values;

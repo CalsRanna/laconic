@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:buffer/buffer.dart';
-import 'package:laconic_mysql/src/client/mysql_protocol.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_packet.dart';
 
 class MySQLPacketAuthSwitchResponse extends MySQLPacketPayload {
   Uint8List authData;

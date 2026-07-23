@@ -3,8 +3,27 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:laconic_mysql/src/client/mysql_protocol.dart';
 import 'package:laconic_mysql/src/client/exception.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_column_type.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_comm_packet.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_packet.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_auth_switch_request.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_auth_switch_response.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_binary_result_set.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_binary_result_set_row.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_column_count.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_column_definition.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_eof.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_error.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_extra_auth_data.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_extra_auth_data_response.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_handshake_response_41.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_initial_handshake.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_ok.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_result_set.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_result_set_row.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_ssl_request.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_stmt_prepare_ok.dart';
 
 enum _MySQLConnectionState {
   fresh,

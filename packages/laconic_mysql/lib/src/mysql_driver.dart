@@ -3,7 +3,8 @@ import 'dart:collection';
 
 import 'package:laconic/laconic.dart';
 import 'package:laconic_mysql/src/client/exception.dart';
-import 'package:laconic_mysql/src/client/mysql_client.dart';
+import 'package:laconic_mysql/src/client/src/mysql_client/connection.dart';
+import 'package:laconic_mysql/src/client/src/mysql_client/pool.dart';
 import 'package:laconic_mysql/src/mysql_config.dart';
 import 'package:laconic_mysql/src/mysql_grammar.dart';
 

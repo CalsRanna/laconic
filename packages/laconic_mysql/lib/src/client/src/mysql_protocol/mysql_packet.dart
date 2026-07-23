@@ -1,8 +1,18 @@
 import 'dart:typed_data';
 import 'package:buffer/buffer.dart' show ByteDataWriter;
 import 'package:crypto/crypto.dart' as crypto;
-import 'package:laconic_mysql/src/client/mysql_protocol.dart';
 import 'package:laconic_mysql/src/client/exception.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_auth_switch_request.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_binary_result_set_row.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_column_count.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_column_definition.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_eof.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_error.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_extra_auth_data.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_initial_handshake.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_ok.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_result_set_row.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_stmt_prepare_ok.dart';
 import 'package:tuple/tuple.dart' show Tuple2;
 
 const mysqlCapFlagClientLongPassword = 0x00000001;

@@ -2,8 +2,9 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:buffer/buffer.dart' show ByteDataWriter;
 import 'package:laconic_mysql/src/client/exception.dart';
-import 'package:laconic_mysql/src/client/mysql_protocol.dart';
 import 'package:laconic_mysql/src/client/mysql_protocol_extension.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_column_type.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_packet.dart';
 
 class MySQLPacketCommInitDB extends MySQLPacketPayload {
   String schemaName;

@@ -5,8 +5,9 @@ import 'dart:typed_data';
 
 import 'package:laconic/laconic.dart';
 import 'package:laconic_mysql/laconic_mysql.dart';
-import 'package:laconic_mysql/src/client/mysql_client.dart';
-import 'package:laconic_mysql/src/client/mysql_protocol.dart';
+import 'package:laconic_mysql/src/client/src/mysql_client/connection.dart';
+import 'package:laconic_mysql/src/client/src/mysql_client/pool.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_packet.dart';
 import 'package:test/test.dart';
 
 const _host = '127.0.0.1';

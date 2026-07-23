@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'package:buffer/buffer.dart';
-import 'package:laconic_mysql/src/client/mysql_protocol.dart';
+import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_packet.dart';
 
 class MySQLPacketExtraAuthDataResponse extends MySQLPacketPayload {
   Uint8List data;
