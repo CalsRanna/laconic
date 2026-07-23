@@ -29,6 +29,7 @@ const mysqlCapFlagClientPluginAuthLenEncClientData = 0x00200000;
 const mysqlCapFlagClientDeprecateEOF = 0x01000000;
 
 const mysqlServerFlagMoreResultsExists = 0x0008;
+const mysqlMaxPhysicalPacketPayload = 0x00ffffff;
 
 enum MySQLGenericPacketType { ok, error, eof, other }
 
@@ -244,7 +245,7 @@ class MySQLPacket {
 
   factory MySQLPacket.decodeResultSetRowPacket(
     Uint8List buffer,
-    int numOfCols,
+    List<MySQLColumnDefinitionPacket> colDefs,
   ) {
     int offset = 0;
 
@@ -255,7 +256,7 @@ class MySQLPacket {
 
     final payload = MySQLResultSetRowPacket.decode(
       Uint8List.sublistView(buffer, offset),
-      numOfCols,
+      colDefs,
     );
 
     return MySQLPacket(
@@ -346,14 +347,38 @@ class MySQLPacket {
 
   Uint8List encode() {
     final payloadData = payload.encode();
-
-    final byteData = ByteData(4);
-    byteData.setInt32(0, payloadData.lengthInBytes, Endian.little);
-    byteData.setInt8(3, sequenceID);
-
     final buffer = ByteDataWriter(endian: Endian.little);
-    buffer.write(byteData.buffer.asUint8List());
-    buffer.write(payloadData);
+
+    var offset = 0;
+    var currentSequence = sequenceID & 0xff;
+    while (offset < payloadData.lengthInBytes) {
+      final remaining = payloadData.lengthInBytes - offset;
+      final chunkLength =
+          remaining > mysqlMaxPhysicalPacketPayload
+              ? mysqlMaxPhysicalPacketPayload
+              : remaining;
+
+      buffer.writeUint8(chunkLength & 0xff);
+      buffer.writeUint8((chunkLength >> 8) & 0xff);
+      buffer.writeUint8((chunkLength >> 16) & 0xff);
+      buffer.writeUint8(currentSequence);
+      if (chunkLength > 0) {
+        buffer.write(
+          Uint8List.sublistView(payloadData, offset, offset + chunkLength),
+        );
+      }
+
+      offset += chunkLength;
+      currentSequence = (currentSequence + 1) & 0xff;
+    }
+
+    if (payloadData.isEmpty ||
+        payloadData.lengthInBytes % mysqlMaxPhysicalPacketPayload == 0) {
+      buffer.writeUint8(0);
+      buffer.writeUint8(0);
+      buffer.writeUint8(0);
+      buffer.writeUint8(currentSequence);
+    }
 
     return buffer.toBytes();
   }

@@ -43,8 +43,11 @@ class MySQLPacketInitialHandshake extends MySQLPacketPayload {
     offset += 4;
 
     // auth-plugin-data-part-1
-    final authPluginDataPart1 =
-        Uint8List.sublistView(buffer, offset, offset + 8);
+    final authPluginDataPart1 = Uint8List.sublistView(
+      buffer,
+      offset,
+      offset + 8,
+    );
     offset += 9; // 8 + filler;
 
     // capability flags (lower 2 bytes)
@@ -84,8 +87,11 @@ class MySQLPacketInitialHandshake extends MySQLPacketPayload {
     if (capabilityFlags & mysqlCapFlagClientSecureConnection != 0) {
       int length = max(13, authPluginDataLength - 8);
 
-      authPluginDataPart2 =
-          Uint8List.sublistView(buffer, offset, offset + length);
+      authPluginDataPart2 = Uint8List.sublistView(
+        buffer,
+        offset,
+        offset + length,
+      );
 
       offset += length;
     }

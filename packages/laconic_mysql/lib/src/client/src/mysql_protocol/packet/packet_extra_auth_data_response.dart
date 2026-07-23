@@ -5,9 +5,7 @@ import 'package:laconic_mysql/src/client/mysql_protocol.dart';
 class MySQLPacketExtraAuthDataResponse extends MySQLPacketPayload {
   Uint8List data;
 
-  MySQLPacketExtraAuthDataResponse({
-    required this.data,
-  });
+  MySQLPacketExtraAuthDataResponse({required this.data});
 
   @override
   Uint8List encode() {

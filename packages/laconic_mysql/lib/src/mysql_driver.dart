@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:laconic/laconic.dart';
+import 'package:laconic_mysql/src/client/exception.dart';
 import 'package:laconic_mysql/src/client/mysql_client.dart';
 import 'package:laconic_mysql/src/mysql_config.dart';
 import 'package:laconic_mysql/src/mysql_grammar.dart';
@@ -23,9 +25,9 @@ class MysqlDriver implements DatabaseDriver {
   static final _grammar = MysqlGrammar();
   static final _txConnKey = Object();
 
-  /// Cache of prepared statements keyed by connection hash + SQL.
-  /// Avoids the PREPARE → DEALLOCATE round-trip per query.
-  final Map<String, dynamic> _stmtCache = {};
+  /// Per-connection LRU caches of prepared statements.
+  final Map<MySQLConnection, LinkedHashMap<String, PreparedStmt>> _stmtCache =
+      {};
   static const int _maxCachedStatements = 50;
 
   /// Creates a new MySQL driver with the given configuration.
@@ -42,6 +44,11 @@ class MysqlDriver implements DatabaseDriver {
       password: config.password,
       port: config.port,
       userName: config.username,
+      secure: config.useSsl,
+      allowBadCertificates: config.allowBadCertificates,
+      securityContext: config.securityContext,
+      connectTimeout: config.connectTimeout,
+      commandTimeout: config.commandTimeout,
       onConnectionRemoved: _evictStatementsForConnection,
     );
   }
@@ -79,31 +86,36 @@ class MysqlDriver implements DatabaseDriver {
       return conn.execute(sql);
     }
 
-    final cacheKey = '${identityHashCode(conn)}:$sql';
-    dynamic stmt = _stmtCache[cacheKey];
+    final connectionCache = _stmtCache.putIfAbsent(
+      conn,
+      LinkedHashMap<String, PreparedStmt>.new,
+    );
+    // Removing and reinserting makes the map insertion order an LRU order.
+    var stmt = connectionCache.remove(sql);
     if (stmt == null) {
       stmt = await conn.prepare(sql);
-      // Evict oldest entry if cache is full
-      if (_stmtCache.length >= _maxCachedStatements) {
-        _stmtCache.remove(_stmtCache.keys.first);
+      if (connectionCache.length >= _maxCachedStatements) {
+        final oldestSql = connectionCache.keys.first;
+        final oldest = connectionCache.remove(oldestSql)!;
+        await oldest.deallocate();
       }
-      _stmtCache[cacheKey] = stmt;
     }
+    connectionCache[sql] = stmt;
 
     try {
       return await stmt.execute(params);
-    } catch (e) {
-      // Prepared statement may be stale (connection re-established).
-      // Remove from cache and let the caller handle the error.
-      _stmtCache.remove(cacheKey);
+    } on MySQLServerException catch (error) {
+      if (error.errorCode == 1243) {
+        // ER_UNKNOWN_STMT_HANDLER: the server has already discarded it.
+        connectionCache.remove(sql);
+      }
       rethrow;
     }
   }
 
   /// Drops all cached prepared statements for [conn].
   void _evictStatementsForConnection(MySQLConnection conn) {
-    final prefix = '${identityHashCode(conn)}:';
-    _stmtCache.removeWhere((key, _) => key.startsWith(prefix));
+    _stmtCache.remove(conn);
   }
 
   List<LaconicResult> _toResults(IResultSet results) {

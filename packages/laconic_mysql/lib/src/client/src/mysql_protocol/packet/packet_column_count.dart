@@ -6,17 +6,13 @@ import 'package:laconic_mysql/src/client/mysql_protocol_extension.dart';
 class MySQLPacketColumnCount extends MySQLPacketPayload {
   BigInt columnCount;
 
-  MySQLPacketColumnCount({
-    required this.columnCount,
-  });
+  MySQLPacketColumnCount({required this.columnCount});
 
   factory MySQLPacketColumnCount.decode(Uint8List buffer) {
     final byteData = ByteData.sublistView(buffer);
     final columnCount = byteData.getVariableEncInt(0);
 
-    return MySQLPacketColumnCount(
-      columnCount: columnCount.item1,
-    );
+    return MySQLPacketColumnCount(columnCount: columnCount.item1);
   }
 
   @override

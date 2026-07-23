@@ -5,10 +5,7 @@ class MySQLPacketEOF extends MySQLPacketPayload {
   int header;
   int statusFlags;
 
-  MySQLPacketEOF({
-    required this.header,
-    required this.statusFlags,
-  });
+  MySQLPacketEOF({required this.header, required this.statusFlags});
 
   factory MySQLPacketEOF.decode(Uint8List buffer) {
     final byteData = ByteData.sublistView(buffer);

@@ -13,8 +13,11 @@ void main() {
       authPluginDataPart2: Uint8List(12),
       capabilityFlags:
           mysqlCapFlagClientProtocol41 |
+          mysqlCapFlagClientFoundRows |
+          mysqlCapFlagClientConnectWithDB |
           mysqlCapFlagClientSecureConnection |
-          mysqlCapFlagClientPluginAuth,
+          mysqlCapFlagClientPluginAuth |
+          mysqlCapFlagClientSsl,
       charset: 45,
       statusFlags: Uint8List(2),
       authPluginName: 'mysql_native_password',
@@ -37,6 +40,37 @@ void main() {
     expect(
       sslRequest.capabilityFlags & mysqlCapFlagClientFoundRows,
       mysqlCapFlagClientFoundRows,
+    );
+    expect(
+      handshake.capabilityFlags & mysqlCapFlagClientMultiStatements,
+      isZero,
+    );
+    expect(
+      sslRequest.capabilityFlags & mysqlCapFlagClientMultiStatements,
+      isZero,
+    );
+
+    final limitedServer = MySQLPacketInitialHandshake(
+      protocolVersion: 10,
+      serverVersion: '5.7-compatible',
+      connectionID: 2,
+      authPluginDataPart1: Uint8List(8),
+      authPluginDataPart2: Uint8List(12),
+      capabilityFlags:
+          mysqlCapFlagClientProtocol41 | mysqlCapFlagClientSecureConnection,
+      charset: 45,
+      statusFlags: Uint8List(2),
+      authPluginName: 'mysql_native_password',
+    );
+    final limitedHandshake =
+        MySQLPacketHandshakeResponse41.createWithNativePassword(
+          username: 'test',
+          password: 'test',
+          initialHandshakePayload: limitedServer,
+        );
+    expect(
+      limitedHandshake.capabilityFlags & ~limitedServer.capabilityFlags,
+      isZero,
     );
   });
 }

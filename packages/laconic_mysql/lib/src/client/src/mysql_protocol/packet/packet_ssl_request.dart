@@ -5,11 +5,10 @@ import 'package:laconic_mysql/src/client/mysql_protocol.dart';
 const _supportedCapabitilies =
     mysqlCapFlagClientProtocol41 |
     mysqlCapFlagClientFoundRows |
+    mysqlCapFlagClientConnectWithDB |
     mysqlCapFlagClientSecureConnection |
     mysqlCapFlagClientPluginAuth |
     mysqlCapFlagClientPluginAuthLenEncClientData |
-    mysqlCapFlagClientMultiStatements |
-    mysqlCapFlagClientMultiResults |
     mysqlCapFlagClientSsl;
 
 class MySQLPacketSSLRequest extends MySQLPacketPayload {
@@ -30,7 +29,8 @@ class MySQLPacketSSLRequest extends MySQLPacketPayload {
     required bool connectWithDB,
   }) {
     return MySQLPacketSSLRequest._(
-      capabilityFlags: _supportedCapabitilies,
+      capabilityFlags:
+          _supportedCapabitilies & initialHandshakePayload.capabilityFlags,
       maxPacketSize: 50 * 1024 * 1024,
       characterSet: initialHandshakePayload.charset,
       connectWithDB: connectWithDB,
@@ -39,8 +39,8 @@ class MySQLPacketSSLRequest extends MySQLPacketPayload {
 
   @override
   Uint8List encode() {
-    if (connectWithDB) {
-      capabilityFlags = capabilityFlags | mysqlCapFlagClientConnectWithDB;
+    if (!connectWithDB) {
+      capabilityFlags = capabilityFlags & ~mysqlCapFlagClientConnectWithDB;
     }
 
     final buffer = ByteDataWriter(endian: Endian.little);

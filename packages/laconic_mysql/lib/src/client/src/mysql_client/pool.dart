@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:io';
 
 import 'connection.dart';
 
@@ -13,7 +14,10 @@ class MySQLConnectionPool {
   final String? databaseName;
   final bool secure;
   final String collation;
-  final int timeoutMs;
+  final Duration connectTimeout;
+  final Duration commandTimeout;
+  final SecurityContext? securityContext;
+  final bool allowBadCertificates;
 
   /// Called when a connection is removed from the pool (closed or discarded).
   final void Function(MySQLConnection conn)? onConnectionRemoved;
@@ -22,13 +26,15 @@ class MySQLConnectionPool {
   final List<MySQLConnection> _idleConnections = [];
   final Queue<Completer<void>> _waiters = Queue();
 
+  int _pendingConnections = 0;
   bool _closed = false;
 
   /// Creates a new pool.
   ///
   /// Almost all parameters are identical to [MySQLConnection.createConnection].
   /// Pass [maxConnections] to set the maximum number of connections.
-  /// [timeoutMs] is passed to [MySQLConnection.connect] for new connections.
+  /// [connectTimeout] bounds socket creation and authentication.
+  /// [commandTimeout] bounds each command executed on a connection.
   MySQLConnectionPool({
     required this.host,
     required this.port,
@@ -38,9 +44,34 @@ class MySQLConnectionPool {
     this.databaseName,
     this.secure = true,
     this.collation = 'utf8_general_ci',
-    this.timeoutMs = 10000,
+    this.connectTimeout = const Duration(seconds: 10),
+    this.commandTimeout = const Duration(seconds: 10),
+    this.securityContext,
+    this.allowBadCertificates = false,
     this.onConnectionRemoved,
-  }) : _password = password;
+  }) : _password = password {
+    if (maxConnections <= 0) {
+      throw ArgumentError.value(
+        maxConnections,
+        'maxConnections',
+        'must be greater than zero',
+      );
+    }
+    if (connectTimeout <= Duration.zero) {
+      throw ArgumentError.value(
+        connectTimeout,
+        'connectTimeout',
+        'must be greater than zero',
+      );
+    }
+    if (commandTimeout <= Duration.zero) {
+      throw ArgumentError.value(
+        commandTimeout,
+        'commandTimeout',
+        'must be greater than zero',
+      );
+    }
+  }
 
   /// Number of connections currently borrowed from the pool.
   int get activeConnectionsQty => _activeConnections.length;
@@ -50,6 +81,8 @@ class MySQLConnectionPool {
 
   /// Total number of active and idle connections.
   int get allConnectionsQty => activeConnectionsQty + idleConnectionsQty;
+
+  int get _allocatedConnectionsQty => allConnectionsQty + _pendingConnections;
 
   /// Borrows a connection and always returns it after [callback] completes.
   Future<T> withConnection<T>(
@@ -85,14 +118,7 @@ class MySQLConnectionPool {
     _idleConnections.clear();
     _activeConnections.clear();
 
-    for (final conn in allConnections) {
-      try {
-        await conn.close();
-      } catch (_) {
-        // Best-effort close; ignore secondary failures during shutdown.
-      }
-      onConnectionRemoved?.call(conn);
-    }
+    await Future.wait(allConnections.map((conn) => conn.close()));
   }
 
   Future<MySQLConnection> _acquire() async {
@@ -111,10 +137,20 @@ class MySQLConnectionPool {
         return conn;
       }
 
-      if (allConnectionsQty < maxConnections) {
-        final conn = await _createConnection();
-        _activeConnections.add(conn);
-        return conn;
+      if (_allocatedConnectionsQty < maxConnections) {
+        _pendingConnections++;
+        try {
+          final conn = await _createConnection();
+          if (_closed) {
+            await conn.close();
+            throw StateError('MySQLConnectionPool is closed');
+          }
+          _activeConnections.add(conn);
+          return conn;
+        } finally {
+          _pendingConnections--;
+          _notifyWaiter();
+        }
       }
 
       final waiter = Completer<void>();
@@ -136,9 +172,18 @@ class MySQLConnectionPool {
       databaseName: databaseName,
       secure: secure,
       collation: collation,
+      securityContext: securityContext,
+      allowBadCertificates: allowBadCertificates,
+      connectTimeout: connectTimeout,
+      commandTimeout: commandTimeout,
     );
 
-    await conn.connect(timeoutMs: timeoutMs);
+    try {
+      await conn.connect();
+    } catch (_) {
+      await conn.close();
+      rethrow;
+    }
 
     conn.onClose(() {
       _idleConnections.remove(conn);
@@ -157,7 +202,17 @@ class MySQLConnectionPool {
       return;
     }
 
-    if (_closed || !conn.connected) {
+    if (_closed) {
+      if (conn.connected) {
+        unawaited(conn.close());
+      } else {
+        onConnectionRemoved?.call(conn);
+      }
+      _notifyWaiter();
+      return;
+    }
+
+    if (!conn.connected) {
       onConnectionRemoved?.call(conn);
       _notifyWaiter();
       return;

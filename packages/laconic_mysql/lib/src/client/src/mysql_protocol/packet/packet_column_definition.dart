@@ -12,6 +12,8 @@ class MySQLColumnDefinitionPacket extends MySQLPacketPayload {
   int charset;
   int columnLength;
   MySQLColumnType type;
+  int flags;
+  int decimals;
 
   MySQLColumnDefinitionPacket({
     required this.catalog,
@@ -23,6 +25,8 @@ class MySQLColumnDefinitionPacket extends MySQLPacketPayload {
     required this.charset,
     required this.columnLength,
     required this.type,
+    required this.flags,
+    required this.decimals,
   });
 
   factory MySQLColumnDefinitionPacket.decode(Uint8List buffer) {
@@ -59,6 +63,11 @@ class MySQLColumnDefinitionPacket extends MySQLPacketPayload {
     final type = byteData.getUint8(offset);
     offset += 1;
 
+    final flags = byteData.getUint16(offset, Endian.little);
+    offset += 2;
+
+    final decimals = byteData.getUint8(offset);
+
     return MySQLColumnDefinitionPacket(
       catalog: catalog.item1,
       charset: charset,
@@ -69,6 +78,8 @@ class MySQLColumnDefinitionPacket extends MySQLPacketPayload {
       schema: schema.item1,
       table: table.item1,
       type: MySQLColumnType.create(type),
+      flags: flags,
+      decimals: decimals,
     );
   }
 

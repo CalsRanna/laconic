@@ -7,11 +7,10 @@ import 'package:laconic_mysql/src/client/mysql_protocol_extension.dart';
 const _supportedCapabitilies =
     mysqlCapFlagClientProtocol41 |
     mysqlCapFlagClientFoundRows |
+    mysqlCapFlagClientConnectWithDB |
     mysqlCapFlagClientSecureConnection |
     mysqlCapFlagClientPluginAuth |
-    mysqlCapFlagClientPluginAuthLenEncClientData |
-    mysqlCapFlagClientMultiStatements |
-    mysqlCapFlagClientMultiResults;
+    mysqlCapFlagClientPluginAuthLenEncClientData;
 
 class MySQLPacketHandshakeResponse41 extends MySQLPacketPayload {
   int capabilityFlags;
@@ -36,6 +35,7 @@ class MySQLPacketHandshakeResponse41 extends MySQLPacketPayload {
     required String username,
     required String password,
     required MySQLPacketInitialHandshake initialHandshakePayload,
+    bool secure = false,
   }) {
     assert(initialHandshakePayload.authPluginDataPart2 != null);
     assert(initialHandshakePayload.authPluginName != null);
@@ -54,7 +54,9 @@ class MySQLPacketHandshakeResponse41 extends MySQLPacketPayload {
     );
 
     return MySQLPacketHandshakeResponse41(
-      capabilityFlags: _supportedCapabitilies,
+      capabilityFlags:
+          (_supportedCapabitilies | (secure ? mysqlCapFlagClientSsl : 0)) &
+          initialHandshakePayload.capabilityFlags,
       maxPacketSize: 50 * 1024 * 1024,
       authPluginName: initialHandshakePayload.authPluginName!,
       characterSet: initialHandshakePayload.charset,
@@ -67,6 +69,7 @@ class MySQLPacketHandshakeResponse41 extends MySQLPacketPayload {
     required String username,
     required String password,
     required MySQLPacketInitialHandshake initialHandshakePayload,
+    bool secure = false,
   }) {
     final challenge =
         initialHandshakePayload.authPluginDataPart1 +
@@ -82,7 +85,9 @@ class MySQLPacketHandshakeResponse41 extends MySQLPacketPayload {
     );
 
     return MySQLPacketHandshakeResponse41(
-      capabilityFlags: _supportedCapabitilies,
+      capabilityFlags:
+          (_supportedCapabitilies | (secure ? mysqlCapFlagClientSsl : 0)) &
+          initialHandshakePayload.capabilityFlags,
       maxPacketSize: 50 * 1024 * 1024,
       authPluginName: initialHandshakePayload.authPluginName!,
       characterSet: initialHandshakePayload.charset,
@@ -95,8 +100,8 @@ class MySQLPacketHandshakeResponse41 extends MySQLPacketPayload {
   Uint8List encode() {
     final buffer = ByteDataWriter(endian: Endian.little);
 
-    if (database != null) {
-      capabilityFlags = capabilityFlags | mysqlCapFlagClientConnectWithDB;
+    if (database == null) {
+      capabilityFlags = capabilityFlags & ~mysqlCapFlagClientConnectWithDB;
     }
 
     buffer.writeUint32(capabilityFlags);

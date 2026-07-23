@@ -33,6 +33,9 @@ const mysqlColumnTypeBlob = 0xfc;
 const mysqlColumnTypeVarString = 0xfd;
 const mysqlColumnTypeString = 0xfe;
 const mysqlColumnTypeGeometry = 0xff;
+const mysqlColumnTypeJson = 0xf5;
+
+const mysqlColumnFlagUnsigned = 0x0020;
 
 class MySQLColumnType {
   final int _value;
@@ -155,15 +158,17 @@ class MySQLColumnType {
       case mysqlColumnTypeVarChar:
       case mysqlColumnTypeEnum:
       case mysqlColumnTypeSet:
+      case mysqlColumnTypeDecimal:
+      case mysqlColumnTypeNewDecimal:
+      case mysqlColumnTypeJson:
+        return String;
       case mysqlColumnTypeLongBlob:
       case mysqlColumnTypeMediumBlob:
       case mysqlColumnTypeBlob:
       case mysqlColumnTypeTinyBlob:
       case mysqlColumnTypeGeometry:
       case mysqlColumnTypeBit:
-      case mysqlColumnTypeDecimal:
-      case mysqlColumnTypeNewDecimal:
-        return String;
+        return Uint8List;
       case mysqlColumnTypeTiny:
         if (columnLength == 1) {
           return bool;
@@ -174,6 +179,7 @@ class MySQLColumnType {
       case mysqlColumnTypeLong:
       case mysqlColumnTypeLongLong:
       case mysqlColumnTypeInt24:
+      case mysqlColumnTypeYear:
         return int;
       case mysqlColumnTypeFloat:
       case mysqlColumnTypeDouble:
@@ -184,35 +190,55 @@ class MySQLColumnType {
   }
 }
 
-Tuple2<String, int> parseBinaryColumnData(
+Tuple2<Object, int> parseBinaryColumnData(
   int columnType,
   ByteData data,
   Uint8List buffer,
-  int startOffset,
-) {
+  int startOffset, {
+  bool unsigned = false,
+  int charset = 0,
+}) {
   switch (columnType) {
     case mysqlColumnTypeTiny:
-      final value = data.getInt8(startOffset);
-      return Tuple2(value.toString(), 1);
+      final value =
+          unsigned ? data.getUint8(startOffset) : data.getInt8(startOffset);
+      return Tuple2(value, 1);
     case mysqlColumnTypeShort:
-      final value = data.getInt16(startOffset, Endian.little);
-      return Tuple2(value.toString(), 2);
+      final value =
+          unsigned
+              ? data.getUint16(startOffset, Endian.little)
+              : data.getInt16(startOffset, Endian.little);
+      return Tuple2(value, 2);
     case mysqlColumnTypeLong:
     case mysqlColumnTypeInt24:
-      final value = data.getInt32(startOffset, Endian.little);
-      return Tuple2(value.toString(), 4);
+      final value =
+          unsigned
+              ? data.getUint32(startOffset, Endian.little)
+              : data.getInt32(startOffset, Endian.little);
+      return Tuple2(value, 4);
     case mysqlColumnTypeLongLong:
-      final value = data.getInt64(startOffset, Endian.little);
-      return Tuple2(value.toString(), 8);
+      if (unsigned) {
+        final low = data.getUint32(startOffset, Endian.little);
+        final high = data.getUint32(startOffset + 4, Endian.little);
+        final value = (BigInt.from(high) << 32) | BigInt.from(low);
+        final maxSignedInt = BigInt.from(0x7fffffffffffffff);
+        return Tuple2(value <= maxSignedInt ? value.toInt() : value, 8);
+      }
+      return Tuple2(data.getInt64(startOffset, Endian.little), 8);
     case mysqlColumnTypeFloat:
       final value = data.getFloat32(startOffset, Endian.little);
-      return Tuple2(value.toString(), 4);
+      return Tuple2(value, 4);
     case mysqlColumnTypeDouble:
       final value = data.getFloat64(startOffset, Endian.little);
-      return Tuple2(value.toString(), 8);
+      return Tuple2(value, 8);
+    case mysqlColumnTypeYear:
+      return Tuple2(data.getUint16(startOffset, Endian.little), 2);
     case mysqlColumnTypeDate:
+    case mysqlColumnTypeNewDate:
     case mysqlColumnTypeDateTime:
     case mysqlColumnTypeTimestamp:
+    case mysqlColumnTypeDateTime2:
+    case mysqlColumnTypeTimestamp2:
       final initialOffset = startOffset;
 
       // read number of bytes (0, 4, 7, 11)
@@ -220,7 +246,11 @@ Tuple2<String, int> parseBinaryColumnData(
       startOffset += 1;
 
       if (numOfBytes == 0) {
-        return Tuple2("0000-00-00 00:00:00", 1);
+        if (columnType == mysqlColumnTypeDate ||
+            columnType == mysqlColumnTypeNewDate) {
+          return Tuple2('0000-00-00', 1);
+        }
+        return Tuple2('0000-00-00 00:00:00', 1);
       }
 
       var year = 0;
@@ -259,16 +289,24 @@ Tuple2<String, int> parseBinaryColumnData(
       }
 
       final result = StringBuffer();
-      result.write('$year-');
+      result.write('${year.toString().padLeft(4, '0')}-');
       result.write('${month.toString().padLeft(2, '0')}-');
-      result.write('${day.toString().padLeft(2, '0')} ');
+      result.write(day.toString().padLeft(2, '0'));
+      if (columnType == mysqlColumnTypeDate ||
+          columnType == mysqlColumnTypeNewDate) {
+        return Tuple2(result.toString(), startOffset - initialOffset);
+      }
+      result.write(' ');
       result.write('${hour.toString().padLeft(2, '0')}:');
       result.write('${minute.toString().padLeft(2, '0')}:');
-      result.write('${second.toString().padLeft(2, '0')}.');
-      result.write(microSecond.toString());
+      result.write(second.toString().padLeft(2, '0'));
+      if (microSecond != 0) {
+        result.write('.${microSecond.toString().padLeft(6, '0')}');
+      }
 
       return Tuple2(result.toString(), startOffset - initialOffset);
     case mysqlColumnTypeTime:
+    case mysqlColumnTypeTime2:
       final initialOffset = startOffset;
 
       // read number of bytes (0, 8, 12)
@@ -316,8 +354,10 @@ Tuple2<String, int> parseBinaryColumnData(
       }
       result.write('${hours.toString().padLeft(2, '0')}:');
       result.write('${minutes.toString().padLeft(2, '0')}:');
-      result.write('${seconds.toString().padLeft(2, '0')}.');
-      result.write(microSecond.toString());
+      result.write(seconds.toString().padLeft(2, '0'));
+      if (microSecond != 0) {
+        result.write('.${microSecond.toString().padLeft(6, '0')}');
+      }
 
       return Tuple2(result.toString(), startOffset - initialOffset);
     case mysqlColumnTypeString:
@@ -325,14 +365,24 @@ Tuple2<String, int> parseBinaryColumnData(
     case mysqlColumnTypeVarChar:
     case mysqlColumnTypeEnum:
     case mysqlColumnTypeSet:
+      if (charset == 63) {
+        return buffer.getLengthEncodedBytes(startOffset);
+      }
+      return buffer.getUtf8LengthEncodedString(startOffset);
     case mysqlColumnTypeLongBlob:
     case mysqlColumnTypeMediumBlob:
     case mysqlColumnTypeBlob:
     case mysqlColumnTypeTinyBlob:
+      if (charset == 63) {
+        return buffer.getLengthEncodedBytes(startOffset);
+      }
+      return buffer.getUtf8LengthEncodedString(startOffset);
     case mysqlColumnTypeGeometry:
     case mysqlColumnTypeBit:
+      return buffer.getLengthEncodedBytes(startOffset);
     case mysqlColumnTypeDecimal:
     case mysqlColumnTypeNewDecimal:
+    case mysqlColumnTypeJson:
       return buffer.getUtf8LengthEncodedString(startOffset);
   }
 

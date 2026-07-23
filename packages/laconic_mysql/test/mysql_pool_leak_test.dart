@@ -24,6 +24,7 @@ void main() {
             username: 'root',
             password: 'root',
             maxConnections: maxConnections,
+            useSsl: false,
           ),
         ),
       );
@@ -75,9 +76,7 @@ void main() {
             .select('SELECT ? AS ok', [42])
             .timeout(const Duration(seconds: 10));
         expect(rows, isNotEmpty);
-        // The embedded client currently binds prepared values as strings, so
-        // MySQL reports the result column as VAR_STRING.
-        expect(rows.first['ok'], '42');
+        expect(rows.first['ok'], 42);
       },
       timeout: const Timeout(Duration(seconds: 30)),
     );

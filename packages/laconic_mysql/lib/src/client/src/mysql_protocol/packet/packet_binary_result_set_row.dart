@@ -3,11 +3,9 @@ import 'package:laconic_mysql/src/client/mysql_protocol.dart';
 import 'package:laconic_mysql/src/client/exception.dart';
 
 class MySQLBinaryResultSetRowPacket extends MySQLPacketPayload {
-  List<String?> values;
+  List<Object?> values;
 
-  MySQLBinaryResultSetRowPacket({
-    required this.values,
-  });
+  MySQLBinaryResultSetRowPacket({required this.values});
 
   factory MySQLBinaryResultSetRowPacket.decode(
     Uint8List buffer,
@@ -26,7 +24,7 @@ class MySQLBinaryResultSetRowPacket extends MySQLPacketPayload {
       );
     }
 
-    List<String?> values = [];
+    List<Object?> values = [];
 
     // parse null bitmap
     int nullBitmapSize = ((colDefs.length + 9) / 8).floor();
@@ -56,15 +54,15 @@ class MySQLBinaryResultSetRowPacket extends MySQLPacketPayload {
           byteData,
           buffer,
           offset,
+          unsigned: colDefs[x].flags & mysqlColumnFlagUnsigned != 0,
+          charset: colDefs[x].charset,
         );
         offset += parseResult.item2;
         values.add(parseResult.item1);
       }
     }
 
-    return MySQLBinaryResultSetRowPacket(
-      values: values,
-    );
+    return MySQLBinaryResultSetRowPacket(values: values);
   }
 
   @override

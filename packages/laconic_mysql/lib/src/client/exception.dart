@@ -49,3 +49,20 @@ class MySQLProtocolException extends MySQLClientException {
   @override
   String get _prefix => 'MySQLProtocolException';
 }
+
+/// Reports a transaction failure together with a secondary rollback failure.
+class MySQLTransactionException extends MySQLClientException {
+  final Object cause;
+  final StackTrace causeStackTrace;
+  final Object rollbackCause;
+  final StackTrace rollbackStackTrace;
+
+  MySQLTransactionException({
+    required this.cause,
+    required this.causeStackTrace,
+    required this.rollbackCause,
+    required this.rollbackStackTrace,
+  }) : super(
+         'Transaction failed: $cause; rollback also failed: $rollbackCause',
+       );
+}

@@ -6,10 +6,7 @@ class MySQLPacketExtraAuthData extends MySQLPacketPayload {
   int header;
   String pluginData;
 
-  MySQLPacketExtraAuthData({
-    required this.header,
-    required this.pluginData,
-  });
+  MySQLPacketExtraAuthData({required this.header, required this.pluginData});
 
   factory MySQLPacketExtraAuthData.decode(Uint8List buffer) {
     final byteData = ByteData.sublistView(buffer);
