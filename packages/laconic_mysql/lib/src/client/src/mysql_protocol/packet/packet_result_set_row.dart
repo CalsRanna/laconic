@@ -3,7 +3,6 @@ import 'package:laconic_mysql/src/client/mysql_protocol_extension.dart';
 import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_column_type.dart';
 import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_packet.dart';
 import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_column_definition.dart';
-import 'package:tuple/tuple.dart';
 
 class MySQLResultSetRowPacket extends MySQLPacketPayload {
   List<Object?> values;
@@ -20,7 +19,7 @@ class MySQLResultSetRowPacket extends MySQLPacketPayload {
     List<Object?> values = [];
 
     for (int x = 0; x < colDefs.length; x++) {
-      Tuple2<Object, int> value;
+      DecodedValue<Object> value;
       final nextByte = byteData.getUint8(offset);
 
       if (nextByte == 0xfb) {
@@ -49,8 +48,8 @@ class MySQLResultSetRowPacket extends MySQLPacketPayload {
             isBinary
                 ? buffer.getLengthEncodedBytes(offset)
                 : buffer.getUtf8LengthEncodedString(offset);
-        values.add(value.item1);
-        offset += value.item2;
+        values.add(value.value);
+        offset += value.bytesRead;
       }
     }
 

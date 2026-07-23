@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'package:tuple/tuple.dart';
 import 'package:laconic_mysql/src/client/exception.dart';
 import 'package:laconic_mysql/src/client/mysql_protocol_extension.dart';
 
@@ -190,7 +189,7 @@ class MySQLColumnType {
   }
 }
 
-Tuple2<Object, int> parseBinaryColumnData(
+DecodedValue<Object> parseBinaryColumnData(
   int columnType,
   ByteData data,
   Uint8List buffer,
@@ -202,37 +201,40 @@ Tuple2<Object, int> parseBinaryColumnData(
     case mysqlColumnTypeTiny:
       final value =
           unsigned ? data.getUint8(startOffset) : data.getInt8(startOffset);
-      return Tuple2(value, 1);
+      return (value: value, bytesRead: 1);
     case mysqlColumnTypeShort:
       final value =
           unsigned
               ? data.getUint16(startOffset, Endian.little)
               : data.getInt16(startOffset, Endian.little);
-      return Tuple2(value, 2);
+      return (value: value, bytesRead: 2);
     case mysqlColumnTypeLong:
     case mysqlColumnTypeInt24:
       final value =
           unsigned
               ? data.getUint32(startOffset, Endian.little)
               : data.getInt32(startOffset, Endian.little);
-      return Tuple2(value, 4);
+      return (value: value, bytesRead: 4);
     case mysqlColumnTypeLongLong:
       if (unsigned) {
         final low = data.getUint32(startOffset, Endian.little);
         final high = data.getUint32(startOffset + 4, Endian.little);
         final value = (BigInt.from(high) << 32) | BigInt.from(low);
         final maxSignedInt = BigInt.from(0x7fffffffffffffff);
-        return Tuple2(value <= maxSignedInt ? value.toInt() : value, 8);
+        return (
+          value: value <= maxSignedInt ? value.toInt() : value,
+          bytesRead: 8,
+        );
       }
-      return Tuple2(data.getInt64(startOffset, Endian.little), 8);
+      return (value: data.getInt64(startOffset, Endian.little), bytesRead: 8);
     case mysqlColumnTypeFloat:
       final value = data.getFloat32(startOffset, Endian.little);
-      return Tuple2(value, 4);
+      return (value: value, bytesRead: 4);
     case mysqlColumnTypeDouble:
       final value = data.getFloat64(startOffset, Endian.little);
-      return Tuple2(value, 8);
+      return (value: value, bytesRead: 8);
     case mysqlColumnTypeYear:
-      return Tuple2(data.getUint16(startOffset, Endian.little), 2);
+      return (value: data.getUint16(startOffset, Endian.little), bytesRead: 2);
     case mysqlColumnTypeDate:
     case mysqlColumnTypeNewDate:
     case mysqlColumnTypeDateTime:
@@ -248,9 +250,9 @@ Tuple2<Object, int> parseBinaryColumnData(
       if (numOfBytes == 0) {
         if (columnType == mysqlColumnTypeDate ||
             columnType == mysqlColumnTypeNewDate) {
-          return Tuple2('0000-00-00', 1);
+          return (value: '0000-00-00', bytesRead: 1);
         }
-        return Tuple2('0000-00-00 00:00:00', 1);
+        return (value: '0000-00-00 00:00:00', bytesRead: 1);
       }
 
       var year = 0;
@@ -294,7 +296,10 @@ Tuple2<Object, int> parseBinaryColumnData(
       result.write(day.toString().padLeft(2, '0'));
       if (columnType == mysqlColumnTypeDate ||
           columnType == mysqlColumnTypeNewDate) {
-        return Tuple2(result.toString(), startOffset - initialOffset);
+        return (
+          value: result.toString(),
+          bytesRead: startOffset - initialOffset,
+        );
       }
       result.write(' ');
       result.write('${hour.toString().padLeft(2, '0')}:');
@@ -304,7 +309,7 @@ Tuple2<Object, int> parseBinaryColumnData(
         result.write('.${microSecond.toString().padLeft(6, '0')}');
       }
 
-      return Tuple2(result.toString(), startOffset - initialOffset);
+      return (value: result.toString(), bytesRead: startOffset - initialOffset);
     case mysqlColumnTypeTime:
     case mysqlColumnTypeTime2:
       final initialOffset = startOffset;
@@ -314,7 +319,7 @@ Tuple2<Object, int> parseBinaryColumnData(
       startOffset += 1;
 
       if (numOfBytes == 0) {
-        return Tuple2("00:00:00", 1);
+        return (value: "00:00:00", bytesRead: 1);
       }
 
       var isNegative = false;
@@ -359,7 +364,7 @@ Tuple2<Object, int> parseBinaryColumnData(
         result.write('.${microSecond.toString().padLeft(6, '0')}');
       }
 
-      return Tuple2(result.toString(), startOffset - initialOffset);
+      return (value: result.toString(), bytesRead: startOffset - initialOffset);
     case mysqlColumnTypeString:
     case mysqlColumnTypeVarString:
     case mysqlColumnTypeVarChar:

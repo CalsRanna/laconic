@@ -22,14 +22,14 @@ class MySQLPacketAuthSwitchRequest extends MySQLPacketPayload {
     offset += 1;
 
     final authPluginName = buffer.getUtf8NullTerminatedString(offset);
-    offset += authPluginName.item2;
+    offset += authPluginName.bytesRead;
 
     final authPluginData = Uint8List.sublistView(buffer, offset);
 
     return MySQLPacketAuthSwitchRequest(
       header: header,
       authPluginData: authPluginData,
-      authPluginName: authPluginName.item1,
+      authPluginName: authPluginName.value,
     );
   }
 

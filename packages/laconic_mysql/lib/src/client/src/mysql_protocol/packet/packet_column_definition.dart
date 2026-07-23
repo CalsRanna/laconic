@@ -35,25 +35,25 @@ class MySQLColumnDefinitionPacket extends MySQLPacketPayload {
     int offset = 0;
 
     final catalog = buffer.getUtf8LengthEncodedString(offset);
-    offset += catalog.item2;
+    offset += catalog.bytesRead;
 
     final schema = buffer.getUtf8LengthEncodedString(offset);
-    offset += schema.item2;
+    offset += schema.bytesRead;
 
     final table = buffer.getUtf8LengthEncodedString(offset);
-    offset += table.item2;
+    offset += table.bytesRead;
 
     final orgTable = buffer.getUtf8LengthEncodedString(offset);
-    offset += orgTable.item2;
+    offset += orgTable.bytesRead;
 
     final name = buffer.getUtf8LengthEncodedString(offset);
-    offset += name.item2;
+    offset += name.bytesRead;
 
     final orgName = buffer.getUtf8LengthEncodedString(offset);
-    offset += orgName.item2;
+    offset += orgName.bytesRead;
 
     final lengthOfFixedLengthFields = byteData.getVariableEncInt(offset);
-    offset += lengthOfFixedLengthFields.item2;
+    offset += lengthOfFixedLengthFields.bytesRead;
 
     final charset = byteData.getUint16(offset, Endian.little);
     offset += 2;
@@ -70,14 +70,14 @@ class MySQLColumnDefinitionPacket extends MySQLPacketPayload {
     final decimals = byteData.getUint8(offset);
 
     return MySQLColumnDefinitionPacket(
-      catalog: catalog.item1,
+      catalog: catalog.value,
       charset: charset,
       columnLength: columnLength,
-      name: name.item1,
-      orgName: orgName.item1,
-      orgTable: orgTable.item1,
-      schema: schema.item1,
-      table: table.item1,
+      name: name.value,
+      orgName: orgName.value,
+      orgTable: orgTable.value,
+      schema: schema.value,
+      table: table.value,
       type: MySQLColumnType.create(type),
       flags: flags,
       decimals: decimals,

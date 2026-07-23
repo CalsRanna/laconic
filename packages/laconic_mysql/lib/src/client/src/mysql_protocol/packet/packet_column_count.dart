@@ -12,7 +12,7 @@ class MySQLPacketColumnCount extends MySQLPacketPayload {
     final byteData = ByteData.sublistView(buffer);
     final columnCount = byteData.getVariableEncInt(0);
 
-    return MySQLPacketColumnCount(columnCount: columnCount.item1);
+    return MySQLPacketColumnCount(columnCount: columnCount.value);
   }
 
   @override

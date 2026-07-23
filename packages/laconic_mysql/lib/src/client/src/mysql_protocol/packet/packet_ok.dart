@@ -21,15 +21,15 @@ class MySQLPacketOK extends MySQLPacketPayload {
     offset += 1;
 
     final affectedRows = byteData.getVariableEncInt(offset);
-    offset += affectedRows.item2;
+    offset += affectedRows.bytesRead;
 
     final lastInsertID = byteData.getVariableEncInt(offset);
-    offset += lastInsertID.item2;
+    offset += lastInsertID.bytesRead;
 
     return MySQLPacketOK(
       header: header,
-      affectedRows: affectedRows.item1,
-      lastInsertID: lastInsertID.item1,
+      affectedRows: affectedRows.value,
+      lastInsertID: lastInsertID.value,
     );
   }
 

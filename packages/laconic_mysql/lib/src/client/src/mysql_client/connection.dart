@@ -424,7 +424,7 @@ class MySQLConnection {
 
       final chunk = Uint8List.sublistView(view, 0, packetLength);
       final header = MySQLPacket.decodePacketHeader(chunk);
-      final sequence = header.item2;
+      final sequence = header.sequenceId;
       if (_expectedIncomingSequence != null &&
           sequence != _expectedIncomingSequence) {
         throw MySQLProtocolException(
@@ -435,11 +435,11 @@ class MySQLConnection {
       _expectedIncomingSequence = (sequence + 1) & 0xff;
 
       _logicalPacketSequence ??= sequence;
-      if (header.item1 > 0) {
+      if (header.payloadLength > 0) {
         _logicalPacketData.add(Uint8List.sublistView(chunk, 4));
       }
 
-      if (header.item1 < mysqlMaxPhysicalPacketPayload) {
+      if (header.payloadLength < mysqlMaxPhysicalPacketPayload) {
         final payload = _logicalPacketData.takeBytes();
         final logicalPacket = Uint8List(4 + payload.lengthInBytes);
         final advertisedLength =
@@ -1290,8 +1290,8 @@ class MySQLConnection {
     while (offset < encoded.lengthInBytes) {
       final frame = Uint8List.sublistView(encoded, offset);
       final header = MySQLPacket.decodePacketHeader(frame);
-      nextSequence = (header.item2 + 1) & 0xff;
-      offset += header.item1 + 4;
+      nextSequence = (header.sequenceId + 1) & 0xff;
+      offset += header.payloadLength + 4;
     }
     _expectIncomingSequence(nextSequence);
     _socket.add(encoded);

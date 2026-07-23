@@ -59,8 +59,8 @@ class MySQLBinaryResultSetRowPacket extends MySQLPacketPayload {
           unsigned: colDefs[x].flags & mysqlColumnFlagUnsigned != 0,
           charset: colDefs[x].charset,
         );
-        offset += parseResult.item2;
-        values.add(parseResult.item1);
+        offset += parseResult.bytesRead;
+        values.add(parseResult.value);
       }
     }
 

@@ -2,16 +2,17 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:buffer/buffer.dart';
 import 'package:laconic_mysql/src/client/exception.dart';
-import 'package:tuple/tuple.dart';
+
+typedef DecodedValue<T> = ({T value, int bytesRead});
 
 extension MySQLUint8ListExtension on Uint8List {
-  Tuple2<String, int> getUtf8NullTerminatedString(int startOffset) {
+  DecodedValue<String> getUtf8NullTerminatedString(int startOffset) {
     final tmp = Uint8List.sublistView(
       this,
       startOffset,
     ).takeWhile((value) => value != 0);
 
-    return Tuple2(utf8.decode(tmp.toList()), tmp.length + 1);
+    return (value: utf8.decode(tmp.toList()), bytesRead: tmp.length + 1);
   }
 
   String getUtf8StringEOF(int startOffset) {
@@ -19,31 +20,31 @@ extension MySQLUint8ListExtension on Uint8List {
     return utf8.decode(tmp);
   }
 
-  Tuple2<String, int> getUtf8LengthEncodedString(int startOffset) {
+  DecodedValue<String> getUtf8LengthEncodedString(int startOffset) {
     final value = getLengthEncodedBytes(startOffset);
-    return Tuple2(utf8.decode(value.item1), value.item2);
+    return (value: utf8.decode(value.value), bytesRead: value.bytesRead);
   }
 
-  Tuple2<Uint8List, int> getLengthEncodedBytes(int startOffset) {
+  DecodedValue<Uint8List> getLengthEncodedBytes(int startOffset) {
     final tmp = Uint8List.sublistView(this, startOffset);
     final bd = ByteData.sublistView(tmp);
     final valueLength = bd.getVariableEncInt(0);
-    final byteLength = valueLength.item1.toInt();
+    final byteLength = valueLength.value.toInt();
     final bytes = Uint8List.sublistView(
       tmp,
-      valueLength.item2,
-      valueLength.item2 + byteLength,
+      valueLength.bytesRead,
+      valueLength.bytesRead + byteLength,
     );
-    return Tuple2(bytes, valueLength.item2 + byteLength);
+    return (value: bytes, bytesRead: valueLength.bytesRead + byteLength);
   }
 }
 
 extension MySQLByteDataExtension on ByteData {
-  Tuple2<BigInt, int> getVariableEncInt(int startOffset) {
+  DecodedValue<BigInt> getVariableEncInt(int startOffset) {
     int firstByte = getUint8(startOffset);
 
     if (firstByte < 0xfb) {
-      return Tuple2(BigInt.from(firstByte), 1);
+      return (value: BigInt.from(firstByte), bytesRead: 1);
     }
 
     if (firstByte == 0xfc) {
@@ -51,7 +52,7 @@ extension MySQLByteDataExtension on ByteData {
           getUint8(startOffset + 2).toRadixString(16).padLeft(2, '0') +
           getUint8(startOffset + 1).toRadixString(16).padLeft(2, '0');
 
-      return Tuple2(BigInt.parse(radix, radix: 16), 3);
+      return (value: BigInt.parse(radix, radix: 16), bytesRead: 3);
     }
 
     if (firstByte == 0xfd) {
@@ -60,7 +61,7 @@ extension MySQLByteDataExtension on ByteData {
           getUint8(startOffset + 2).toRadixString(16).padLeft(2, '0') +
           getUint8(startOffset + 1).toRadixString(16).padLeft(2, '0');
 
-      return Tuple2(BigInt.parse(radix, radix: 16), 4);
+      return (value: BigInt.parse(radix, radix: 16), bytesRead: 4);
     }
 
     if (firstByte == 0xfe) {
@@ -74,7 +75,7 @@ extension MySQLByteDataExtension on ByteData {
           getUint8(startOffset + 2).toRadixString(16).padLeft(2, '0') +
           getUint8(startOffset + 1).toRadixString(16).padLeft(2, '0');
 
-      return Tuple2(BigInt.parse(radix, radix: 16), 9);
+      return (value: BigInt.parse(radix, radix: 16), bytesRead: 9);
     }
 
     throw MySQLProtocolException(

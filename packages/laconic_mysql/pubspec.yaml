@@ -13,7 +13,6 @@ dependencies:
   buffer: ^1.1.1
   crypto: ^3.0.1
   laconic: ^3.0.0
-  tuple: ^2.0.0
 
 dev_dependencies:
   lints: ^5.1.1
