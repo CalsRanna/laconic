@@ -9,7 +9,7 @@
 ```yaml
 dependencies:
   laconic: ^3.0.0
-  laconic_mysql: ^2.1.0
+  laconic_mysql: ^3.0.0
 ```
 
 ## 使用
@@ -26,6 +26,7 @@ void main() async {
     username: 'root',
     password: 'password',
     // maxConnections: 10, // 可选，默认 10
+    // useSsl: true, // 可选，默认 true
   )));
 
   // 查询用户
@@ -61,6 +62,23 @@ void main() async {
 | `username` | `String` | `'root'` | 用户名 |
 | `password` | `String` | 必填 | 密码 |
 | `maxConnections` | `int` | `10` | 连接池最大连接数 |
+| `useSsl` | `bool` | `true` | 是否与服务端协商 TLS |
+| `allowBadCertificates` | `bool` | `false` | 是否接受无效 TLS 证书；仅用于开发环境 |
+| `securityContext` | `SecurityContext?` | `null` | TLS 自定义信任证书配置 |
+| `connectTimeout` | `Duration` | `10 秒` | 建立连接和认证的最长时间 |
+| `commandTimeout` | `Duration` | `10 秒` | 单条数据库命令的最长执行时间 |
+
+TLS 默认开启。使用私有 CA 时应通过 `securityContext` 配置信任证书；只有在可信
+且不支持 TLS 的服务端上才应设置 `useSsl: false`，生产环境不要开启
+`allowBadCertificates`。
+
+## 从 2.x 迁移
+
+- TLS 现在默认开启。只有可信的 MySQL 服务端不支持 TLS 时，才添加
+  `useSsl: false`。
+- 客户端专用的 `MySQL*Exception` 类不再是公共 API；驱动操作应捕获
+  `LaconicException`。
+- 不要导入 `package:laconic_mysql/src/client/...`；内嵌客户端属于内部实现。
 
 ## 连接池
 

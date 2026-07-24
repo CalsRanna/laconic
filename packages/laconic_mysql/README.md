@@ -9,7 +9,7 @@ MySQL driver for the [Laconic](https://pub.dev/packages/laconic) query builder.
 ```yaml
 dependencies:
   laconic: ^3.0.0
-  laconic_mysql: ^2.1.0
+  laconic_mysql: ^3.0.0
 ```
 
 ## Usage
@@ -26,6 +26,7 @@ void main() async {
     username: 'root',
     password: 'password',
     // maxConnections: 10, // optional, default 10
+    // useSsl: true, // optional, default true
   )));
 
   // Query users
@@ -61,6 +62,24 @@ void main() async {
 | `username` | `String` | `'root'` | Connection username |
 | `password` | `String` | required | Connection password |
 | `maxConnections` | `int` | `10` | Maximum connections in the pool |
+| `useSsl` | `bool` | `true` | Negotiate TLS with the server |
+| `allowBadCertificates` | `bool` | `false` | Accept an invalid TLS certificate; development only |
+| `securityContext` | `SecurityContext?` | `null` | Custom trusted certificates for TLS |
+| `connectTimeout` | `Duration` | `10 seconds` | Maximum time for connection and authentication |
+| `commandTimeout` | `Duration` | `10 seconds` | Maximum time for a database command |
+
+TLS is enabled by default. Prefer configuring `securityContext` when a private
+certificate authority is used. Set `useSsl: false` only for a trusted server
+that does not support TLS; do not enable `allowBadCertificates` in production.
+
+## Migrating from 2.x
+
+- TLS is now enabled by default. Add `useSsl: false` only if your trusted MySQL
+  server does not support TLS.
+- Client-specific `MySQL*Exception` classes are no longer public. Catch
+  `LaconicException` from driver operations instead.
+- Do not import `package:laconic_mysql/src/client/...`; the embedded client is
+  an internal implementation detail.
 
 ## Connection Pooling
 

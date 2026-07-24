@@ -1,9 +1,57 @@
+## 3.0.0
+
+### Breaking Changes
+
+- **TLS is enabled by default** — `MysqlConfig.useSsl` now defaults to `true`.
+  Set `useSsl: false` only when connecting to a trusted server that does not
+  support TLS.
+- **Client exceptions are private** — the embedded client's `MySQL*Exception`
+  types are no longer exported from `package:laconic_mysql/laconic_mysql.dart`.
+  Driver operations continue to report failures through `LaconicException`.
+- **Embedded client API is internal** — applications must not import files
+  below `package:laconic_mysql/src/client/`. Those implementation types and
+  names may change without notice.
+
+### Features
+
+- Added `MysqlConfig.useSsl`, `allowBadCertificates`, `securityContext`,
+  `connectTimeout`, and `commandTimeout`.
+- Added TLS negotiation with optional custom certificate trust configuration.
+- Added support for `caching_sha2_password` authentication.
+- Added packet fragmentation and reassembly for large MySQL payloads.
+- Added typed prepared-statement parameters for `bool`, `int`, `double`,
+  `DateTime`, `Uint8List`, and `BigInt`.
+- Added decoding for additional binary result types, including dates, unsigned
+  integers, JSON, and binary values.
+
+### Reliability
+
+- Connection pool slots are always released when a query or transaction fails.
+- Concurrent pool acquisition now respects `maxConnections` and serves waiters
+  in order.
+- Prepared statements are cached per connection with LRU eviction and are
+  invalidated when their connection is removed.
+- Added connection and command timeouts, packet sequence validation, and
+  transaction rollback error reporting.
+
+### Internal Changes
+
+- Replaced the external `mysql_client` dependency with an internally maintained
+  pure-Dart implementation.
+- Reorganized the client into connection, transport, protocol, and result
+  layers.
+- Replaced `tuple` values with Dart 3 records and removed the `tuple`
+  dependency.
+- Standardized internal type names on the `Mysql` prefix.
+
 ## 2.1.0
 
 ### Features
 
 - `update()` now returns the number of rows matched by its `WHERE` clause. Updating an existing row to its current values returns `1`, while a missing row returns `0`.
-- The maintained MySQL client fork is now embedded as a private implementation detail, so consumers no longer need a separate `mysql_client` dependency or override.
+- The maintained MySQL client implementation is embedded as a private
+  implementation detail, so consumers no longer need a separate
+  `mysql_client` dependency or override.
 - MySQL exception types are exported from `package:laconic_mysql/laconic_mysql.dart` for driver-specific error handling.
 
 ## 2.0.0

@@ -244,7 +244,8 @@ class MysqlGrammar extends SqlGrammar {
     List<String>? update,
   }) {
     final compiled = compileInsert(table: table, data: data);
-    final updateCols = update ?? data.first.keys.where((k) => !uniqueBy.contains(k)).toList();
+    final updateCols =
+        update ?? data.first.keys.where((k) => !uniqueBy.contains(k)).toList();
     if (updateCols.isEmpty) {
       return compiled;
     }
@@ -498,7 +499,10 @@ class MysqlGrammar extends SqlGrammar {
         parts.add('$boolean$keyword (${where['sql']})');
         bindings.addAll(where['bindings'] as List<Object?>);
       } else if (type == 'date') {
-        final expr = _dateExpression(where['dateType'] as String, where['column'] as String);
+        final expr = _dateExpression(
+          where['dateType'] as String,
+          where['column'] as String,
+        );
         parts.add('$boolean$expr = ?');
         bindings.add(where['value']);
       }
@@ -511,17 +515,26 @@ class MysqlGrammar extends SqlGrammar {
   /// The returned string already includes the column reference.
   String _dateExpression(String dateType, String column) {
     switch (dateType) {
-      case 'date': return 'date($column)';
-      case 'time': return 'time($column)';
-      case 'day': return 'day($column)';
-      case 'month': return 'month($column)';
-      case 'year': return 'year($column)';
-      default: return '$dateType($column)';
+      case 'date':
+        return 'date($column)';
+      case 'time':
+        return 'time($column)';
+      case 'day':
+        return 'day($column)';
+      case 'month':
+        return 'month($column)';
+      case 'year':
+        return 'year($column)';
+      default:
+        return '$dateType($column)';
     }
   }
 
   /// Compiles ORDER BY clauses.
-  String _compileOrders(List<Map<String, dynamic>> orders, List<Object?> bindings) {
+  String _compileOrders(
+    List<Map<String, dynamic>> orders,
+    List<Object?> bindings,
+  ) {
     final buffer = StringBuffer();
     buffer.write(' order by ');
 
