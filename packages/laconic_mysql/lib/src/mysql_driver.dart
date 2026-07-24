@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'package:laconic/laconic.dart';
-import 'package:laconic_mysql/src/client/exception.dart';
-import 'package:laconic_mysql/src/client/src/mysql_client/connection.dart';
-import 'package:laconic_mysql/src/client/src/mysql_client/pool.dart';
+import 'package:laconic_mysql/src/client/connection/connection.dart';
+import 'package:laconic_mysql/src/client/connection/connection_pool.dart';
+import 'package:laconic_mysql/src/client/exceptions.dart';
+import 'package:laconic_mysql/src/client/result/prepared_statement.dart';
+import 'package:laconic_mysql/src/client/result/result_set.dart';
 import 'package:laconic_mysql/src/mysql_config.dart';
 import 'package:laconic_mysql/src/mysql_grammar.dart';
 
@@ -12,23 +14,23 @@ import 'package:laconic_mysql/src/mysql_grammar.dart';
 ///
 /// This driver uses a lightweight connection pool that always returns
 /// connections after use (including when queries throw). This avoids the
-/// slot leak in the upstream client's connection pool.
+/// connection-slot leaks when callbacks fail.
 ///
 /// The connection pool is lazily created on first use.
 ///
-/// Uses MySQL prepared statements (binary protocol) via [MySQLConnection.prepare]
+/// Uses MySQL prepared statements (binary protocol) via [MysqlConnection.prepare]
 /// for parameterized queries. For queries without parameters (DDL like
 /// CREATE DATABASE, etc.), uses the text protocol directly since MySQL's
 /// COM_STMT_PREPARE does not support all statement types.
 class MysqlDriver implements DatabaseDriver {
   final MysqlConfig config;
-  MySQLConnectionPool? _pool;
+  MysqlConnectionPool? _pool;
   static final _grammar = MysqlGrammar();
   static final _txConnKey = Object();
 
   /// Per-connection LRU caches of prepared statements.
-  final Map<MySQLConnection, LinkedHashMap<String, PreparedStmt>> _stmtCache =
-      {};
+  final Map<MysqlConnection, LinkedHashMap<String, MysqlPreparedStatement>>
+  _stmtCache = {};
   static const int _maxCachedStatements = 50;
 
   /// Creates a new MySQL driver with the given configuration.
@@ -37,8 +39,8 @@ class MysqlDriver implements DatabaseDriver {
   @override
   SqlGrammar get grammar => _grammar;
 
-  MySQLConnectionPool get _connectionPool {
-    return _pool ??= MySQLConnectionPool(
+  MysqlConnectionPool get _connectionPool {
+    return _pool ??= MysqlConnectionPool(
       databaseName: config.database,
       host: config.host,
       maxConnections: config.maxConnections,
@@ -55,11 +57,11 @@ class MysqlDriver implements DatabaseDriver {
   }
 
   /// Returns the pinned transaction connection from the current Zone, if any.
-  MySQLConnection? get _transactionConnection =>
-      Zone.current[_txConnKey] as MySQLConnection?;
+  MysqlConnection? get _transactionConnection =>
+      Zone.current[_txConnKey] as MysqlConnection?;
 
   /// Executes a query, delegating to [_executeOnConn] for protocol selection.
-  Future<IResultSet> _executeQuery(String sql, List<Object?> params) async {
+  Future<MysqlResultSet> _executeQuery(String sql, List<Object?> params) async {
     final conn = _transactionConnection;
     if (conn != null) {
       return _executeOnConn(conn, sql, params);
@@ -72,14 +74,14 @@ class MysqlDriver implements DatabaseDriver {
   /// Executes a query on a given connection.
   ///
   /// When there are parameters, uses MySQL prepared statements (binary protocol)
-  /// via [MySQLConnection.prepare] for safe parameter binding and efficient
+  /// via [MysqlConnection.prepare] for safe parameter binding and efficient
   /// binary transfer. Prepared statements are cached to avoid the
   /// PREPARE → DEALLOCATE round-trip on repeated queries.
   ///
   /// When there are no parameters, uses the text protocol directly since
   /// MySQL's COM_STMT_PREPARE does not support all statement types (e.g., DDL).
-  Future<IResultSet> _executeOnConn(
-    MySQLConnection conn,
+  Future<MysqlResultSet> _executeOnConn(
+    MysqlConnection conn,
     String sql,
     List<Object?> params,
   ) async {
@@ -89,7 +91,7 @@ class MysqlDriver implements DatabaseDriver {
 
     final connectionCache = _stmtCache.putIfAbsent(
       conn,
-      LinkedHashMap<String, PreparedStmt>.new,
+      LinkedHashMap<String, MysqlPreparedStatement>.new,
     );
     // Removing and reinserting makes the map insertion order an LRU order.
     var stmt = connectionCache.remove(sql);
@@ -105,7 +107,7 @@ class MysqlDriver implements DatabaseDriver {
 
     try {
       return await stmt.execute(params);
-    } on MySQLServerException catch (error) {
+    } on MysqlServerException catch (error) {
       if (error.errorCode == 1243) {
         // ER_UNKNOWN_STMT_HANDLER: the server has already discarded it.
         connectionCache.remove(sql);
@@ -115,13 +117,13 @@ class MysqlDriver implements DatabaseDriver {
   }
 
   /// Drops all cached prepared statements for [conn].
-  void _evictStatementsForConnection(MySQLConnection conn) {
+  void _evictStatementsForConnection(MysqlConnection conn) {
     _stmtCache.remove(conn);
   }
 
-  List<LaconicResult> _toResults(IResultSet results) {
+  List<LaconicResult> _toResults(MysqlResultSet results) {
     return results.rows.map((row) {
-      final map = row.typedAssoc();
+      final map = row.toTypedMap();
       return LaconicResult.fromMap(Map<String, Object?>.from(map));
     }).toList();
   }
@@ -168,7 +170,7 @@ class MysqlDriver implements DatabaseDriver {
   ]) async {
     try {
       final results = await _executeQuery(sql, params);
-      return results.lastInsertID.toInt();
+      return results.lastInsertId.toInt();
     } catch (e, stackTrace) {
       throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
     }

@@ -1,17 +1,15 @@
 import 'dart:typed_data';
 
-import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_packet.dart';
-import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_handshake_response_41.dart';
-import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_initial_handshake.dart';
-import 'package:laconic_mysql/src/client/src/mysql_protocol/packet/packet_ssl_request.dart';
+import 'package:laconic_mysql/src/client/protocol/capabilities.dart';
+import 'package:laconic_mysql/src/client/protocol/auth/handshake_packets.dart';
 import 'package:test/test.dart';
 
 void main() {
   test('plain and TLS handshakes request CLIENT_FOUND_ROWS', () {
-    final initialHandshake = MySQLPacketInitialHandshake(
+    final initialHandshake = MysqlInitialHandshakePacket(
       protocolVersion: 10,
       serverVersion: '8.0-test',
-      connectionID: 1,
+      connectionId: 1,
       authPluginDataPart1: Uint8List(8),
       authPluginDataPart2: Uint8List(12),
       capabilityFlags:
@@ -26,12 +24,12 @@ void main() {
       authPluginName: 'mysql_native_password',
     );
 
-    final handshake = MySQLPacketHandshakeResponse41.createWithNativePassword(
+    final handshake = MysqlHandshakeResponse41Packet.createWithNativePassword(
       username: 'test',
       password: 'test',
       initialHandshakePayload: initialHandshake,
     );
-    final sslRequest = MySQLPacketSSLRequest.createDefault(
+    final sslRequest = MysqlSslRequestPacket.createDefault(
       initialHandshakePayload: initialHandshake,
       connectWithDB: true,
     );
@@ -53,10 +51,10 @@ void main() {
       isZero,
     );
 
-    final limitedServer = MySQLPacketInitialHandshake(
+    final limitedServer = MysqlInitialHandshakePacket(
       protocolVersion: 10,
       serverVersion: '5.7-compatible',
-      connectionID: 2,
+      connectionId: 2,
       authPluginDataPart1: Uint8List(8),
       authPluginDataPart2: Uint8List(12),
       capabilityFlags:
@@ -66,7 +64,7 @@ void main() {
       authPluginName: 'mysql_native_password',
     );
     final limitedHandshake =
-        MySQLPacketHandshakeResponse41.createWithNativePassword(
+        MysqlHandshakeResponse41Packet.createWithNativePassword(
           username: 'test',
           password: 'test',
           initialHandshakePayload: limitedServer,

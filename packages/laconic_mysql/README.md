@@ -80,7 +80,7 @@ one row returns `1` even when the submitted values are already stored. A
 missing row returns `0`. This lets callers distinguish an unchanged existing
 record from a record that was concurrently deleted.
 
-The package privately embeds its maintained MySQL client fork. Applications
+The package maintains its MySQL client implementation internally. Applications
 do not need to depend on or override `mysql_client`.
 
 ## Query Listener

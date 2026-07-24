@@ -5,7 +5,7 @@ import 'dart:io';
 import 'connection.dart';
 
 /// Class to create and safely manage a pool of database connections.
-class MySQLConnectionPool {
+class MysqlConnectionPool {
   final String host;
   final int port;
   final String userName;
@@ -20,10 +20,10 @@ class MySQLConnectionPool {
   final bool allowBadCertificates;
 
   /// Called when a connection is removed from the pool (closed or discarded).
-  final void Function(MySQLConnection conn)? onConnectionRemoved;
+  final void Function(MysqlConnection conn)? onConnectionRemoved;
 
-  final List<MySQLConnection> _activeConnections = [];
-  final List<MySQLConnection> _idleConnections = [];
+  final List<MysqlConnection> _activeConnections = [];
+  final List<MysqlConnection> _idleConnections = [];
   final Queue<Completer<void>> _waiters = Queue();
 
   int _pendingConnections = 0;
@@ -31,11 +31,11 @@ class MySQLConnectionPool {
 
   /// Creates a new pool.
   ///
-  /// Almost all parameters are identical to [MySQLConnection.createConnection].
+  /// Almost all parameters are identical to [MysqlConnection.createConnection].
   /// Pass [maxConnections] to set the maximum number of connections.
   /// [connectTimeout] bounds socket creation and authentication.
   /// [commandTimeout] bounds each command executed on a connection.
-  MySQLConnectionPool({
+  MysqlConnectionPool({
     required this.host,
     required this.port,
     required this.userName,
@@ -86,7 +86,7 @@ class MySQLConnectionPool {
 
   /// Borrows a connection and always returns it after [callback] completes.
   Future<T> withConnection<T>(
-    FutureOr<T> Function(MySQLConnection conn) callback,
+    FutureOr<T> Function(MysqlConnection conn) callback,
   ) async {
     final conn = await _acquire();
     try {
@@ -98,7 +98,7 @@ class MySQLConnectionPool {
 
   /// Runs [callback] inside a transaction on a pooled connection.
   Future<T> transactional<T>(
-    FutureOr<T> Function(MySQLConnection conn) callback,
+    FutureOr<T> Function(MysqlConnection conn) callback,
   ) {
     return withConnection((conn) => conn.transactional(callback));
   }
@@ -110,7 +110,7 @@ class MySQLConnectionPool {
     while (_waiters.isNotEmpty) {
       final waiter = _waiters.removeFirst();
       if (!waiter.isCompleted) {
-        waiter.completeError(StateError('MySQLConnectionPool is closed'));
+        waiter.completeError(StateError('MysqlConnectionPool is closed'));
       }
     }
 
@@ -121,9 +121,9 @@ class MySQLConnectionPool {
     await Future.wait(allConnections.map((conn) => conn.close()));
   }
 
-  Future<MySQLConnection> _acquire() async {
+  Future<MysqlConnection> _acquire() async {
     if (_closed) {
-      throw StateError('MySQLConnectionPool is closed');
+      throw StateError('MysqlConnectionPool is closed');
     }
 
     while (true) {
@@ -143,7 +143,7 @@ class MySQLConnectionPool {
           final conn = await _createConnection();
           if (_closed) {
             await conn.close();
-            throw StateError('MySQLConnectionPool is closed');
+            throw StateError('MysqlConnectionPool is closed');
           }
           _activeConnections.add(conn);
           return conn;
@@ -158,13 +158,13 @@ class MySQLConnectionPool {
       await waiter.future;
 
       if (_closed) {
-        throw StateError('MySQLConnectionPool is closed');
+        throw StateError('MysqlConnectionPool is closed');
       }
     }
   }
 
-  Future<MySQLConnection> _createConnection() async {
-    final conn = await MySQLConnection.createConnection(
+  Future<MysqlConnection> _createConnection() async {
+    final conn = await MysqlConnection.createConnection(
       host: host,
       port: port,
       userName: userName,
@@ -195,7 +195,7 @@ class MySQLConnectionPool {
     return conn;
   }
 
-  void _release(MySQLConnection conn) {
+  void _release(MysqlConnection conn) {
     final wasActive = _activeConnections.remove(conn);
     if (!wasActive) {
       _notifyWaiter();

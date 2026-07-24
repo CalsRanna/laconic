@@ -5,9 +5,10 @@ import 'dart:typed_data';
 
 import 'package:laconic/laconic.dart';
 import 'package:laconic_mysql/laconic_mysql.dart';
-import 'package:laconic_mysql/src/client/src/mysql_client/connection.dart';
-import 'package:laconic_mysql/src/client/src/mysql_client/pool.dart';
-import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_packet.dart';
+import 'package:laconic_mysql/src/client/connection/connection.dart';
+import 'package:laconic_mysql/src/client/connection/connection_pool.dart';
+import 'package:laconic_mysql/src/client/exceptions.dart';
+import 'package:laconic_mysql/src/client/protocol/packet.dart';
 import 'package:test/test.dart';
 
 const _host = '127.0.0.1';
@@ -17,7 +18,7 @@ const _username = 'root';
 const _password = 'root';
 const _table = 'mysql_client_audit_values';
 
-class _BytesPayload extends MySQLPacketPayload {
+class _BytesPayload extends MysqlPacketPayload {
   final Uint8List bytes;
 
   _BytesPayload(this.bytes);
@@ -26,10 +27,10 @@ class _BytesPayload extends MySQLPacketPayload {
   Uint8List encode() => bytes;
 }
 
-Future<MySQLConnection> _openConnection({
+Future<MysqlConnection> _openConnection({
   Duration commandTimeout = const Duration(seconds: 10),
 }) async {
-  final connection = await MySQLConnection.createConnection(
+  final connection = await MysqlConnection.createConnection(
     host: _host,
     port: _port,
     userName: _username,
@@ -65,7 +66,7 @@ void main() {
     expect(config.useSsl, isTrue);
     expect(config.allowBadCertificates, isFalse);
     expect(
-      () => MySQLConnectionPool(
+      () => MysqlConnectionPool(
         host: _host,
         port: _port,
         userName: _username,
@@ -79,7 +80,7 @@ void main() {
   test(
     'TLS rejects the test server certificate unless explicitly allowed',
     () async {
-      final strictConnection = await MySQLConnection.createConnection(
+      final strictConnection = await MysqlConnection.createConnection(
         host: _host,
         port: _port,
         userName: _username,
@@ -90,7 +91,7 @@ void main() {
       addTearDown(strictConnection.close);
       await expectLater(strictConnection.connect(), throwsA(isA<Exception>()));
 
-      final developmentConnection = await MySQLConnection.createConnection(
+      final developmentConnection = await MysqlConnection.createConnection(
         host: _host,
         port: _port,
         userName: _username,
@@ -117,7 +118,7 @@ void main() {
     );
     addTearDown(() => admin.execute("DROP USER IF EXISTS '$user'@'%'"));
 
-    final connection = await MySQLConnection.createConnection(
+    final connection = await MysqlConnection.createConnection(
       host: _host,
       port: _port,
       userName: user,
@@ -129,7 +130,7 @@ void main() {
     await connection.connect();
 
     final result = await connection.execute('SELECT 1 AS ok');
-    expect(result.rows.single.typedAssoc(), {'ok': 1});
+    expect(result.rows.single.toTypedMap(), {'ok': 1});
   });
 
   test('authentication timeout closes a silent socket', () async {
@@ -144,7 +145,7 @@ void main() {
       await server.close();
     });
 
-    final connection = await MySQLConnection.createConnection(
+    final connection = await MysqlConnection.createConnection(
       host: _host,
       port: server.port,
       userName: _username,
@@ -159,8 +160,8 @@ void main() {
   });
 
   test('an exact 16 MiB payload includes an empty terminator packet', () {
-    final packet = MySQLPacket(
-      sequenceID: 9,
+    final packet = MysqlPacket(
+      sequenceId: 9,
       payload: _BytesPayload(Uint8List(mysqlMaxPhysicalPacketPayload)),
       payloadLength: 0,
     );
@@ -172,7 +173,7 @@ void main() {
   });
 
   test('pool never exceeds maxConnections during concurrent startup', () async {
-    final pool = MySQLConnectionPool(
+    final pool = MysqlConnectionPool(
       host: _host,
       port: _port,
       userName: _username,
@@ -207,7 +208,7 @@ void main() {
       final query = connection.execute('SELECT SLEEP(5)');
       final queryExpectation = expectLater(
         query.timeout(const Duration(seconds: 1)),
-        throwsA(isA<MySQLClientException>()),
+        throwsA(isA<MysqlClientException>()),
       );
       await Future<void>.delayed(const Duration(milliseconds: 100));
       await connection.close();
@@ -249,11 +250,11 @@ void main() {
 
       await expectLater(
         connection.execute('SET @audit_multi = 1; SELECT 42 AS stale_value'),
-        throwsA(isA<MySQLServerException>()),
+        throwsA(isA<MysqlServerException>()),
       );
 
       final result = await connection.execute('SELECT 7 AS expected_value');
-      expect(result.rows.single.typedAssoc(), {'expected_value': 7});
+      expect(result.rows.single.toTypedMap(), {'expected_value': 7});
     },
   );
 
@@ -263,11 +264,11 @@ void main() {
 
     await expectLater(
       connection.execute('SELECT :value', {'value': 1}),
-      throwsA(isA<MySQLClientException>()),
+      throwsA(isA<MysqlClientException>()),
     );
 
     final result = await connection.execute('SELECT 1 AS ok');
-    expect(result.rows.single.typedAssoc(), {'ok': 1});
+    expect(result.rows.single.toTypedMap(), {'ok': 1});
   });
 
   test('prepared parameters and binary results preserve MySQL types', () async {
@@ -388,9 +389,9 @@ void main() {
     );
 
     var seen = 0;
-    await for (final row in result.rowsStream) {
+    await for (final row in result.rowStream) {
       seen++;
-      expect(row.typedColByName<int>('value'), seen);
+      expect(row.typedValueByName<int>('value'), seen);
       await Future<void>.delayed(const Duration(milliseconds: 1));
     }
     expect(seen, 200);
@@ -400,12 +401,12 @@ void main() {
       null,
       true,
     );
-    final subscription = cancelledResult.rowsStream.listen((_) {});
+    final subscription = cancelledResult.rowStream.listen((_) {});
     await subscription.cancel();
 
     final next = await connection
         .execute('SELECT 9 AS value')
         .timeout(const Duration(seconds: 2));
-    expect(next.rows.single.typedAssoc(), {'value': 9});
+    expect(next.rows.single.toTypedMap(), {'value': 9});
   });
 }

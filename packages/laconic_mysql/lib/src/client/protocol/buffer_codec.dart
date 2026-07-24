@@ -1,11 +1,11 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:buffer/buffer.dart';
-import 'package:laconic_mysql/src/client/exception.dart';
+import 'package:laconic_mysql/src/client/exceptions.dart';
 
 typedef DecodedValue<T> = ({T value, int bytesRead});
 
-extension MySQLUint8ListExtension on Uint8List {
+extension MysqlUint8ListExtension on Uint8List {
   DecodedValue<String> getUtf8NullTerminatedString(int startOffset) {
     final tmp = Uint8List.sublistView(
       this,
@@ -39,7 +39,7 @@ extension MySQLUint8ListExtension on Uint8List {
   }
 }
 
-extension MySQLByteDataExtension on ByteData {
+extension MysqlByteDataExtension on ByteData {
   DecodedValue<BigInt> getVariableEncInt(int startOffset) {
     int firstByte = getUint8(startOffset);
 
@@ -78,7 +78,7 @@ extension MySQLByteDataExtension on ByteData {
       return (value: BigInt.parse(radix, radix: 16), bytesRead: 9);
     }
 
-    throw MySQLProtocolException(
+    throw MysqlProtocolException(
       "Wrong first byte, while decoding getVariableEncInt",
     );
   }
@@ -102,7 +102,7 @@ extension MySQLByteDataExtension on ByteData {
   }
 }
 
-extension MySQLByteWriterExtension on ByteDataWriter {
+extension MysqlByteWriterExtension on ByteDataWriter {
   writeVariableEncInt(int value) {
     if (value < 251) {
       writeUint8(value);

@@ -1,1 +1,5 @@
-words = ["Laravel"]
+words = [
+    "laravel",
+    "mysql",
+    "tls",
+]

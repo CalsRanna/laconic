@@ -2,12 +2,11 @@ import 'package:laconic/laconic.dart';
 import 'package:laconic_mysql/laconic_mysql.dart';
 import 'package:test/test.dart';
 
-/// Regression tests for the upstream mysql_client connection-slot leak.
+/// Regression tests for the MySQL connection-pool slot leak.
 ///
-/// Background: the upstream `MySQLConnectionPool.withConnection` did not
-/// release the connection when the callback threw. After maxConnections
-/// failures the pool hung forever on the next acquire. Laconic's maintained
-/// implementation uses try/finally so slots are always returned.
+/// A connection must be returned when the callback throws. Otherwise, after
+/// maxConnections failures the pool hangs on the next acquire. The pool uses
+/// try/finally so slots are always returned.
 void main() {
   group('MySQL connection pool leak regression:', () {
     const maxConnections = 2;

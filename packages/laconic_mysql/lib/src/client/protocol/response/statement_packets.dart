@@ -1,22 +1,22 @@
 import 'dart:typed_data';
-import 'package:laconic_mysql/src/client/src/mysql_protocol/mysql_packet.dart';
+import 'package:laconic_mysql/src/client/protocol/packet.dart';
 
-class MySQLPacketStmtPrepareOK extends MySQLPacketPayload {
+class MysqlStatementPrepareOkPacket extends MysqlPacketPayload {
   int header;
-  int stmtID;
-  int numOfCols;
-  int numOfParams;
-  int numOfWarnings;
+  int statementId;
+  int columnCount;
+  int parameterCount;
+  int warningCount;
 
-  MySQLPacketStmtPrepareOK({
+  MysqlStatementPrepareOkPacket({
     required this.header,
-    required this.stmtID,
-    required this.numOfCols,
-    required this.numOfParams,
-    required this.numOfWarnings,
+    required this.statementId,
+    required this.columnCount,
+    required this.parameterCount,
+    required this.warningCount,
   });
 
-  factory MySQLPacketStmtPrepareOK.decode(Uint8List buffer) {
+  factory MysqlStatementPrepareOkPacket.decode(Uint8List buffer) {
     final byteData = ByteData.sublistView(buffer);
     int offset = 0;
 
@@ -38,12 +38,12 @@ class MySQLPacketStmtPrepareOK extends MySQLPacketPayload {
     final numWarnings = byteData.getUint16(offset, Endian.little);
     offset += 2;
 
-    return MySQLPacketStmtPrepareOK(
+    return MysqlStatementPrepareOkPacket(
       header: header,
-      stmtID: statementID,
-      numOfCols: numColumns,
-      numOfParams: numParams,
-      numOfWarnings: numWarnings,
+      statementId: statementID,
+      columnCount: numColumns,
+      parameterCount: numParams,
+      warningCount: numWarnings,
     );
   }
 
