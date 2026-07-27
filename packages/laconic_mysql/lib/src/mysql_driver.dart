@@ -50,6 +50,8 @@ class MysqlDriver implements DatabaseDriver {
       secure: config.useSsl,
       allowBadCertificates: config.allowBadCertificates,
       securityContext: config.securityContext,
+      allowPublicKeyRetrieval: config.allowPublicKeyRetrieval,
+      serverPublicKey: config.serverPublicKey,
       connectTimeout: config.connectTimeout,
       commandTimeout: config.commandTimeout,
       onConnectionRemoved: _evictStatementsForConnection,

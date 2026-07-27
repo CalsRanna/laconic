@@ -102,14 +102,20 @@ class MysqlExtraAuthDataPacket extends MysqlPacketPayload {
 
 class MysqlExtraAuthDataResponsePacket extends MysqlPacketPayload {
   Uint8List data;
+  bool appendNullTerminator;
 
-  MysqlExtraAuthDataResponsePacket({required this.data});
+  MysqlExtraAuthDataResponsePacket({
+    required this.data,
+    this.appendNullTerminator = true,
+  });
 
   @override
   Uint8List encode() {
     final buffer = ByteDataWriter(endian: Endian.little);
     buffer.write(data);
-    buffer.writeUint8(0);
+    if (appendNullTerminator) {
+      buffer.writeUint8(0);
+    }
     return buffer.toBytes();
   }
 }

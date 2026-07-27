@@ -18,6 +18,8 @@ class MysqlConnectionPool {
   final Duration commandTimeout;
   final SecurityContext? securityContext;
   final bool allowBadCertificates;
+  final bool allowPublicKeyRetrieval;
+  final String? serverPublicKey;
 
   /// Called when a connection is removed from the pool (closed or discarded).
   final void Function(MysqlConnection conn)? onConnectionRemoved;
@@ -48,6 +50,8 @@ class MysqlConnectionPool {
     this.commandTimeout = const Duration(seconds: 10),
     this.securityContext,
     this.allowBadCertificates = false,
+    this.allowPublicKeyRetrieval = true,
+    this.serverPublicKey,
     this.onConnectionRemoved,
   }) : _password = password {
     if (maxConnections <= 0) {
@@ -174,6 +178,8 @@ class MysqlConnectionPool {
       collation: collation,
       securityContext: securityContext,
       allowBadCertificates: allowBadCertificates,
+      allowPublicKeyRetrieval: allowPublicKeyRetrieval,
+      serverPublicKey: serverPublicKey,
       connectTimeout: connectTimeout,
       commandTimeout: commandTimeout,
     );

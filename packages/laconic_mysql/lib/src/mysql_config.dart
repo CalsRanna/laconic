@@ -15,6 +15,21 @@ class MysqlConfig {
   /// Optional TLS trust configuration.
   final SecurityContext? securityContext;
 
+  /// Whether a non-TLS caching_sha2_password authentication may request the
+  /// server RSA public key.
+  ///
+  /// This is enabled by default so [useSsl] can be disabled without changing
+  /// the server authentication plugin. Pin [serverPublicKey] instead when the
+  /// network is not trusted, because retrieved keys are vulnerable to an
+  /// active man-in-the-middle attack.
+  final bool allowPublicKeyRetrieval;
+
+  /// Optional pinned MySQL RSA public key in PEM format.
+  ///
+  /// Used only for caching_sha2_password authentication without TLS. A pinned
+  /// key takes precedence over [allowPublicKeyRetrieval].
+  final String? serverPublicKey;
+
   /// Maximum time allowed for opening and authenticating a connection.
   final Duration connectTimeout;
 
@@ -45,6 +60,7 @@ class MysqlConfig {
   const MysqlConfig({
     required this.database,
     this.allowBadCertificates = false,
+    this.allowPublicKeyRetrieval = true,
     this.commandTimeout = const Duration(seconds: 10),
     this.connectTimeout = const Duration(seconds: 10),
     this.host = '127.0.0.1',
@@ -52,6 +68,7 @@ class MysqlConfig {
     required this.password,
     this.port = 3306,
     this.securityContext,
+    this.serverPublicKey,
     this.useSsl = true,
     this.username = 'root',
   }) : assert(maxConnections > 0, 'maxConnections must be greater than zero');

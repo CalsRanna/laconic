@@ -65,6 +65,8 @@ void main() {
 
     expect(config.useSsl, isTrue);
     expect(config.allowBadCertificates, isFalse);
+    expect(config.allowPublicKeyRetrieval, isTrue);
+    expect(config.serverPublicKey, isNull);
     expect(
       () => MysqlConnectionPool(
         host: _host,
@@ -106,7 +108,7 @@ void main() {
     },
   );
 
-  test('caching_sha2_password authenticates only over TLS', () async {
+  test('caching_sha2_password authenticates over TLS', () async {
     const user = 'laconic_audit_sha2';
     const password = 'sha2-audit-password-long';
     final admin = await _openConnection();
@@ -132,6 +134,37 @@ void main() {
     final result = await connection.execute('SELECT 1 AS ok');
     expect(result.rows.single.toTypedMap(), {'ok': 1});
   });
+
+  test(
+    'caching_sha2_password authenticates over non-TLS RSA exchange',
+    () async {
+      const user = 'laconic_audit_sha2_plain';
+      const password = 'sha2-plain-audit-password-long';
+      final admin = await _openConnection();
+      addTearDown(admin.close);
+      await admin.execute("DROP USER IF EXISTS '$user'@'%'");
+      await admin.execute(
+        "CREATE USER '$user'@'%' IDENTIFIED WITH caching_sha2_password "
+        "BY '$password'",
+      );
+      addTearDown(() => admin.execute("DROP USER IF EXISTS '$user'@'%'"));
+
+      final connection = await MysqlConnection.createConnection(
+        host: _host,
+        port: _port,
+        userName: user,
+        password: password,
+        secure: false,
+      );
+      addTearDown(connection.close);
+      await connection.connect();
+
+      final result = await connection.execute('SELECT 1 AS ok');
+      final tls = await connection.execute("SHOW STATUS LIKE 'Ssl_cipher'");
+      expect(result.rows.single.toTypedMap(), {'ok': 1});
+      expect(tls.rows.single.typedValueByName<String>('Value'), isEmpty);
+    },
+  );
 
   test('authentication timeout closes a silent socket', () async {
     final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);

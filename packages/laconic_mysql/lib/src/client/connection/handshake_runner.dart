@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:laconic_mysql/src/client/exceptions.dart';
 import 'package:laconic_mysql/src/client/protocol/auth/auth_packets.dart';
+import 'package:laconic_mysql/src/client/protocol/auth/caching_sha2_auth.dart';
 import 'package:laconic_mysql/src/client/protocol/auth/handshake_packets.dart';
 import 'package:laconic_mysql/src/client/protocol/capabilities.dart';
 import 'package:laconic_mysql/src/client/protocol/packet.dart';
@@ -20,9 +21,13 @@ class MysqlHandshakeRunner {
   final bool _secure;
   final bool _allowBadCertificates;
   final SecurityContext? _securityContext;
+  final bool _allowPublicKeyRetrieval;
+  final String? _serverPublicKey;
 
   int _serverCapabilities = 0;
   String? _activeAuthPluginName;
+  Uint8List? _authNonce;
+  bool _awaitingServerPublicKey = false;
 
   MysqlHandshakeRunner({
     required MysqlPacketTransport transport,
@@ -33,6 +38,8 @@ class MysqlHandshakeRunner {
     required bool secure,
     required bool allowBadCertificates,
     required SecurityContext? securityContext,
+    bool allowPublicKeyRetrieval = true,
+    String? serverPublicKey,
   }) : _transport = transport,
        _username = username,
        _password = password,
@@ -40,7 +47,9 @@ class MysqlHandshakeRunner {
        _databaseName = databaseName,
        _secure = secure,
        _allowBadCertificates = allowBadCertificates,
-       _securityContext = securityContext;
+       _securityContext = securityContext,
+       _allowPublicKeyRetrieval = allowPublicKeyRetrieval,
+       _serverPublicKey = serverPublicKey;
 
   Future<void> processInitialHandshake(Uint8List data) async {
     if (MysqlPacketDecoder.detectPacketType(data) ==
@@ -57,6 +66,10 @@ class MysqlHandshakeRunner {
     }
 
     _serverCapabilities = payload.capabilityFlags;
+    _authNonce = _buildAuthNonce(
+      payload.authPluginDataPart1,
+      payload.authPluginDataPart2,
+    );
     if (_secure && (_serverCapabilities & mysqlCapFlagClientSsl == 0)) {
       throw const MysqlClientException(
         'Server does not support SSL. Disable secure mode explicitly or '
@@ -119,6 +132,7 @@ class MysqlHandshakeRunner {
       final packet = MysqlPacketDecoder.decodeAuthSwitchRequest(data);
       final payload = packet.payload as MysqlAuthSwitchRequestPacket;
       _activeAuthPluginName = payload.authPluginName;
+      _authNonce = Uint8List.fromList(payload.authPluginData.take(20).toList());
 
       final MysqlAuthSwitchResponsePacket response;
       switch (payload.authPluginName) {
@@ -157,10 +171,19 @@ class MysqlHandshakeRunner {
           'Unexpected extra auth data for plugin $_activeAuthPluginName',
         );
       }
-      if (!_secure) {
-        throw const MysqlClientException(
-          'caching_sha2_password full authentication requires TLS',
+      if (_awaitingServerPublicKey) {
+        final publicKey = payload.pluginData;
+        if (!publicKey.contains('BEGIN') || !publicKey.contains('PUBLIC KEY')) {
+          throw const MysqlClientException(
+            'Expected an RSA public key from the MySQL server',
+          );
+        }
+        _awaitingServerPublicKey = false;
+        _sendEncryptedPassword(
+          sequenceId: packet.sequenceId + 1,
+          publicKey: publicKey,
         );
+        return false;
       }
 
       final status = payload.pluginData.codeUnitAt(0);
@@ -168,15 +191,36 @@ class MysqlHandshakeRunner {
         return false;
       }
       if (status == 4) {
-        final responsePacket = MysqlPacket(
-          sequenceId: packet.sequenceId + 1,
-          payload: MysqlExtraAuthDataResponsePacket(
+        if (_secure) {
+          _sendExtraAuthData(
+            sequenceId: packet.sequenceId + 1,
             data: Uint8List.fromList(utf8.encode(_password)),
-          ),
-          payloadLength: 0,
+          );
+          return false;
+        }
+
+        final pinnedPublicKey = _serverPublicKey;
+        if (pinnedPublicKey != null) {
+          _sendEncryptedPassword(
+            sequenceId: packet.sequenceId + 1,
+            publicKey: pinnedPublicKey,
+          );
+          return false;
+        }
+
+        if (!_allowPublicKeyRetrieval) {
+          throw const MysqlClientException(
+            'caching_sha2_password without TLS requires a pinned '
+            'serverPublicKey or allowPublicKeyRetrieval: true',
+          );
+        }
+
+        _awaitingServerPublicKey = true;
+        _sendExtraAuthData(
+          sequenceId: packet.sequenceId + 1,
+          data: buildCachingSha2PublicKeyRequest(),
+          appendNullTerminator: false,
         );
-        _transport.sendPacket(responsePacket);
-        _transport.expectIncomingSequence(responsePacket.sequenceId + 1);
         return false;
       }
       throw MysqlClientException('Unsupported extra auth data: $data');
@@ -187,5 +231,43 @@ class MysqlHandshakeRunner {
       throw MysqlServerException(error.errorMessage, error.errorCode);
     }
     return packet.isOk;
+  }
+
+  Uint8List _buildAuthNonce(Uint8List first, Uint8List? second) {
+    return Uint8List.fromList([...first, ...?second?.take(12)]);
+  }
+
+  void _sendEncryptedPassword({
+    required int sequenceId,
+    required String publicKey,
+  }) {
+    final nonce = _authNonce;
+    if (nonce == null || nonce.isEmpty) {
+      throw const MysqlClientException(
+        'Missing caching_sha2_password authentication nonce',
+      );
+    }
+    _sendExtraAuthData(
+      sequenceId: sequenceId,
+      data: buildCachingSha2EncryptedPassword(_password, nonce, publicKey),
+      appendNullTerminator: false,
+    );
+  }
+
+  void _sendExtraAuthData({
+    required int sequenceId,
+    required Uint8List data,
+    bool appendNullTerminator = true,
+  }) {
+    final responsePacket = MysqlPacket(
+      sequenceId: sequenceId,
+      payload: MysqlExtraAuthDataResponsePacket(
+        data: data,
+        appendNullTerminator: appendNullTerminator,
+      ),
+      payloadLength: 0,
+    );
+    _transport.sendPacket(responsePacket);
+    _transport.expectIncomingSequence(responsePacket.sequenceId + 1);
   }
 }
