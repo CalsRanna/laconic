@@ -9,7 +9,7 @@ MySQL driver for the [Laconic](https://pub.dev/packages/laconic) query builder.
 ```yaml
 dependencies:
   laconic: ^3.0.0
-  laconic_mysql: ^3.0.0
+  laconic_mysql: ^3.1.0
 ```
 
 ## Usage
@@ -65,12 +65,59 @@ void main() async {
 | `useSsl` | `bool` | `true` | Negotiate TLS with the server |
 | `allowBadCertificates` | `bool` | `false` | Accept an invalid TLS certificate; development only |
 | `securityContext` | `SecurityContext?` | `null` | Custom trusted certificates for TLS |
+| `allowPublicKeyRetrieval` | `bool` | `true` | Request the server RSA key for non-TLS `caching_sha2_password` authentication |
+| `serverPublicKey` | `String?` | `null` | Pinned server RSA public key in PEM format |
 | `connectTimeout` | `Duration` | `10 seconds` | Maximum time for connection and authentication |
 | `commandTimeout` | `Duration` | `10 seconds` | Maximum time for a database command |
 
-TLS is enabled by default. Prefer configuring `securityContext` when a private
-certificate authority is used. Set `useSsl: false` only for a trusted server
-that does not support TLS; do not enable `allowBadCertificates` in production.
+## Connection security
+
+TLS is enabled by default. A server certificate signed by a system-trusted CA
+works without additional configuration. For a private CA, create a
+`SecurityContext` that trusts it:
+
+```dart
+import 'dart:io';
+
+final context = SecurityContext(withTrustedRoots: true)
+  ..setTrustedCertificates('certificates/mysql-ca.pem');
+
+final config = MysqlConfig(
+  database: 'my_database',
+  password: 'password',
+  securityContext: context,
+);
+```
+
+`allowBadCertificates: true` disables certificate validation and is intended
+only for isolated development environments. Do not enable it in production.
+
+MySQL 8.4 and later commonly use `caching_sha2_password`. With
+`useSsl: false`, Laconic encrypts the password using the server RSA key. Public
+key retrieval is enabled by default for compatibility, but retrieval on an
+untrusted network is vulnerable to an active man-in-the-middle attack. Set
+`serverPublicKey` to a trusted PEM key and
+`allowPublicKeyRetrieval: false` when TLS cannot be used on such a network.
+
+```dart
+import 'dart:io';
+
+final publicKey =
+    await File('certificates/mysql-server-public-key.pem').readAsString();
+
+final config = MysqlConfig(
+  database: 'my_database',
+  password: 'password',
+  useSsl: false,
+  serverPublicKey: publicKey,
+  allowPublicKeyRetrieval: false,
+);
+```
+
+For a trusted local or private network where key pinning is not required,
+`MysqlConfig(..., useSsl: false)` can retrieve the server public key
+automatically. This protects the password from passive observation, but it
+does not authenticate the server. Prefer TLS whenever possible.
 
 ## Migrating from 2.x
 

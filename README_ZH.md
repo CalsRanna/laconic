@@ -29,7 +29,7 @@
 |---|------|------|
 | [laconic](https://pub.dev/packages/laconic) | 核心查询构建器 | 3.0.0 |
 | [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite 驱动 | 2.0.0 |
-| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 2.0.0 |
+| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 3.1.0 |
 | [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 2.0.0 |
 
 ## 安装
@@ -40,7 +40,7 @@
 dependencies:
   laconic: ^3.0.0
   laconic_sqlite: ^2.0.0    # SQLite
-  # laconic_mysql: ^2.0.0   # MySQL
+  # laconic_mysql: ^3.1.0   # MySQL
   # laconic_postgresql: ^2.0.0  # PostgreSQL
 ```
 

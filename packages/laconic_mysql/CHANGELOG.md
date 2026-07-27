@@ -1,3 +1,30 @@
+## 3.1.0
+
+### Features
+
+- Added RSA-encrypted `caching_sha2_password` authentication for non-TLS
+  connections. Server public-key retrieval is enabled by default when
+  `useSsl` is `false`; callers may pin `MysqlConfig.serverPublicKey` and disable
+  retrieval with `allowPublicKeyRetrieval: false`.
+- Added `MysqlConfig.allowPublicKeyRetrieval` and
+  `MysqlConfig.serverPublicKey` for controlling non-TLS authentication.
+
+### Security
+
+- Non-TLS full authentication now encrypts the password with RSA-OAEP instead
+  of rejecting the connection. TLS remains enabled by default.
+- A pinned server public key takes precedence over public-key retrieval, making
+  it possible to authenticate without trusting a key received over the same
+  unencrypted connection.
+
+### Tests
+
+- Added protocol-level TLS tests covering SSL negotiation, credential ordering,
+  certificate trust, host-name validation, opt-in bad-certificate handling,
+  and servers without SSL support.
+- Added `caching_sha2_password` tests for retrieved and pinned RSA keys,
+  disabled key retrieval, malformed keys, and encryption edge cases.
+
 ## 3.0.0
 
 ### Breaking Changes

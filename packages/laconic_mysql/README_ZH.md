@@ -9,7 +9,7 @@
 ```yaml
 dependencies:
   laconic: ^3.0.0
-  laconic_mysql: ^3.0.0
+  laconic_mysql: ^3.1.0
 ```
 
 ## 使用
@@ -65,12 +65,56 @@ void main() async {
 | `useSsl` | `bool` | `true` | 是否与服务端协商 TLS |
 | `allowBadCertificates` | `bool` | `false` | 是否接受无效 TLS 证书；仅用于开发环境 |
 | `securityContext` | `SecurityContext?` | `null` | TLS 自定义信任证书配置 |
+| `allowPublicKeyRetrieval` | `bool` | `true` | 非 TLS `caching_sha2_password` 认证时是否请求服务端 RSA 公钥 |
+| `serverPublicKey` | `String?` | `null` | PEM 格式的服务端固定 RSA 公钥 |
 | `connectTimeout` | `Duration` | `10 秒` | 建立连接和认证的最长时间 |
 | `commandTimeout` | `Duration` | `10 秒` | 单条数据库命令的最长执行时间 |
 
-TLS 默认开启。使用私有 CA 时应通过 `securityContext` 配置信任证书；只有在可信
-且不支持 TLS 的服务端上才应设置 `useSsl: false`，生产环境不要开启
-`allowBadCertificates`。
+## 连接安全
+
+TLS 默认开启。服务端证书由系统信任的 CA 签发时无需额外配置；使用私有 CA
+时，可以创建信任该 CA 的 `SecurityContext`：
+
+```dart
+import 'dart:io';
+
+final context = SecurityContext(withTrustedRoots: true)
+  ..setTrustedCertificates('certificates/mysql-ca.pem');
+
+final config = MysqlConfig(
+  database: 'my_database',
+  password: 'password',
+  securityContext: context,
+);
+```
+
+`allowBadCertificates: true` 会关闭证书校验，只适用于隔离的开发环境，生产环境
+不要开启。
+
+MySQL 8.4 及更高版本通常使用 `caching_sha2_password`。当
+`useSsl: false` 时，Laconic 会使用服务端 RSA 公钥加密密码。为保证兼容性，
+默认允许向服务端请求公钥，但在不可信网络上该过程可能遭受主动中间人攻击。
+无法使用 TLS 时，应配置可信的 PEM `serverPublicKey`，并设置
+`allowPublicKeyRetrieval: false`。
+
+```dart
+import 'dart:io';
+
+final publicKey =
+    await File('certificates/mysql-server-public-key.pem').readAsString();
+
+final config = MysqlConfig(
+  database: 'my_database',
+  password: 'password',
+  useSsl: false,
+  serverPublicKey: publicKey,
+  allowPublicKeyRetrieval: false,
+);
+```
+
+如果是可信的本机或内网环境且不需要固定公钥，可以直接使用
+`MysqlConfig(..., useSsl: false)` 自动获取服务端公钥。这样能够防止密码被被动
+监听，但无法验证服务端身份，因此条件允许时仍应优先使用 TLS。
 
 ## 从 2.x 迁移
 
