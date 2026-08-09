@@ -1,3 +1,14 @@
+## 4.0.0
+
+### Breaking Changes
+
+- **`LaconicException` simplified** — removed the `cause` and `stackTrace`
+  fields. Driver errors are now embedded in the message via `toString()`, so
+  exception output no longer repeats the same message as
+  `Caused by: ...`. Drivers also rethrow an existing `LaconicException`
+  instead of wrapping it again, eliminating nested
+  `LaconicException: LaconicException: ...` messages.
+
 ## 3.0.0
 
 ### Breaking Changes

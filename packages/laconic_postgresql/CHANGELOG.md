@@ -1,3 +1,12 @@
+## 2.1.0
+
+### Changed
+
+- Requires `laconic: ^4.0.0` (removes the `LaconicException.cause` /
+  `stackTrace` fields)
+- Driver errors are embedded in the `LaconicException` message; an existing
+  `LaconicException` is rethrown as-is instead of being wrapped again
+
 ## 2.0.0
 
 ### Breaking Changes
