@@ -1,3 +1,13 @@
+## 2.3.0
+
+### Features
+
+- `LaconicException` from driver errors now fills `driver: 'sqlite'` and
+  `code` with the SQLite extended result code (e.g. `2067` for a UNIQUE
+  constraint violation, `1555` for a FOREIGN KEY violation).
+- `SqliteDriver.driverName` constant identifies the driver.
+
+## 2.2.0
 ## 2.2.0
 
 ### Changed

@@ -1,3 +1,13 @@
+## 2.3.0
+
+### Features
+
+- `LaconicException` from driver errors now fills `driver: 'postgres'` and
+  `code` with the SQLSTATE error code (e.g. `23505` for a unique
+  violation); non-server errors carry no code.
+- `PostgresqlDriver.driverName` constant identifies the driver.
+
+## 2.2.0
 ## 2.2.0
 
 ### Changed

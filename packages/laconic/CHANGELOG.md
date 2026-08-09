@@ -1,3 +1,16 @@
+## 4.1.0
+
+### Features
+
+- **`LaconicException` now carries structured `driver` and `code` fields**
+  (both optional) so consumers can react to driver-specific error codes
+  without parsing the message. `driver` is the backend identifier
+  (`mysql`, `postgres`, `sqlite`); `code` is the raw driver error code as a
+  string (MySQL server error code, PostgreSQL SQLSTATE, SQLite extended
+  result code). Values are opaque to the core and never comparable across
+  drivers. Existing single-argument constructions are unaffected.
+
+## 4.0.0
 ## 4.0.0
 
 ### Breaking Changes

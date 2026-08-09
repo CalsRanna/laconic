@@ -1,3 +1,13 @@
+## 3.4.0
+
+### Features
+
+- `LaconicException` from driver errors now fills `driver: 'mysql'` and
+  `code` with the MySQL server error code (e.g. `1062` for a duplicate
+  entry); client-side and protocol errors carry no code.
+- `MysqlDriver.driverName` constant identifies the driver.
+
+## 3.3.0
 ## 3.3.0
 
 ### Changed
