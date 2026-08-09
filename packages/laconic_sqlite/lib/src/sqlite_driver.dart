@@ -82,8 +82,9 @@ class SqliteDriver implements DatabaseDriver {
         _stmtCache.remove(sql)?.close();
         rethrow;
       }
-    } catch (e, stackTrace) {
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 
@@ -109,8 +110,9 @@ class SqliteDriver implements DatabaseDriver {
         _stmtCache.remove(sql)?.close();
         rethrow;
       }
-    } catch (e, stackTrace) {
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 
@@ -128,8 +130,9 @@ class SqliteDriver implements DatabaseDriver {
         _stmtCache.remove(sql)?.close();
         rethrow;
       }
-    } catch (e, stackTrace) {
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 
@@ -156,8 +159,9 @@ class SqliteDriver implements DatabaseDriver {
         throw LaconicException('last_insert_rowid() returned non-integer: $id');
       }
       return id;
-    } catch (e, stackTrace) {
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 
@@ -176,18 +180,17 @@ class SqliteDriver implements DatabaseDriver {
       final result = await action();
       _db.execute('COMMIT');
       return result;
-    } catch (e, stackTrace) {
+    } catch (e) {
       try {
         _db.execute('ROLLBACK');
       } catch (rollbackError) {
         throw LaconicException(
           'Transaction failed: ${e.toString()}. '
           'Rollback also failed: ${rollbackError.toString()}',
-          cause: e,
-          stackTrace: stackTrace,
         );
       }
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 

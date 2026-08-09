@@ -138,8 +138,9 @@ class MysqlDriver implements DatabaseDriver {
     try {
       final results = await _executeQuery(sql, params);
       return _toResults(results);
-    } catch (e, stackTrace) {
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 
@@ -147,8 +148,9 @@ class MysqlDriver implements DatabaseDriver {
   Future<void> statement(String sql, [List<Object?> params = const []]) async {
     try {
       await _executeQuery(sql, params);
-    } catch (e, stackTrace) {
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 
@@ -160,8 +162,9 @@ class MysqlDriver implements DatabaseDriver {
     try {
       final results = await _executeQuery(sql, params);
       return results.affectedRows.toInt();
-    } catch (e, stackTrace) {
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 
@@ -173,8 +176,9 @@ class MysqlDriver implements DatabaseDriver {
     try {
       final results = await _executeQuery(sql, params);
       return results.lastInsertId.toInt();
-    } catch (e, stackTrace) {
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 
@@ -184,8 +188,9 @@ class MysqlDriver implements DatabaseDriver {
       return await _connectionPool.transactional((conn) async {
         return runZoned(() => action(), zoneValues: {_txConnKey: conn});
       });
-    } catch (e, stackTrace) {
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 

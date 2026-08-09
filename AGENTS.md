@@ -129,7 +129,7 @@ packages/laconic/lib/
 └── src/
     ├── laconic.dart                # Laconic 类（入口点，委托给驱动）
     ├── database_driver.dart        # DatabaseDriver 抽象接口（5 个方法 + grammar getter）
-    ├── exception.dart              # LaconicException（message、cause、stackTrace）
+    ├── exception.dart              # LaconicException（仅 message，驱动错误信息嵌入其中）
     ├── expression.dart             # Expression 类 + 顶层 raw() 函数（原始 SQL 嵌入）
     ├── query.dart                  # LaconicQuery（SQL + 绑定，用于日志记录；rawSql 已 @Deprecated）
     ├── result.dart                 # LaconicResult（columns + values，[] 访问器，toMap()）
@@ -230,7 +230,7 @@ MySQL 和 PostgreSQL 驱动使用 Dart 的 `runZoned` 配合区域值，通过�
 7. 按照已有模式创建测试文件，包含 `test_helper.dart`
 
 ### 错误处理
-- 所有驱动方法 **必须** 用 try/catch 包裹方法体，并以 `LaconicException(message, cause: e, stackTrace: stackTrace)` 重新抛出。这保留了原始错误以便调试。
+- 所有驱动方法 **必须** 用 try/catch 包裹方法体，并以 `LaconicException(e.toString())` 重新抛出（若 `e` 已是 `LaconicException` 则直接 `rethrow`，避免嵌套包装导致信息重复）。
 - QueryBuilder 会尽早验证输入，对无效用法（空插入数据等）抛出 `LaconicException`
 - `first()` 在无结果时抛出 `LaconicException`
 - `sole()` 在无结果 **或** 多条结果时抛出 `LaconicException`（获取 2 行以检查）

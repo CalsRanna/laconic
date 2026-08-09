@@ -131,8 +131,9 @@ class PostgresqlDriver implements DatabaseDriver {
         final map = row.toColumnMap();
         return LaconicResult.fromMap(Map<String, Object?>.from(map));
       }).toList();
-    } catch (e, stackTrace) {
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 
@@ -140,8 +141,9 @@ class PostgresqlDriver implements DatabaseDriver {
   Future<void> statement(String sql, [List<Object?> params = const []]) async {
     try {
       await _executeQuery(sql, params);
-    } catch (e, stackTrace) {
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 
@@ -153,8 +155,9 @@ class PostgresqlDriver implements DatabaseDriver {
     try {
       final results = await _executeQuery(sql, params);
       return results.affectedRows;
-    } catch (e, stackTrace) {
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 
@@ -179,8 +182,9 @@ class PostgresqlDriver implements DatabaseDriver {
         throw LaconicException('Insert returned non-integer ID: $id');
       }
       return id;
-    } catch (e, stackTrace) {
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 
@@ -192,8 +196,9 @@ class PostgresqlDriver implements DatabaseDriver {
           return runZoned(() => action(), zoneValues: {_txSessionKey: session});
         });
       });
-    } catch (e, stackTrace) {
-      throw LaconicException(e.toString(), cause: e, stackTrace: stackTrace);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString());
     }
   }
 
