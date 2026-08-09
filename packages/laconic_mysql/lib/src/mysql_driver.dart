@@ -39,6 +39,14 @@ class MysqlDriver implements DatabaseDriver {
   @override
   SqlGrammar get grammar => _grammar;
 
+  /// Identifier reported on [LaconicException.driver].
+  static const String driverName = 'mysql';
+
+  /// Extracts the MySQL server error code for [LaconicException.code],
+  /// or null for client-side and protocol errors which carry no code.
+  static String? _errorCode(Object error) =>
+      error is MysqlServerException ? '${error.errorCode}' : null;
+
   MysqlConnectionPool get _connectionPool {
     return _pool ??= MysqlConnectionPool(
       databaseName: config.database,
@@ -140,7 +148,11 @@ class MysqlDriver implements DatabaseDriver {
       return _toResults(results);
     } catch (e) {
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 
@@ -150,7 +162,11 @@ class MysqlDriver implements DatabaseDriver {
       await _executeQuery(sql, params);
     } catch (e) {
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 
@@ -164,7 +180,11 @@ class MysqlDriver implements DatabaseDriver {
       return results.affectedRows.toInt();
     } catch (e) {
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 
@@ -178,7 +198,11 @@ class MysqlDriver implements DatabaseDriver {
       return results.lastInsertId.toInt();
     } catch (e) {
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 
@@ -190,7 +214,11 @@ class MysqlDriver implements DatabaseDriver {
       });
     } catch (e) {
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 

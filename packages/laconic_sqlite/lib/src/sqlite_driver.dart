@@ -32,6 +32,15 @@ class SqliteDriver implements DatabaseDriver {
   @override
   SqlGrammar get grammar => _grammar;
 
+  /// Identifier reported on [LaconicException.driver].
+  static const String driverName = 'sqlite';
+
+  /// Extracts the SQLite extended result code for [LaconicException.code]
+  /// (e.g. `2067` for UNIQUE, `1555` for FOREIGN KEY — see
+  /// https://sqlite.org/rescode.html), or null for non-SQLite errors.
+  static String? _errorCode(Object error) =>
+      error is SqliteException ? '${error.extendedResultCode}' : null;
+
   Database get _db {
     return _database ??= sqlite3.open(config.path);
   }
@@ -84,7 +93,11 @@ class SqliteDriver implements DatabaseDriver {
       }
     } catch (e) {
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 
@@ -112,7 +125,11 @@ class SqliteDriver implements DatabaseDriver {
       }
     } catch (e) {
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 
@@ -132,7 +149,11 @@ class SqliteDriver implements DatabaseDriver {
       }
     } catch (e) {
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 
@@ -161,7 +182,11 @@ class SqliteDriver implements DatabaseDriver {
       return id;
     } catch (e) {
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 
@@ -187,10 +212,16 @@ class SqliteDriver implements DatabaseDriver {
         throw LaconicException(
           'Transaction failed: ${e.toString()}. '
           'Rollback also failed: ${rollbackError.toString()}',
+          driver: driverName,
+          code: _errorCode(e),
         );
       }
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 

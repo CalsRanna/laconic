@@ -38,6 +38,14 @@ class PostgresqlDriver implements DatabaseDriver {
   @override
   SqlGrammar get grammar => _grammar;
 
+  /// Identifier reported on [LaconicException.driver].
+  static const String driverName = 'postgres';
+
+  /// Extracts the SQLSTATE error code for [LaconicException.code],
+  /// or null when the error is not a server-reported error.
+  static String? _errorCode(Object error) =>
+      error is ServerException ? error.code : null;
+
   Pool get _connectionPool {
     return _pool ??= Pool.withEndpoints(
       [
@@ -133,7 +141,11 @@ class PostgresqlDriver implements DatabaseDriver {
       }).toList();
     } catch (e) {
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 
@@ -143,7 +155,11 @@ class PostgresqlDriver implements DatabaseDriver {
       await _executeQuery(sql, params);
     } catch (e) {
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 
@@ -157,7 +173,11 @@ class PostgresqlDriver implements DatabaseDriver {
       return results.affectedRows;
     } catch (e) {
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 
@@ -184,7 +204,11 @@ class PostgresqlDriver implements DatabaseDriver {
       return id;
     } catch (e) {
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 
@@ -198,7 +222,11 @@ class PostgresqlDriver implements DatabaseDriver {
       });
     } catch (e) {
       if (e is LaconicException) rethrow;
-      throw LaconicException(e.toString());
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
     }
   }
 

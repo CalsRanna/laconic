@@ -537,4 +537,32 @@ void main() {
       expect(result.toMap(), {'id': 1, 'name': 'John'});
     });
   });
+
+  group('LaconicException:', () {
+    test('driver and code default to null', () {
+      final error = LaconicException('boom');
+      expect(error.message, 'boom');
+      expect(error.driver, isNull);
+      expect(error.code, isNull);
+    });
+
+    test('carries driver and code verbatim', () {
+      final error = LaconicException(
+        'boom',
+        driver: 'mysql',
+        code: '1062',
+      );
+      expect(error.driver, 'mysql');
+      expect(error.code, '1062');
+    });
+
+    test('toString is unaffected by driver and code', () {
+      final error = LaconicException(
+        'boom',
+        driver: 'postgres',
+        code: '23505',
+      );
+      expect(error.toString(), 'LaconicException: boom');
+    });
+  });
 }

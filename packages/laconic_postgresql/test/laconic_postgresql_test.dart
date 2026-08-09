@@ -675,5 +675,38 @@ void main() {
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
     });
+
+    group('LaconicException error codes:', () {
+      test('duplicate entry carries driver and SQLSTATE code', () async {
+        // Explicit id 1 collides with the seeded John row (unique_violation,
+        // SQLSTATE 23505).
+        try {
+          await laconic.table(userTable).insertGetId({
+            'id': 1,
+            'name': 'John',
+            'age': 25,
+            'gender': 'male',
+          });
+          fail('expected duplicate key error');
+        } on LaconicException catch (e) {
+          expect(e.driver, 'postgres');
+          expect(e.code, '23505');
+          expect(e.message, contains('23505'));
+        }
+      });
+
+      test('unknown driver errors carry driver but a different code',
+          () async {
+        try {
+          await laconic.statement('select * from no_such_table_xyz');
+          fail('expected SQL error');
+        } on LaconicException catch (e) {
+          expect(e.driver, 'postgres');
+          // 42P01 = undefined_table; must not be a duplicate-entry code.
+          expect(e.code, isNotNull);
+          expect(e.code, isNot('23505'));
+        }
+      });
+    });
   });
 }

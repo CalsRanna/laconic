@@ -702,5 +702,38 @@ void main() {
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
     });
+
+    group('LaconicException error codes:', () {
+      test('duplicate entry carries driver and MySQL server error code',
+          () async {
+        // Explicit id 1 collides with the seeded John row (ER_DUP_ENTRY).
+        try {
+          await laconic.table(userTable).insertGetId({
+            'id': 1,
+            'name': 'John',
+            'age': 25,
+            'gender': 'male',
+          });
+          fail('expected duplicate key error');
+        } on LaconicException catch (e) {
+          expect(e.driver, 'mysql');
+          expect(e.code, '1062');
+          expect(e.message, contains('1062'));
+        }
+      });
+
+      test('unknown driver errors carry driver but no code', () async {
+        try {
+          await laconic.statement('select * from `no_such_table_xyz`');
+          fail('expected SQL error');
+        } on LaconicException catch (e) {
+          expect(e.driver, 'mysql');
+          // 1146 = ER_NO_SUCH_TABLE; any code other than null proves
+          // extraction ran, and it must not be a duplicate-entry code.
+          expect(e.code, isNotNull);
+          expect(e.code, isNot('1062'));
+        }
+      });
+    });
   });
 }

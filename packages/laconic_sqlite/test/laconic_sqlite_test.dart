@@ -827,5 +827,41 @@ void main() {
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
     });
+
+    group('LaconicException error codes:', () {
+      const uniqueTable = 'unique_names';
+
+      test('duplicate entry carries driver and SQLite extended code',
+          () async {
+        await laconic.statement(
+          'create table $uniqueTable '
+          '(id integer primary key autoincrement, name varchar(255) unique)',
+        );
+        await laconic.table(uniqueTable).insert([{'name': 'alice'}]);
+        try {
+          await laconic.table(uniqueTable).insert([{'name': 'alice'}]);
+          fail('expected duplicate key error');
+        } on LaconicException catch (e) {
+          expect(e.driver, 'sqlite');
+          // 2067 = SQLITE_CONSTRAINT_UNIQUE (see https://sqlite.org/rescode.html)
+          expect(e.code, '2067');
+          expect(e.message, contains('UNIQUE constraint failed'));
+        } finally {
+          await laconic.statement('drop table if exists $uniqueTable');
+        }
+      });
+
+      test('non-constraint driver error carries driver but a different code',
+          () async {
+        try {
+          await laconic.statement('this is not sql');
+          fail('expected SQL error');
+        } on LaconicException catch (e) {
+          expect(e.driver, 'sqlite');
+          // 1 = SQLITE_ERROR, not a constraint code
+          expect(e.code, '1');
+        }
+      });
+    });
   });
 }
