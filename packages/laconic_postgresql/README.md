@@ -101,3 +101,26 @@ PostgreSQL uses numbered placeholders (`$1`, `$2`, ...) instead of `?`. The driv
 ## License
 
 MIT License
+
+## Raw SQL parameters
+
+Raw clauses and driver queries accept `?` or native `$1`, `$2`, … parameters.
+Native numbers in each raw clause start locally at `$1`; the grammar rebases them
+when composing the complete query. Repeated `$1` references reuse one binding.
+If both forms occur in one clause, `?` parameters follow the largest native index.
+The binding list must match these positions.
+
+```dart
+await laconic.table('users').where('active', true)
+    .whereRaw(r'id = $1', [7]).get();
+await laconic.select('SELECT ?::jsonb ? ? AS found', ['{"key":1}', 'key']);
+```
+
+Question marks inside strings, quoted identifiers, comments and dollar-quoted
+strings are preserved. PostgreSQL JSON operators `?`, `?|`, `?&` and `@?` are
+preserved; `??` explicitly escapes a bare question-mark operator in raw SQL.
+
+Prepared statements are cached per physical connection (up to 50 each) and are
+released on eviction. Transactions have a session-local cache, released when the
+transaction ends. Transactions on different driver instances remain independent;
+nested transactions on the same instance are not supported.

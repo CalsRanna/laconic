@@ -1,4 +1,5 @@
 import 'package:laconic/laconic.dart';
+import 'postgresql_placeholders.dart';
 
 /// PostgreSQL-specific SQL grammar.
 ///
@@ -71,6 +72,56 @@ class PostgresqlGrammar extends SqlGrammar {
     }
 
     return CompiledQuery(sql: buffer.toString(), bindings: bindings);
+  }
+
+  @override
+  CompiledQuery compileUnion({
+    required List<CompiledQuery> queries,
+    required List<bool> all,
+    required List<String> columns,
+    required List<Map<String, dynamic>> orders,
+    List<Map<String, dynamic>> wheres = const [],
+    int? limit,
+    int? offset,
+    List<Map<String, dynamic>> locks = const [],
+  }) {
+    final sql = StringBuffer();
+    final bindings = <Object?>[];
+    for (var i = 0; i < queries.length; i++) {
+      if (i > 0) sql.write(all[i - 1] ? ' union all ' : ' union ');
+      final branch = PostgresqlPlaceholders.compile(
+        queries[i].sql,
+        queries[i].bindings,
+        offset: bindings.length,
+      );
+      sql.write('select * from (${branch.sql}) as laconic_branch_$i');
+      bindings.addAll(branch.bindings);
+    }
+    final outer = compileSelect(
+      table: 'laconic_union',
+      columns: columns,
+      wheres: wheres,
+      joins: [],
+      orders: orders,
+      groups: [],
+      havings: [],
+      distinct: false,
+      limit: limit,
+      offset: offset,
+      locks: locks,
+    );
+    final shifted = PostgresqlPlaceholders.compile(
+      outer.sql,
+      outer.bindings,
+      offset: bindings.length,
+    );
+    return CompiledQuery(
+      sql: shifted.sql.replaceFirst(
+        'from laconic_union',
+        'from ($sql) as laconic_union',
+      ),
+      bindings: [...bindings, ...outer.bindings],
+    );
   }
 
   @override
@@ -257,7 +308,8 @@ class PostgresqlGrammar extends SqlGrammar {
   }) {
     final compiled = compileInsert(table: table, data: data);
     final conflictCols = uniqueBy.join(', ');
-    final updateCols = update ?? data.first.keys.where((k) => !uniqueBy.contains(k)).toList();
+    final updateCols =
+        update ?? data.first.keys.where((k) => !uniqueBy.contains(k)).toList();
     if (updateCols.isEmpty) {
       return CompiledQuery(
         sql: '${compiled.sql} on conflict($conflictCols) do nothing',
@@ -266,7 +318,8 @@ class PostgresqlGrammar extends SqlGrammar {
     }
     final setClauses = updateCols.map((c) => '$c = excluded.$c').join(', ');
     return CompiledQuery(
-      sql: '${compiled.sql} on conflict($conflictCols) do update set $setClauses',
+      sql:
+          '${compiled.sql} on conflict($conflictCols) do update set $setClauses',
       bindings: compiled.bindings,
     );
   }
@@ -408,7 +461,12 @@ class PostgresqlGrammar extends SqlGrammar {
         final keyword = not ? 'not exists' : 'exists';
         final subSql = condition['sql'] as String;
         final subBindings = condition['bindings'] as List<Object?>;
-        final offsetSql = _offsetSubqueryPlaceholders(subSql, bindings.length);
+        final offsetSql =
+            PostgresqlPlaceholders.compile(
+              subSql,
+              subBindings,
+              offset: bindings.length,
+            ).sql;
         bindings.addAll(subBindings);
         parts.add('$boolean$keyword ($offsetSql)');
       }
@@ -543,11 +601,19 @@ class PostgresqlGrammar extends SqlGrammar {
         final keyword = not ? 'not exists' : 'exists';
         final subSql = where['sql'] as String;
         final subBindings = where['bindings'] as List<Object?>;
-        final offsetSql = _offsetSubqueryPlaceholders(subSql, bindings.length);
+        final offsetSql =
+            PostgresqlPlaceholders.compile(
+              subSql,
+              subBindings,
+              offset: bindings.length,
+            ).sql;
         bindings.addAll(subBindings);
         parts.add('$boolean$keyword ($offsetSql)');
       } else if (type == 'date') {
-        final expr = _dateExpression(where['dateType'] as String, where['column'] as String);
+        final expr = _dateExpression(
+          where['dateType'] as String,
+          where['column'] as String,
+        );
         parts.add('$boolean$expr = \$${bindings.length + 1}');
         bindings.add(where['value']);
       }
@@ -560,17 +626,26 @@ class PostgresqlGrammar extends SqlGrammar {
   /// The returned string already includes the column reference.
   String _dateExpression(String dateType, String column) {
     switch (dateType) {
-      case 'date': return 'date($column)';
-      case 'time': return '$column::time';
-      case 'day': return 'extract(day from $column)';
-      case 'month': return 'extract(month from $column)';
-      case 'year': return 'extract(year from $column)';
-      default: return '$dateType($column)';
+      case 'date':
+        return 'date($column)';
+      case 'time':
+        return '$column::time';
+      case 'day':
+        return 'extract(day from $column)';
+      case 'month':
+        return 'extract(month from $column)';
+      case 'year':
+        return 'extract(year from $column)';
+      default:
+        return '$dateType($column)';
     }
   }
 
   /// Compiles ORDER BY clauses.
-  String _compileOrders(List<Map<String, dynamic>> orders, List<Object?> bindings) {
+  String _compileOrders(
+    List<Map<String, dynamic>> orders,
+    List<Object?> bindings,
+  ) {
     final buffer = StringBuffer();
     buffer.write(' order by ');
 
@@ -640,37 +715,17 @@ class PostgresqlGrammar extends SqlGrammar {
     return parts.join('');
   }
 
-  /// Replaces `?` placeholders in raw SQL with `$N` positional placeholders.
-  ///
-  /// Uses [String.indexOf] to locate each `?` before replacing, which is
-  /// more robust than blind [String.replaceFirst] when the raw SQL might
-  /// contain `?` characters inside string literals (edge case).
-  ///
-  /// For PostgreSQL-specific raw SQL, prefer using `$1`, `$2`, etc. directly
-  /// to avoid placeholder conversion entirely.
   String _compileRawSql(
     String rawSql,
     List<Object?> rawBindings,
     List<Object?> bindings,
   ) {
-    var sql = rawSql;
-    for (final binding in rawBindings) {
-      final questionPos = sql.indexOf('?');
-      if (questionPos == -1) break;
-      sql = sql.replaceFirst('?', '\$${bindings.length + 1}');
-      bindings.add(binding);
-    }
-    return sql;
-  }
-
-  /// Offsets \$N positional parameters in a subquery SQL by [offset].
-  /// This is needed when embedding a subquery into an outer query, since
-  /// the outer query already has its own \$N parameters.
-  String _offsetSubqueryPlaceholders(String sql, int offset) {
-    if (offset == 0) return sql;
-    return sql.replaceAllMapped(RegExp(r'\$(\d+)'), (m) {
-      final num = int.parse(m.group(1)!);
-      return '\$${num + offset}';
-    });
+    final compiled = PostgresqlPlaceholders.compile(
+      rawSql,
+      rawBindings,
+      offset: bindings.length,
+    );
+    bindings.addAll(rawBindings);
+    return compiled.sql;
   }
 }

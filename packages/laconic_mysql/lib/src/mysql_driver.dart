@@ -26,7 +26,7 @@ class MysqlDriver implements DatabaseDriver {
   final MysqlConfig config;
   MysqlConnectionPool? _pool;
   static final _grammar = MysqlGrammar();
-  static final _txConnKey = Object();
+  final _txConnKey = Object();
 
   /// Per-connection LRU caches of prepared statements.
   final Map<MysqlConnection, LinkedHashMap<String, MysqlPreparedStatement>>
@@ -67,14 +67,16 @@ class MysqlDriver implements DatabaseDriver {
   }
 
   /// Returns the pinned transaction connection from the current Zone, if any.
-  MysqlConnection? get _transactionConnection =>
-      Zone.current[_txConnKey] as MysqlConnection?;
+  _MysqlTransaction? get _transactionContext =>
+      Zone.current[_txConnKey] as _MysqlTransaction?;
 
   /// Executes a query, delegating to [_executeOnConn] for protocol selection.
   Future<MysqlResultSet> _executeQuery(String sql, List<Object?> params) async {
-    final conn = _transactionConnection;
-    if (conn != null) {
-      return _executeOnConn(conn, sql, params);
+    final transaction = _transactionContext;
+    if (transaction != null) {
+      return transaction.run(
+        () => _executeOnConn(transaction.connection, sql, params),
+      );
     }
     return _connectionPool.withConnection(
       (conn) => _executeOnConn(conn, sql, params),
@@ -132,10 +134,10 @@ class MysqlDriver implements DatabaseDriver {
   }
 
   List<LaconicResult> _toResults(MysqlResultSet results) {
-    return results.rows.map((row) {
-      final map = row.toTypedMap();
-      return LaconicResult.fromMap(Map<String, Object?>.from(map));
-    }).toList();
+    return LaconicResult.fromRows(
+      results.columns.map((column) => column.name).toList(),
+      results.rows.map((row) => row.toTypedValues()),
+    );
   }
 
   @override
@@ -209,8 +211,17 @@ class MysqlDriver implements DatabaseDriver {
   @override
   Future<T> transaction<T>(Future<T> Function() action) async {
     try {
+      if (_transactionContext != null) {
+        throw LaconicException('Nested transactions are not supported');
+      }
       return await _connectionPool.transactional((conn) async {
-        return runZoned(() => action(), zoneValues: {_txConnKey: conn});
+        final transaction = _MysqlTransaction(conn);
+        try {
+          return await runZoned(action, zoneValues: {_txConnKey: transaction});
+        } finally {
+          transaction.active = false;
+          await transaction.pending;
+        }
       });
     } catch (e) {
       if (e is LaconicException) rethrow;
@@ -228,6 +239,28 @@ class MysqlDriver implements DatabaseDriver {
     if (_pool != null) {
       await _pool!.close();
       _pool = null;
+    }
+  }
+}
+
+class _MysqlTransaction {
+  final MysqlConnection connection;
+  bool active = true;
+  Future<void> pending = Future.value();
+
+  _MysqlTransaction(this.connection);
+
+  Future<T> run<T>(Future<T> Function() action) async {
+    if (!active) throw LaconicException('Transaction has already finished');
+    final previous = pending;
+    final done = Completer<void>();
+    pending = done.future;
+    await previous;
+    try {
+      if (!active) throw LaconicException('Transaction has already finished');
+      return await action();
+    } finally {
+      done.complete();
     }
   }
 }

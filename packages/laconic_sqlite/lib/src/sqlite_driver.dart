@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:laconic/laconic.dart';
 import 'package:laconic_sqlite/src/sqlite_config.dart';
 import 'package:laconic_sqlite/src/sqlite_grammar.dart';
@@ -20,6 +22,36 @@ class SqliteDriver implements DatabaseDriver {
   final SqliteConfig config;
   Database? _database;
   static final _grammar = SqliteGrammar();
+  final _transactionKey = Object();
+  Future<void> _tail = Future.value();
+
+  Future<T> _execute<T>(FutureOr<T> Function() action) async {
+    try {
+      final transaction = Zone.current[_transactionKey] as _SqliteTransaction?;
+      if (transaction != null) {
+        if (!transaction.active) {
+          throw LaconicException('Transaction has already finished');
+        }
+        return await action();
+      }
+      final previous = _tail;
+      final done = Completer<void>();
+      _tail = done.future;
+      await previous;
+      try {
+        return await action();
+      } finally {
+        done.complete();
+      }
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
+    }
+  }
 
   /// Cache of prepared statements keyed by SQL string.
   /// Avoids re-parsing SQL on every execution of the same query.
@@ -77,15 +109,15 @@ class SqliteDriver implements DatabaseDriver {
   Future<List<LaconicResult>> select(
     String sql, [
     List<Object?> params = const [],
-  ]) async {
+  ]) => _execute(() {
     try {
       final stmt = _prepare(sql);
       try {
         final rows = stmt.select(params);
-        return rows
-            .map((row) => LaconicResult.fromMap(
-                Map.fromIterables(row.keys, row.values)))
-            .toList();
+        return LaconicResult.fromRows(
+          rows.columnNames,
+          rows.map((row) => row.values.toList()),
+        );
       } catch (e) {
         // Schema may have changed; evict and let the caller handle the error.
         _stmtCache.remove(sql)?.close();
@@ -99,10 +131,13 @@ class SqliteDriver implements DatabaseDriver {
         code: _errorCode(e),
       );
     }
-  }
+  });
 
   @override
-  Future<void> statement(String sql, [List<Object?> params = const []]) async {
+  Future<void> statement(
+    String sql, [
+    List<Object?> params = const [],
+  ]) => _execute(() {
     try {
       // DDL is not cached — it runs once and may invalidate other statements.
       if (_isDDL(sql)) {
@@ -131,13 +166,13 @@ class SqliteDriver implements DatabaseDriver {
         code: _errorCode(e),
       );
     }
-  }
+  });
 
   @override
   Future<int> affectingStatement(
     String sql, [
     List<Object?> params = const [],
-  ]) async {
+  ]) => _execute(() {
     try {
       final stmt = _prepare(sql);
       try {
@@ -155,40 +190,29 @@ class SqliteDriver implements DatabaseDriver {
         code: _errorCode(e),
       );
     }
-  }
+  });
 
   @override
-  Future<int> insertAndGetId(
-    String sql, [
-    List<Object?> params = const [],
-  ]) async {
-    try {
-      final stmt = _prepare(sql);
-      try {
-        stmt.execute(params);
-      } catch (e) {
-        _stmtCache.remove(sql)?.close();
-        rethrow;
-      }
-      // Get the last inserted row ID
-      final result = _db.select('SELECT last_insert_rowid() as id');
-      if (result.isEmpty) {
-        throw LaconicException('Failed to retrieve last insert ID');
-      }
-      final id = result.first['id'];
-      if (id is! int) {
-        throw LaconicException('last_insert_rowid() returned non-integer: $id');
-      }
-      return id;
-    } catch (e) {
-      if (e is LaconicException) rethrow;
-      throw LaconicException(
-        e.toString(),
-        driver: driverName,
-        code: _errorCode(e),
-      );
-    }
-  }
+  Future<int> insertAndGetId(String sql, [List<Object?> params = const []]) =>
+      _execute(() {
+        try {
+          final stmt = _prepare(sql);
+          try {
+            stmt.execute(params);
+          } catch (e) {
+            _stmtCache.remove(sql)?.close();
+            rethrow;
+          }
+          return _db.lastInsertRowId;
+        } catch (e) {
+          if (e is LaconicException) rethrow;
+          throw LaconicException(
+            e.toString(),
+            driver: driverName,
+            code: _errorCode(e),
+          );
+        }
+      });
 
   /// Closes and removes all cached prepared statements.
   void _invalidateCache() {
@@ -199,38 +223,52 @@ class SqliteDriver implements DatabaseDriver {
   }
 
   @override
-  Future<T> transaction<T>(Future<T> Function() action) async {
+  Future<T> transaction<T>(Future<T> Function() action) => _execute(() async {
+    if (Zone.current[_transactionKey] != null) {
+      throw LaconicException('Nested transactions are not supported');
+    }
+    final transaction = _SqliteTransaction();
+    var started = false;
     try {
       _db.execute('BEGIN TRANSACTION');
-      final result = await action();
+      started = true;
+      final result = await runZoned(
+        action,
+        zoneValues: {_transactionKey: transaction},
+      );
       _db.execute('COMMIT');
       return result;
     } catch (e) {
-      try {
-        _db.execute('ROLLBACK');
-      } catch (rollbackError) {
-        throw LaconicException(
-          'Transaction failed: ${e.toString()}. '
-          'Rollback also failed: ${rollbackError.toString()}',
-          driver: driverName,
-          code: _errorCode(e),
-        );
+      if (started) {
+        try {
+          _db.execute('ROLLBACK');
+        } catch (rollbackError) {
+          throw LaconicException(
+            'Transaction failed: $e. Rollback also failed: $rollbackError',
+            driver: driverName,
+            code: _errorCode(e),
+          );
+        }
       }
-      if (e is LaconicException) rethrow;
-      throw LaconicException(
-        e.toString(),
-        driver: driverName,
-        code: _errorCode(e),
-      );
+      rethrow;
+    } finally {
+      transaction.active = false;
     }
-  }
+  });
 
   @override
-  Future<void> close() async {
-    _invalidateCache();
-    if (_database != null) {
-      _database!.close();
-      _database = null;
+  Future<void> close() => _execute(() {
+    if (Zone.current[_transactionKey] != null) {
+      throw LaconicException(
+        'Cannot close a connection inside its transaction',
+      );
     }
-  }
+    _invalidateCache();
+    _database?.close();
+    _database = null;
+  });
+}
+
+class _SqliteTransaction {
+  bool active = true;
 }

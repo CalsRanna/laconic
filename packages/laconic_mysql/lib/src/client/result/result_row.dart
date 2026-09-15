@@ -41,6 +41,11 @@ class MysqlResultRow {
     };
   }
 
+  List<Object?> toTypedValues() => [
+    for (var i = 0; i < _columns.length; i++)
+      _convertToBestType(_values[i], _columns[i]),
+  ];
+
   Map<String, Object?> toTypedMap() {
     return {
       for (var index = 0; index < _columns.length; index++)

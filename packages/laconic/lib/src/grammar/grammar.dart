@@ -32,6 +32,49 @@ abstract class SqlGrammar {
     List<Map<String, dynamic>> locks = const [],
   });
 
+  /// Compiles complete SELECT branches with final UNION ordering and pagination.
+  ///
+  /// [all] contains one flag for each branch after the first. Each branch is
+  /// wrapped as a derived table so its own ordering and pagination are preserved.
+  CompiledQuery compileUnion({
+    required List<CompiledQuery> queries,
+    required List<bool> all,
+    required List<String> columns,
+    required List<Map<String, dynamic>> orders,
+    List<Map<String, dynamic>> wheres = const [],
+    int? limit,
+    int? offset,
+    List<Map<String, dynamic>> locks = const [],
+  }) {
+    final sql = StringBuffer();
+    final bindings = <Object?>[];
+    for (var i = 0; i < queries.length; i++) {
+      if (i > 0) sql.write(all[i - 1] ? ' union all ' : ' union ');
+      sql.write('select * from (${queries[i].sql}) as laconic_branch_$i');
+      bindings.addAll(queries[i].bindings);
+    }
+    final outer = compileSelect(
+      table: 'laconic_union',
+      columns: columns,
+      wheres: wheres,
+      joins: [],
+      orders: orders,
+      groups: [],
+      havings: [],
+      distinct: false,
+      limit: limit,
+      offset: offset,
+      locks: locks,
+    );
+    return CompiledQuery(
+      sql: outer.sql.replaceFirst(
+        'from laconic_union',
+        'from ($sql) as laconic_union',
+      ),
+      bindings: [...bindings, ...outer.bindings],
+    );
+  }
+
   /// Compiles an INSERT query.
   ///
   /// Parameters:

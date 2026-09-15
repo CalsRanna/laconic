@@ -28,6 +28,28 @@ class MysqlCommandExecutor {
   Future<void> Function(Uint8List data)? _responseCallback;
   void Function(Object error, StackTrace stackTrace)? _pendingFailure;
   Timer? _pendingTimer;
+  Future<void> _commandTail = Future.value();
+  Completer<void>? _wireFinished;
+
+  Future<T> _enqueue<T>(Future<T> Function() action) async {
+    final previous = _commandTail;
+    final released = Completer<void>();
+    _commandTail = released.future;
+    await previous;
+    final finished = Completer<void>();
+    _wireFinished = finished;
+    try {
+      return await action();
+    } catch (_) {
+      clearPending();
+      _onCompleted();
+      rethrow;
+    } finally {
+      // Streaming commands return a result before their final wire packet.
+      // Keep the slot until the stream has been drained or the connection closed.
+      unawaited(finished.future.then((_) => released.complete()));
+    }
+  }
 
   MysqlCommandExecutor({
     required MysqlPacketTransport transport,
@@ -59,9 +81,10 @@ class MysqlCommandExecutor {
     String query, {
     Map<String, Object?>? namedParameters,
     bool streaming = false,
-  }) async {
+  }) => _enqueue(() async {
     await _beginCommand('Can not execute query: connection closed');
     if (namedParameters != null && namedParameters.isNotEmpty) {
+      clearPending();
       _onCompleted();
       throw const MysqlClientException(
         'Named text-protocol parameters are not supported. '
@@ -79,12 +102,12 @@ class MysqlCommandExecutor {
       binary: false,
       allowMultipleResults: true,
     );
-  }
+  });
 
   Future<MysqlPreparedStatement> prepare(
     String query, {
     bool streaming = false,
-  }) async {
+  }) => _enqueue(() async {
     await _beginCommand('Can not prepare statement: connection closed');
 
     final completer = Completer<MysqlPreparedStatement>();
@@ -146,7 +169,7 @@ class MysqlCommandExecutor {
       expectResponse: true,
     );
     return _awaitCommand(completer);
-  }
+  });
 
   void failPending(Object error, StackTrace stackTrace) {
     final failure = _pendingFailure;
@@ -159,6 +182,8 @@ class MysqlCommandExecutor {
     _pendingTimer = null;
     _pendingFailure = null;
     _responseCallback = null;
+    final finished = _wireFinished;
+    if (finished != null && !finished.isCompleted) finished.complete();
   }
 
   Future<void> _beginCommand(String disconnectedMessage) async {
@@ -190,7 +215,7 @@ class MysqlCommandExecutor {
     int statementId,
     List<Object?> parameters,
     bool streaming,
-  ) async {
+  ) => _enqueue(() async {
     await _beginCommand(
       'Can not execute prepared statement: connection closed',
     );
@@ -207,19 +232,21 @@ class MysqlCommandExecutor {
       binary: true,
       allowMultipleResults: false,
     );
-  }
+  });
 
-  Future<void> _deallocatePreparedStatement(int statementId) async {
-    await _beginCommand('Can not deallocate statement: connection closed');
-    _transport.sendPacket(
-      MysqlPacket(
-        sequenceId: 0,
-        payload: MysqlStatementCloseCommand(statementId: statementId),
-        payloadLength: 0,
-      ),
-    );
-    _onCompleted();
-  }
+  Future<void> _deallocatePreparedStatement(int statementId) =>
+      _enqueue(() async {
+        await _beginCommand('Can not deallocate statement: connection closed');
+        _transport.sendPacket(
+          MysqlPacket(
+            sequenceId: 0,
+            payload: MysqlStatementCloseCommand(statementId: statementId),
+            payloadLength: 0,
+          ),
+        );
+        clearPending();
+        _onCompleted();
+      });
 
   Future<MysqlResultSet> _runResultCommand(
     MysqlPacket command, {

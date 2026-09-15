@@ -58,33 +58,24 @@ class QueryBuilder {
   /// When GROUP BY is present, wraps the query in a subquery to count
   /// groups server-side instead of fetching all rows.
   Future<int> count() async {
-    if (_hasEmptyWhereIn()) return 0;
-
-    if (_groups.isNotEmpty) {
-      // Wrap grouped query in a subquery to count groups server-side.
-      // This avoids fetching all grouped rows over the network.
-      final innerCompiled = _grammar.compileSelect(
-        table: _table,
-        columns: ['1'],
-        wheres: _wheres,
-        joins: _joins,
-        orders: [],
-        groups: _groups,
-        havings: _havings,
-        distinct: false,
-        limit: null,
-        offset: null,
-        locks: const [],
+    if (_groups.isNotEmpty || _distinct || _unions.isNotEmpty) {
+      final query = clone()..reorder();
+      query._limit = null;
+      query._offset = null;
+      query._locks.clear();
+      if (_unions.isEmpty &&
+          _groups.isNotEmpty &&
+          _columns.length == 1 &&
+          _columns.first == '*') {
+        query._columns = List.of(_groups);
+      }
+      final inner = query._compileSelect();
+      final results = await _laconic.select(
+        'select count(*) as aggregate from (${inner.sql}) as laconic_count',
+        inner.bindings,
       );
-      final sql = 'SELECT COUNT(*) as aggregate FROM (${innerCompiled.sql}) as laconic_sub';
-      final results = await _laconic.select(sql, innerCompiled.bindings);
-
-      if (results.isEmpty) return 0;
       final value = results.first['aggregate'];
-      if (value == null) return 0;
-      if (value is int) return value;
-      if (value is String) return int.tryParse(value) ?? 0;
-      return 0;
+      return value is int ? value : int.tryParse('$value') ?? 0;
     }
 
     final compiled = _grammar.compileSelect(
@@ -148,20 +139,7 @@ class QueryBuilder {
   ///
   /// Throws [LaconicException] if no record is found.
   Future<LaconicResult> first() async {
-    if (_hasEmptyWhereIn()) throw LaconicException('No record found');
-    final compiled = _grammar.compileSelect(
-      table: _table,
-      columns: _columns,
-      wheres: _wheres,
-      joins: _joins,
-      orders: _orders,
-      groups: _groups,
-      havings: _havings,
-      distinct: _distinct,
-      limit: 1,
-      offset: _offset,
-      locks: _locks,
-    );
+    final compiled = _compileSelect(limitOverride: 1);
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
 
@@ -174,35 +152,9 @@ class QueryBuilder {
 
   /// Returns all records matching the query.
   Future<List<LaconicResult>> get() async {
-    if (_hasEmptyWhereIn()) return [];
+    final compiled = _compileSelect();
 
-    final compiled = _grammar.compileSelect(
-      table: _table,
-      columns: _columns,
-      wheres: _wheres,
-      joins: _joins,
-      orders: _orders,
-      groups: _groups,
-      havings: _havings,
-      distinct: _distinct,
-      limit: _limit,
-      offset: _offset,
-      locks: _locks,
-    );
-
-    if (_unions.isEmpty) {
-      return await _laconic.select(compiled.sql, compiled.bindings);
-    }
-
-    // Build UNIONs
-    final sql = StringBuffer(compiled.sql);
-    final allBindings = List<Object?>.from(compiled.bindings);
-    for (final u in _unions) {
-      sql.write(u['all'] == true ? ' union all ' : ' union ');
-      sql.write(u['sql'] as String);
-      allBindings.addAll(u['bindings'] as List<Object?>);
-    }
-    return await _laconic.select(sql.toString(), allBindings);
+    return _laconic.select(compiled.sql, compiled.bindings);
   }
 
   /// Returns the first record with the given [id]
@@ -248,7 +200,9 @@ class QueryBuilder {
   /// Inserts records while ignoring duplicate key errors.
   /// For SQLite: `INSERT OR IGNORE INTO ...`. For MySQL: `INSERT IGNORE INTO ...`.
   Future<void> insertOrIgnore(List<Map<String, Object?>> data) async {
-    if (data.isEmpty) throw LaconicException('Cannot insert an empty list of data');
+    if (data.isEmpty) {
+      throw LaconicException('Cannot insert an empty list of data');
+    }
     final compiled = _grammar.compileInsertOrIgnore(table: _table, data: data);
     await _laconic.statement(compiled.sql, compiled.bindings);
   }
@@ -262,7 +216,9 @@ class QueryBuilder {
     required List<String> uniqueBy,
     List<String>? update,
   }) async {
-    if (data.isEmpty) throw LaconicException('Cannot upsert an empty list of data');
+    if (data.isEmpty) {
+      throw LaconicException('Cannot upsert an empty list of data');
+    }
     final compiled = _grammar.compileUpsert(
       table: _table,
       data: data,
@@ -415,12 +371,19 @@ class QueryBuilder {
     return this;
   }
 
-  /// Adds a UNION clause. [all] = true for UNION ALL.
+  /// Adds a UNION clause, or UNION ALL when [all] is true.
+  ///
+  /// Ordering, limit and offset on this builder apply to the complete union.
+  /// Clauses inside [callback] apply only to that branch.
   QueryBuilder union(void Function(QueryBuilder) callback, {bool all = false}) {
     final uq = QueryBuilder(laconic: _laconic, table: '');
     callback(uq);
-    final compiled = uq.compileAsSubquery();
-    _unions.add({'sql': compiled.sql, 'bindings': compiled.bindings, 'all': all});
+    final compiled = uq._compileSelect();
+    _unions.add({
+      'sql': compiled.sql,
+      'bindings': compiled.bindings,
+      'all': all,
+    });
     return this;
   }
 
@@ -643,54 +606,104 @@ class QueryBuilder {
     return this;
   }
 
-  /// Compiles this builder's current state as a SELECT subquery.
-  /// @internal Used by [JoinClause] for EXISTS subqueries.
-  CompiledQuery compileAsSubquery() {
-    return _grammar.compileSelect(
-      table: _table,
-      columns: ['1'],
-      wheres: _wheres,
-      joins: _joins,
-      orders: [],
-      groups: [],
-      havings: [],
-      distinct: false,
-      limit: null,
-      offset: null,
-      locks: _locks,
-    );
+  /// Compiles an EXISTS subquery, preserving filters, groups and pagination.
+  ///
+  /// Used by [JoinClause] and the WHERE EXISTS methods.
+  CompiledQuery compileAsSubquery() => _compileExistence();
+
+  CompiledQuery _compileExistence({bool limitToOne = false}) {
+    final query = clone()..reorder();
+    if (limitToOne) query._limit = _limit == 0 ? 0 : 1;
+    if (_unions.isEmpty &&
+        !_distinct &&
+        _columns.length == 1 &&
+        _columns.first == '*') {
+      if (_groups.isNotEmpty) {
+        query._columns = List.of(_groups);
+      } else if (_havings.isEmpty) {
+        query._columns = ['1'];
+      }
+    }
+    return query._compileSelect();
   }
 
   /// Processes query results in chunks to avoid memory issues.
-  Future<void> chunk(int count, Future<void> Function(List<LaconicResult>) callback) async {
+  Future<void> chunk(
+    int count,
+    Future<void> Function(List<LaconicResult>) callback,
+  ) async {
+    if (count <= 0) throw LaconicException('Chunk size must be positive');
     var page = 1;
     while (true) {
       final results = await clone().forPage(page, perPage: count).get();
       if (results.isEmpty) break;
+      final received = results.length;
       await callback(results);
-      if (results.length < count) break;
+      if (received < count) break;
       page++;
     }
   }
 
-  /// Processes results in chunks using ID-based pagination (avoids large OFFSET).
-  Future<void> chunkById(int count, Future<void> Function(List<LaconicResult>) callback,
-      {String column = 'id', String? alias}) async {
+  /// Processes results in ascending order of a unique, non-null cursor column.
+  ///
+  /// Replaces existing ordering with [column]. An existing offset applies only
+  /// to the first page. [alias] optionally qualifies the column with a table alias.
+  Future<void> chunkById(
+    int count,
+    Future<void> Function(List<LaconicResult>) callback, {
+    String column = 'id',
+    String? alias,
+  }) async {
+    if (count <= 0) throw LaconicException('Chunk size must be positive');
     final col = alias != null ? '$alias.$column' : column;
+    final resultColumn = column.split('.').last;
     Object? lastId;
     while (true) {
-      final q = clone();
-      if (lastId != null) q.where(col, lastId, comparator: '>');
-      final results = await q.orderBy(col).limit(count).get();
+      final q = clone()..reorder();
+      if (lastId != null && _unions.isEmpty) {
+        final conditions = List<Map<String, dynamic>>.of(q._wheres);
+        q._wheres.clear();
+        if (conditions.isNotEmpty) {
+          q._wheres.add({
+            'type': 'nested',
+            'conditions': conditions,
+            'boolean': 'and',
+          });
+        }
+        q.where(col, lastId, comparator: '>');
+      }
+      if (lastId != null) q._offset = null;
+      q.orderBy(_unions.isEmpty ? col : resultColumn).limit(count);
+      final compiled = q._compileSelect(
+        unionWheres: [
+          if (lastId != null)
+            {
+              'type': 'basic',
+              'column': resultColumn,
+              'comparator': '>',
+              'value': lastId,
+              'boolean': 'and',
+            },
+        ],
+      );
+      final results = await _laconic.select(compiled.sql, compiled.bindings);
       if (results.isEmpty) break;
+      final nextId = results.last[resultColumn];
+      if (nextId == null || nextId == lastId) {
+        throw LaconicException('Chunk cursor must be non-null and advance');
+      }
+      lastId = nextId;
+      final received = results.length;
       await callback(results);
-      if (results.length < count) break;
-      lastId = results.last[column];
+      if (received < count) break;
     }
   }
 
   /// Iterates over each result using chunking.
-  Future<void> each(Future<void> Function(LaconicResult) callback, {int count = 1000}) async {
+  Future<void> each(
+    Future<void> Function(LaconicResult) callback, {
+    int count = 1000,
+  }) async {
     await chunk(count, (results) async {
       for (final row in results) {
         await callback(row);
@@ -700,18 +713,19 @@ class QueryBuilder {
 
   /// Returns a deep copy of this QueryBuilder for reuse.
   QueryBuilder clone() {
-    final copy = QueryBuilder(laconic: _laconic, table: _table)
-      .._columns = List<String>.from(_columns)
-      .._wheres.addAll(_wheres.map(_deepCopyWhere))
-      .._joins.addAll(_joins.map(_deepCopyJoin))
-      .._orders.addAll(_orders.map((o) => Map<String, dynamic>.from(o)))
-      .._groups.addAll(_groups)
-      .._havings.addAll(_havings.map((h) => Map<String, dynamic>.from(h)))
-      .._distinct = _distinct
-      .._limit = _limit
-      .._offset = _offset
-      .._locks.addAll(_locks.map((l) => Map<String, dynamic>.from(l)))
-      .._unions.addAll(_unions.map((u) => Map<String, dynamic>.from(u)));
+    final copy =
+        QueryBuilder(laconic: _laconic, table: _table)
+          .._columns = List<String>.from(_columns)
+          .._wheres.addAll(_wheres.map(_deepCopyWhere))
+          .._joins.addAll(_joins.map(_deepCopyJoin))
+          .._orders.addAll(_orders.map((o) => Map<String, dynamic>.from(o)))
+          .._groups.addAll(_groups)
+          .._havings.addAll(_havings.map((h) => Map<String, dynamic>.from(h)))
+          .._distinct = _distinct
+          .._limit = _limit
+          .._offset = _offset
+          .._locks.addAll(_locks.map((l) => Map<String, dynamic>.from(l)))
+          .._unions.addAll(_unions.map((u) => Map<String, dynamic>.from(u)));
     return copy;
   }
 
@@ -719,9 +733,10 @@ class QueryBuilder {
   static Map<String, dynamic> _deepCopyWhere(Map<String, dynamic> where) {
     final copy = Map<String, dynamic>.from(where);
     if (copy['type'] == 'nested') {
-      copy['conditions'] = (copy['conditions'] as List)
-          .map((c) => _deepCopyWhere(Map<String, dynamic>.from(c)))
-          .toList();
+      copy['conditions'] =
+          (copy['conditions'] as List)
+              .map((c) => _deepCopyWhere(Map<String, dynamic>.from(c)))
+              .toList();
     }
     return copy;
   }
@@ -731,9 +746,8 @@ class QueryBuilder {
     final copy = Map<String, dynamic>.from(join);
     final conditions = copy['conditions'] as List<Map<String, dynamic>>?;
     if (conditions != null) {
-      copy['conditions'] = conditions
-          .map((c) => Map<String, dynamic>.from(c))
-          .toList();
+      copy['conditions'] =
+          conditions.map((c) => Map<String, dynamic>.from(c)).toList();
     }
     return copy;
   }
@@ -837,20 +851,7 @@ class QueryBuilder {
   /// final user = await query.where('email', 'john@example.com').sole();
   /// ```
   Future<LaconicResult> sole() async {
-    if (_hasEmptyWhereIn()) throw LaconicException('No record found');
-    final compiled = _grammar.compileSelect(
-      table: _table,
-      columns: _columns,
-      wheres: _wheres,
-      joins: _joins,
-      orders: _orders,
-      groups: _groups,
-      havings: _havings,
-      distinct: _distinct,
-      limit: 2,
-      offset: _offset,
-      locks: _locks,
-    );
+    final compiled = _compileSelect(limitOverride: 2);
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
 
@@ -1295,52 +1296,121 @@ class QueryBuilder {
 
   /// WHERE DATE(col) = value.
   QueryBuilder whereDate(String column, Object? value) {
-    _wheres.add({'type': 'date', 'dateType': 'date', 'column': column, 'value': value, 'boolean': 'and'});
+    _wheres.add({
+      'type': 'date',
+      'dateType': 'date',
+      'column': column,
+      'value': value,
+      'boolean': 'and',
+    });
     return this;
   }
+
   /// OR WHERE DATE(col) = value.
   QueryBuilder orWhereDate(String column, Object? value) {
-    _wheres.add({'type': 'date', 'dateType': 'date', 'column': column, 'value': value, 'boolean': 'or'});
+    _wheres.add({
+      'type': 'date',
+      'dateType': 'date',
+      'column': column,
+      'value': value,
+      'boolean': 'or',
+    });
     return this;
   }
+
   /// WHERE TIME(col) = value.
   QueryBuilder whereTime(String column, Object? value) {
-    _wheres.add({'type': 'date', 'dateType': 'time', 'column': column, 'value': value, 'boolean': 'and'});
+    _wheres.add({
+      'type': 'date',
+      'dateType': 'time',
+      'column': column,
+      'value': value,
+      'boolean': 'and',
+    });
     return this;
   }
+
   /// OR WHERE TIME(col) = value.
   QueryBuilder orWhereTime(String column, Object? value) {
-    _wheres.add({'type': 'date', 'dateType': 'time', 'column': column, 'value': value, 'boolean': 'or'});
+    _wheres.add({
+      'type': 'date',
+      'dateType': 'time',
+      'column': column,
+      'value': value,
+      'boolean': 'or',
+    });
     return this;
   }
+
   /// WHERE DAY(col) = value.
   QueryBuilder whereDay(String column, Object? value) {
-    _wheres.add({'type': 'date', 'dateType': 'day', 'column': column, 'value': value, 'boolean': 'and'});
+    _wheres.add({
+      'type': 'date',
+      'dateType': 'day',
+      'column': column,
+      'value': value,
+      'boolean': 'and',
+    });
     return this;
   }
+
   /// OR WHERE DAY(col) = value.
   QueryBuilder orWhereDay(String column, Object? value) {
-    _wheres.add({'type': 'date', 'dateType': 'day', 'column': column, 'value': value, 'boolean': 'or'});
+    _wheres.add({
+      'type': 'date',
+      'dateType': 'day',
+      'column': column,
+      'value': value,
+      'boolean': 'or',
+    });
     return this;
   }
+
   /// WHERE MONTH(col) = value.
   QueryBuilder whereMonth(String column, Object? value) {
-    _wheres.add({'type': 'date', 'dateType': 'month', 'column': column, 'value': value, 'boolean': 'and'});
+    _wheres.add({
+      'type': 'date',
+      'dateType': 'month',
+      'column': column,
+      'value': value,
+      'boolean': 'and',
+    });
     return this;
   }
+
   /// OR WHERE MONTH(col) = value.
   QueryBuilder orWhereMonth(String column, Object? value) {
-    _wheres.add({'type': 'date', 'dateType': 'month', 'column': column, 'value': value, 'boolean': 'or'});
+    _wheres.add({
+      'type': 'date',
+      'dateType': 'month',
+      'column': column,
+      'value': value,
+      'boolean': 'or',
+    });
     return this;
   }
+
   /// WHERE YEAR(col) = value.
   QueryBuilder whereYear(String column, Object? value) {
-    _wheres.add({'type': 'date', 'dateType': 'year', 'column': column, 'value': value, 'boolean': 'and'});
+    _wheres.add({
+      'type': 'date',
+      'dateType': 'year',
+      'column': column,
+      'value': value,
+      'boolean': 'and',
+    });
     return this;
   }
+
   /// OR WHERE YEAR(col) = value.
   QueryBuilder orWhereYear(String column, Object? value) {
-    _wheres.add({'type': 'date', 'dateType': 'year', 'column': column, 'value': value, 'boolean': 'or'});
+    _wheres.add({
+      'type': 'date',
+      'dateType': 'year',
+      'column': column,
+      'value': value,
+      'boolean': 'or',
+    });
     return this;
   }
 
@@ -1550,7 +1620,11 @@ class QueryBuilder {
   /// ```dart
   /// query.groupBy('account_id').having('account_id', 100, comparator: '>').orHaving('account_id', 50, comparator: '<')
   /// ```
-  QueryBuilder orHaving(String column, Object? value, {String comparator = '='}) {
+  QueryBuilder orHaving(
+    String column,
+    Object? value, {
+    String comparator = '=',
+  }) {
     _havings.add({
       'column': column,
       'comparator': comparator,
@@ -1652,7 +1726,19 @@ class QueryBuilder {
   /// aggregate value from the first group only. For grouped aggregates
   /// that require all group values, use [get] with [selectRaw] instead.
   Future<double?> _aggregate(String function, String column) async {
-    if (_hasEmptyWhereIn()) return null;
+    if (_unions.isNotEmpty) {
+      final query = clone()..reorder();
+      query._limit = null;
+      query._offset = null;
+      query._locks.clear();
+      final inner = query._compileSelect();
+      final results = await _laconic.select(
+        'select $function($column) as aggregate from (${inner.sql}) as laconic_aggregate',
+        inner.bindings,
+      );
+      final value = results.first['aggregate'];
+      return value is num ? value.toDouble() : double.tryParse('$value');
+    }
 
     final compiled = _grammar.compileSelect(
       table: _table,
@@ -1663,7 +1749,7 @@ class QueryBuilder {
       groups: _groups,
       havings: _havings,
       distinct: _distinct,
-      limit: null,
+      limit: _groups.isEmpty ? null : 1,
       offset: null,
       locks: const [],
     );
@@ -1700,21 +1786,7 @@ class QueryBuilder {
   /// final hasActiveUsers = await query.where('status', 'active').exists();
   /// ```
   Future<bool> exists() async {
-    if (_hasEmptyWhereIn()) return false;
-    final compiled = _grammar.compileSelect(
-      table: _table,
-      columns: ['1'],
-      wheres: _wheres,
-      joins: _joins,
-      orders: [],
-      groups: [],
-      havings: [],
-      distinct: false,
-      limit: 1,
-      offset: null,
-      locks: _locks,
-    );
-
+    final compiled = _compileExistence(limitToOne: true);
     final results = await _laconic.select(compiled.sql, compiled.bindings);
     return results.isNotEmpty;
   }
@@ -1745,24 +1817,9 @@ class QueryBuilder {
   /// final nameMap = await query.pluck('name', key: 'id') as Map<Object?, Object?>;
   /// ```
   Future<dynamic> pluck(String column, {String? key}) async {
-    if (_hasEmptyWhereIn()) {
-      return key != null ? <Object?, Object?>{} : <Object?>[];
-    }
     final columns = key != null ? [key, column] : [column];
 
-    final compiled = _grammar.compileSelect(
-      table: _table,
-      columns: columns,
-      wheres: _wheres,
-      joins: _joins,
-      orders: _orders,
-      groups: _groups,
-      havings: _havings,
-      distinct: _distinct,
-      limit: _limit,
-      offset: _offset,
-      locks: _locks,
-    );
+    final compiled = _compileSelect(columns: columns);
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
 
@@ -1788,20 +1845,7 @@ class QueryBuilder {
   /// final email = await query.where('name', 'John').value('email');
   /// ```
   Future<Object?> value(String column) async {
-    if (_hasEmptyWhereIn()) return null;
-    final compiled = _grammar.compileSelect(
-      table: _table,
-      columns: [column],
-      wheres: _wheres,
-      joins: _joins,
-      orders: _orders,
-      groups: _groups,
-      havings: _havings,
-      distinct: _distinct,
-      limit: 1,
-      offset: _offset,
-      locks: _locks,
-    );
+    final compiled = _compileSelect(columns: [column], limitOverride: 1);
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
 
@@ -1916,47 +1960,44 @@ class QueryBuilder {
 
   /// Compiles the current query state into a [CompiledQuery] for
   /// inspection via [toSql], [getBindings], or [dump].
-  CompiledQuery _compileForDebug() {
-    return _grammar.compileSelect(
+  CompiledQuery _compileForDebug() => _compileSelect();
+
+  CompiledQuery _compileSelect({
+    List<String>? columns,
+    int? limitOverride,
+    List<Map<String, dynamic>> unionWheres = const [],
+  }) {
+    final hasUnion = _unions.isNotEmpty;
+    final compiled = _grammar.compileSelect(
       table: _table,
-      columns: _columns,
+      columns: hasUnion ? _columns : columns ?? _columns,
       wheres: _wheres,
       joins: _joins,
-      orders: _orders,
+      orders: hasUnion ? [] : _orders,
       groups: _groups,
       havings: _havings,
       distinct: _distinct,
-      limit: _limit,
+      limit: hasUnion ? null : limitOverride ?? _limit,
+      offset: hasUnion ? null : _offset,
+      locks: hasUnion ? [] : _locks,
+    );
+    if (!hasUnion) return compiled;
+    return _grammar.compileUnion(
+      queries: [
+        compiled,
+        for (final union in _unions)
+          CompiledQuery(
+            sql: union['sql'] as String,
+            bindings: union['bindings'] as List<Object?>,
+          ),
+      ],
+      all: [for (final union in _unions) union['all'] as bool],
+      columns: columns ?? ['*'],
+      wheres: unionWheres,
+      orders: _orders,
+      limit: limitOverride ?? _limit,
       offset: _offset,
       locks: _locks,
     );
-  }
-
-  /// Returns true if the query has an impossible WHERE condition that
-  /// guarantees zero results — specifically, an AND-condition [whereIn]
-  /// (not [whereNotIn]) with an empty values list.
-  ///
-  /// This allows the query builder to short-circuit and skip the database
-  /// round-trip entirely.
-  bool _hasEmptyWhereIn() {
-    return _checkEmptyWhereIn(_wheres);
-  }
-
-  bool _checkEmptyWhereIn(List<Map<String, dynamic>> conditions) {
-    for (final c in conditions) {
-      if (c['type'] == 'in' &&
-          c['boolean'] == 'and' &&
-          !(c['not'] as bool) &&
-          (c['values'] as List).isEmpty) {
-        return true;
-      }
-      if (c['type'] == 'nested') {
-        if (_checkEmptyWhereIn(
-            c['conditions'] as List<Map<String, dynamic>>)) {
-          return true;
-        }
-      }
-    }
-    return false;
   }
 }

@@ -1,3 +1,10 @@
+## Unreleased
+
+- Reassemble fragmented packets with linear copying, including TLS and multi-packet results.
+- Serialize commands on each connection until the complete response is consumed, preventing concurrent queries from exchanging responses. Transaction queries also serialize preparation and cache access.
+- Isolate transaction contexts by driver instance. Nested transactions on the same instance are explicitly rejected.
+- Convert typed row values directly into shared result metadata, removing intermediate maps.
+
 ## 3.4.0
 
 ### Features

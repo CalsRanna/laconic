@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:laconic/laconic.dart';
 import 'package:laconic_postgresql/src/postgresql_config.dart';
 import 'package:laconic_postgresql/src/postgresql_grammar.dart';
 import 'package:postgres/postgres.dart';
+import 'postgresql_placeholders.dart';
 
 /// PostgreSQL driver implementation for Laconic.
 ///
@@ -22,15 +24,9 @@ class PostgresqlDriver implements DatabaseDriver {
   final PostgresqlConfig config;
   Pool? _pool;
   static final _grammar = PostgresqlGrammar();
-  static final _txSessionKey = Object();
+  final _txSessionKey = Object();
 
-  /// Pre-compiled regex to detect existing $N placeholders in SQL.
-  /// Avoids re-compiling the regex on every query.
-  static final _positionalParamRE = RegExp(r'\$\d+');
-
-  /// Cache of prepared statements keyed by session hash + SQL.
-  final Map<String, dynamic> _stmtCache = {};
-  static const int _maxCachedStatements = 50;
+  final Map<Connection, _PgStatementCache> _stmtCache = {};
 
   /// Creates a new PostgreSQL driver with the given configuration.
   PostgresqlDriver(this.config);
@@ -65,67 +61,34 @@ class PostgresqlDriver implements DatabaseDriver {
   }
 
   /// Returns the pinned transaction session from the current Zone, if any.
-  TxSession? get _transactionSession =>
-      Zone.current[_txSessionKey] as TxSession?;
+  _PgTransaction? get _transactionContext =>
+      Zone.current[_txSessionKey] as _PgTransaction?;
 
-  /// Converts `?` placeholders to PostgreSQL positional parameters ($1, $2, etc.)
-  /// Only converts if the SQL contains `?` placeholders.
-  String _convertPlaceholders(String sql) {
-    // Fast path: if there are no '?' characters, no conversion is needed.
-    // Grammar-generated SQL uses $N already, so this is the common case.
-    if (!sql.contains('?')) return sql;
-
-    // If SQL already contains positional params ($1, $2, etc.), don't convert.
-    // This handles raw SQL that uses both $N and ?.
-    if (_positionalParamRE.hasMatch(sql)) return sql;
-
-    int paramIndex = 0;
-    return sql.replaceAllMapped(RegExp(r'\?'), (match) {
-      paramIndex++;
-      return '\$$paramIndex';
-    });
-  }
-
-  /// Runs a prepared statement on a given session.
-  ///
-  /// Prepared statements are cached to avoid the Parse → Close round-trip
-  /// on repeated queries. They are tied to the session they were created on.
-  Future<Result> _executeOnConn(
-      Session session, String sql, List<Object?> params) async {
-    final cacheKey = '${identityHashCode(session)}:$sql';
-    dynamic stmt = _stmtCache[cacheKey];
-    if (stmt == null) {
-      stmt = await session.prepare(Sql(sql));
-      if (_stmtCache.length >= _maxCachedStatements) {
-        _stmtCache.remove(_stmtCache.keys.first);
-      }
-      _stmtCache[cacheKey] = stmt;
-    }
-
-    try {
-      return await stmt.run(params);
-    } catch (e) {
-      _stmtCache.remove(cacheKey);
-      rethrow;
-    }
-  }
-
-  /// Executes a query using PostgreSQL prepared statements (extended query protocol).
-  ///
-  /// Uses [Session.prepare] so the SQL is parsed once on the server side and
-  /// only parameter values are sent on each execution.
-  ///
-  /// If a transaction session is active in the current Zone, uses it directly;
-  /// otherwise acquires a connection from the pool.
   Future<Result> _executeQuery(String sql, List<Object?> params) async {
-    final convertedSql = _convertPlaceholders(sql);
-    final txSession = _transactionSession;
-    if (txSession != null) {
-      return _executeOnConn(txSession, convertedSql, params);
+    final convertedSql = PostgresqlPlaceholders.compile(sql, params).sql;
+    final transaction = _transactionContext;
+    if (transaction != null) {
+      if (!transaction.active) {
+        throw LaconicException('Transaction has already finished');
+      }
+      return transaction.cache.execute(convertedSql, params);
     }
-    return _connectionPool.run(
-      (session) => _executeOnConn(session, convertedSql, params),
-    );
+    return _connectionPool.withConnection((connection) {
+      final cache = _stmtCache.putIfAbsent(connection, () {
+        unawaited(
+          connection.closed.then(
+            (_) {
+              _stmtCache.remove(connection);
+            },
+            onError: (Object error, StackTrace stack) {
+              _stmtCache.remove(connection);
+            },
+          ),
+        );
+        return _PgStatementCache(connection);
+      });
+      return cache.execute(convertedSql, params);
+    });
   }
 
   @override
@@ -135,10 +98,13 @@ class PostgresqlDriver implements DatabaseDriver {
   ]) async {
     try {
       final results = await _executeQuery(sql, params);
-      return results.map((row) {
-        final map = row.toColumnMap();
-        return LaconicResult.fromMap(Map<String, Object?>.from(map));
-      }).toList();
+      final named = [
+        for (var i = 0; i < results.schema.columns.length; i++)
+          if (results.schema.columns[i].columnName != null) i,
+      ];
+      return LaconicResult.fromRows([
+        for (final i in named) results.schema.columns[i].columnName!,
+      ], results.map((row) => [for (final i in named) row[i]]));
     } catch (e) {
       if (e is LaconicException) rethrow;
       throw LaconicException(
@@ -215,9 +181,21 @@ class PostgresqlDriver implements DatabaseDriver {
   @override
   Future<T> transaction<T>(Future<T> Function() action) async {
     try {
+      if (_transactionContext != null) {
+        throw LaconicException('Nested transactions are not supported');
+      }
       return await _connectionPool.withConnection((conn) async {
         return await conn.runTx((session) async {
-          return runZoned(() => action(), zoneValues: {_txSessionKey: session});
+          final transaction = _PgTransaction(_PgStatementCache(session));
+          try {
+            return await runZoned(
+              action,
+              zoneValues: {_txSessionKey: transaction},
+            );
+          } finally {
+            transaction.active = false;
+            await transaction.cache.dispose();
+          }
         });
       });
     } catch (e) {
@@ -238,4 +216,64 @@ class PostgresqlDriver implements DatabaseDriver {
       _pool = null;
     }
   }
+}
+
+class _PgTransaction {
+  final _PgStatementCache cache;
+  bool active = true;
+  _PgTransaction(this.cache);
+}
+
+class _PgStatementCache {
+  final Session session;
+  final LinkedHashMap<String, Statement> statements = LinkedHashMap();
+  Future<void> _tail = Future.value();
+  static const _capacity = 50;
+
+  _PgStatementCache(this.session);
+
+  Future<T> _serialized<T>(Future<T> Function() action) async {
+    final previous = _tail;
+    final done = Completer<void>();
+    _tail = done.future;
+    await previous;
+    try {
+      return await action();
+    } finally {
+      done.complete();
+    }
+  }
+
+  Future<Result> execute(String sql, List<Object?> params) => _serialized(
+    () async {
+      var statement = statements.remove(sql);
+      if (statement == null) {
+        if (statements.length >= _capacity) {
+          final oldest = statements.remove(statements.keys.first)!;
+          await oldest.dispose();
+        }
+        statement = await session.prepare(Sql(sql));
+      }
+      statements[sql] = statement;
+      try {
+        return await statement.run(params);
+      } catch (_) {
+        statements.remove(sql);
+        try {
+          await statement.dispose();
+        } catch (_) {
+          // Keep the original query error if the connection has already failed.
+        }
+        rethrow;
+      }
+    },
+  );
+
+  Future<void> dispose() => _serialized(() async {
+    final pending = statements.values.toList();
+    statements.clear();
+    for (final statement in pending) {
+      await statement.dispose();
+    }
+  });
 }

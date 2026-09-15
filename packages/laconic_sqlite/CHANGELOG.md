@@ -1,3 +1,9 @@
+## Unreleased
+
+- Serialize overlapping transactions and unrelated queries on the single connection. Only roll back transactions successfully opened by the current call; reject nested transactions on the same instance.
+- Convert row values directly into shared result metadata, preserving mutable result values.
+- Read the last inserted ID through the native getter without a second SQL query.
+
 ## 2.3.0
 
 ### Features

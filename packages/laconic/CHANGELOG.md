@@ -1,3 +1,12 @@
+## Unreleased
+
+- Fix empty `whereIn` filters discarding valid OR branches, including nested conditions.
+- Fix `chunkById` to use ascending cursor order, group OR conditions, apply an initial offset only once, and advance across the whole UNION. The cursor must be unique, non-null and included in the result. Chunk sizes must be positive.
+- Compile complete UNION branches for retrieval, aggregates and SQL inspection; apply parent ordering and pagination to the complete UNION.
+- Preserve grouping and HAVING in existence checks and subqueries.
+- Share result column metadata and indexes across driver rows without intermediate maps. Mutable `columns` and `values` remain supported; accessing the mutable columns list switches that row to mutation-aware lookup.
+- Add a default `SqlGrammar.compileUnion` implementation. Custom grammars extending `SqlGrammar` inherit it; grammars implementing the interface must implement the new method.
+
 ## 4.1.0
 
 ### Features

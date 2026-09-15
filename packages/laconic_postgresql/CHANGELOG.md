@@ -1,3 +1,10 @@
+## Unreleased
+
+- Cache prepared statements per physical pooled connection, reuse them across queries, and dispose statements on eviction or errors. Transaction statements are disposed before their session ends.
+- Isolate transaction contexts by driver instance and reject nested transactions on the same instance.
+- Scan raw SQL placeholders once, preserving quoted strings, comments, dollar quotes and JSON operators. Rebase native `$N` parameters when embedding raw clauses or UNION branches and validate binding counts.
+- Convert row values directly into shared result metadata, preserving mutable result values.
+
 ## 2.3.0
 
 ### Features

@@ -13,7 +13,10 @@ class MysqlPacketTransport {
 
   StreamSubscription<Uint8List>? _subscription;
   Future<void> _processing = Future.value();
-  final List<int> _incompleteData = [];
+  final Uint8List _partialHeader = Uint8List(4);
+  int _headerLength = 0;
+  Uint8List? _partialPacket;
+  int _packetOffset = 0;
   final BytesBuilder _logicalPacketData = BytesBuilder(copy: false);
   int? _logicalPacketSequence;
   int? _expectedIncomingSequence;
@@ -117,33 +120,63 @@ class MysqlPacketTransport {
   }
 
   void reset() {
-    _incompleteData.clear();
+    _headerLength = 0;
+    _partialPacket = null;
+    _packetOffset = 0;
     _logicalPacketData.takeBytes();
     _logicalPacketSequence = null;
     _expectedIncomingSequence = null;
     _pausedForBackpressure = false;
   }
 
-  Iterable<Uint8List> _splitPackets(Uint8List data) sync* {
-    if (_incompleteData.isNotEmpty) {
-      data = Uint8List.fromList(_incompleteData + data.toList());
-      _incompleteData.clear();
+  Iterable<Uint8List> _physicalPackets(Uint8List data) sync* {
+    var offset = 0;
+    while (offset < data.length) {
+      var packet = _partialPacket;
+      if (packet == null) {
+        // Complete packets can be decoded directly from the socket buffer.
+        if (_headerLength == 0 && data.length - offset >= 4) {
+          final view = Uint8List.sublistView(data, offset);
+          final length = MysqlPacket.getPacketLength(view);
+          if (view.length >= length) {
+            offset += length;
+            yield Uint8List.sublistView(view, 0, length);
+            continue;
+          }
+        }
+        final count = (4 - _headerLength).clamp(0, data.length - offset);
+        _partialHeader.setRange(
+          _headerLength,
+          _headerLength + count,
+          data,
+          offset,
+        );
+        _headerLength += count;
+        offset += count;
+        if (_headerLength < 4) return;
+        packet = Uint8List(MysqlPacket.getPacketLength(_partialHeader));
+        packet.setRange(0, 4, _partialHeader);
+        _partialPacket = packet;
+        _packetOffset = 4;
+        _headerLength = 0;
+      }
+      final count = (packet.length - _packetOffset).clamp(
+        0,
+        data.length - offset,
+      );
+      packet.setRange(_packetOffset, _packetOffset + count, data, offset);
+      _packetOffset += count;
+      offset += count;
+      if (_packetOffset == packet.length) {
+        _partialPacket = null;
+        _packetOffset = 0;
+        yield packet;
+      }
     }
+  }
 
-    var view = data;
-    while (true) {
-      if (view.length < 4) {
-        _incompleteData.addAll(view);
-        break;
-      }
-
-      final packetLength = MysqlPacket.getPacketLength(view);
-      if (view.lengthInBytes < packetLength) {
-        _incompleteData.addAll(view);
-        break;
-      }
-
-      final chunk = Uint8List.sublistView(view, 0, packetLength);
+  Iterable<Uint8List> _splitPackets(Uint8List data) sync* {
+    for (final chunk in _physicalPackets(data)) {
       final header = MysqlPacket.decodePacketHeader(chunk);
       final expectedSequence = _expectedIncomingSequence;
       if (expectedSequence != null && header.sequenceId != expectedSequence) {
@@ -153,31 +186,26 @@ class MysqlPacketTransport {
         );
       }
       _expectedIncomingSequence = (header.sequenceId + 1) & 0xff;
-
+      if (_logicalPacketSequence == null &&
+          header.payloadLength < mysqlMaxPhysicalPacketPayload) {
+        yield chunk;
+        continue;
+      }
       _logicalPacketSequence ??= header.sequenceId;
       if (header.payloadLength > 0) {
         _logicalPacketData.add(Uint8List.sublistView(chunk, 4));
       }
-
       if (header.payloadLength < mysqlMaxPhysicalPacketPayload) {
         final payload = _logicalPacketData.takeBytes();
-        final logicalPacket = Uint8List(4 + payload.lengthInBytes);
-        final advertisedLength =
-            payload.lengthInBytes > mysqlMaxPhysicalPacketPayload
-                ? mysqlMaxPhysicalPacketPayload
-                : payload.lengthInBytes;
-        logicalPacket[0] = advertisedLength & 0xff;
-        logicalPacket[1] = (advertisedLength >> 8) & 0xff;
-        logicalPacket[2] = (advertisedLength >> 16) & 0xff;
+        final logicalPacket = Uint8List(4 + payload.length);
+        final length = payload.length.clamp(0, mysqlMaxPhysicalPacketPayload);
+        logicalPacket[0] = length & 0xff;
+        logicalPacket[1] = (length >> 8) & 0xff;
+        logicalPacket[2] = (length >> 16) & 0xff;
         logicalPacket[3] = _logicalPacketSequence!;
         logicalPacket.setRange(4, logicalPacket.length, payload);
         _logicalPacketSequence = null;
         yield logicalPacket;
-      }
-
-      view = Uint8List.sublistView(view, packetLength);
-      if (view.isEmpty) {
-        break;
       }
     }
   }
