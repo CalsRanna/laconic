@@ -1,11 +1,24 @@
-## Unreleased
+## 5.0.0
 
-- Fix empty `whereIn` filters discarding valid OR branches, including nested conditions.
-- Fix `chunkById` to use ascending cursor order, group OR conditions, apply an initial offset only once, and advance across the whole UNION. The cursor must be unique, non-null and included in the result. Chunk sizes must be positive.
-- Compile complete UNION branches for retrieval, aggregates and SQL inspection; apply parent ordering and pagination to the complete UNION.
-- Preserve grouping and HAVING in existence checks and subqueries.
-- Share result column metadata and indexes across driver rows without intermediate maps. Mutable `columns` and `values` remain supported; accessing the mutable columns list switches that row to mutation-aware lookup.
-- Add a default `SqlGrammar.compileUnion` implementation. Custom grammars extending `SqlGrammar` inherit it; grammars implementing the interface must implement the new method.
+### Breaking changes and migration
+
+- Add `SqlGrammar.compileUnion`. Custom grammars using `extends SqlGrammar` inherit the default implementation; classes using `implements SqlGrammar` must implement the new method.
+- `chunkById` now replaces existing ordering with ascending cursor order and applies an initial offset only to the first batch. The cursor must be unique, non-null and included in the result. Chunk sizes must be positive.
+- Ordering, limit and offset on the parent builder apply to the complete UNION; clauses inside a UNION callback apply to that branch.
+- Use this release with `laconic_sqlite: ^3.0.0`, `laconic_mysql: ^4.0.0` or `laconic_postgresql: ^3.0.0`.
+
+### Fixes
+
+- Preserve valid OR branches when `whereIn` is empty, including nested conditions and all retrieval methods.
+- Group existing OR filters before adding a chunk cursor; apply the cursor to the entire UNION. Capture the cursor and batch size before invoking callbacks that may modify the returned list.
+- Compile complete UNION branches for retrieval, aggregates and SQL inspection, retaining projections, bindings and branch pagination.
+- Preserve grouping and HAVING in existence checks and EXISTS subqueries; count grouped, distinct and UNION results correctly.
+
+### Performance
+
+- Add `LaconicResult.fromRows` to share column metadata and indexes across driver rows without intermediate maps. Duplicate names retain their first position and last value.
+- Keep mutable `columns` and `values` compatible. Requesting a row's mutable `columns` list switches that row to linear lookup so external changes remain visible.
+- Limit grouped scalar aggregates to the first result, matching their return contract.
 
 ## 4.1.0
 
@@ -19,7 +32,6 @@
   result code). Values are opaque to the core and never comparable across
   drivers. Existing single-argument constructions are unaffected.
 
-## 4.0.0
 ## 4.0.0
 
 ### Breaking Changes

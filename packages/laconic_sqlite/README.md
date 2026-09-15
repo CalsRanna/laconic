@@ -1,13 +1,18 @@
 # laconic_sqlite
 
+[中文文档](README_ZH.md)
+
 SQLite driver for the [Laconic](https://pub.dev/packages/laconic) query builder.
 
 ## Installation
 
+Use Dart 3.10 or a later 3.x SDK with the workspace's currently resolved
+`sqlite3 3.3.4` dependency, which raises the package's declared Dart 3.7 minimum.
+
 ```yaml
 dependencies:
-  laconic: ^3.0.0
-  laconic_sqlite: ^2.0.0
+  laconic: ^5.0.0
+  laconic_sqlite: ^3.0.0
 ```
 
 ## Usage
@@ -68,6 +73,15 @@ final laconic = Laconic(
 
 ## Transactions
 
+Await every query inside the transaction callback. Nested transactions on the
+same driver instance throw `LaconicException`; savepoints are not created
+automatically. Different driver instances retain independent transaction contexts.
+
+A transaction owns the driver's single connection until it finishes. Overlapping
+transactions and queries outside the transaction wait in a queue. A rollback
+affects only writes executed in that transaction. Queries originating from its
+context after it finishes are rejected.
+
 ```dart
 await laconic.transaction(() async {
   final userId = await laconic.table('users').insertGetId({
@@ -79,6 +93,26 @@ await laconic.transaction(() async {
   ]);
 });
 ```
+
+## Connection lifecycle and performance
+
+The connection opens on first use. Each driver caches up to 50 prepared
+statements and releases them on eviction or close. Schema changes executed
+through `statement()` invalidate the cache. `insertGetId()` reads the native
+last-insert-ID getter, and row conversion builds value lists with shared column
+metadata.
+
+The API returns `Future`, but SQLite queries still execute synchronously on the
+calling isolate. Applications must schedule long queries on a worker isolate
+when needed. SQLite does not support `FOR UPDATE` or `FOR SHARE` row-lock clauses.
+Call `close()` to release cached statements and the database connection.
+
+## Upgrading from 2.x to 3.0
+
+- Install with `laconic: ^5.0.0` and adopt the core 5.0 UNION and cursor-pagination contracts.
+- Same-instance nested transactions fail explicitly; overlapping transactions and unrelated queries wait in a queue instead of joining the current transaction.
+- Result `columns` and `values` remain mutable.
+- See the [CHANGELOG](CHANGELOG.md) for the complete release notes.
 
 ## License
 

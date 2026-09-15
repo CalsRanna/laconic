@@ -1,5 +1,7 @@
 # Laconic
 
+[中文文档](README_ZH.md)
+
 A Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and PostgreSQL databases.
 
 This is the core package that provides the query builder API and abstract driver interface. You'll also need a driver package for your database:
@@ -12,17 +14,21 @@ This is the core package that provides the query builder API and abstract driver
 
 - **Laravel-style API** - Familiar query builder syntax with 80+ methods
 - **Fluent Interface** - Chainable methods for elegant query building
-- **Parameterized Queries** - Automatic SQL injection prevention
+- **Parameterized Queries** - Bound values for query parameters; raw SQL and identifiers must be trusted
 - **Transaction Support** - Complete transaction management
 - **Query Listener** - Built-in debugging and logging
 - **Driver Abstraction** - Clean separation between query builder and database implementations
 
 ## Installation
 
+The core declares Dart SDK `>=3.7.0 <4.0.0`. Running the whole workspace or
+the SQLite example below requires Dart 3.10 or a later 3.x SDK with the currently
+resolved `sqlite3 3.3.4` dependency.
+
 ```yaml
 dependencies:
-  laconic: ^3.0.0
-  laconic_sqlite: ^2.0.0  # Or your preferred driver
+  laconic: ^5.0.0
+  laconic_sqlite: ^3.0.0  # Or your preferred driver
 ```
 
 ## Quick Start
@@ -62,6 +68,10 @@ final roles = await laconic.table('users').distinct().select(['role']).get();
 
 ### WHERE Clauses
 
+An empty `whereIn` compiles to false and an empty `whereNotIn` to true, while
+retaining the complete Boolean expression. For example,
+`whereIn('id', []).orWhere('id', 1)` can still return the row with ID 1.
+
 ```dart
 // Basic where
 final adults = await laconic.table('users')
@@ -97,7 +107,7 @@ final users = await laconic.table('users')
 
 // WHERE column comparison
 final users = await laconic.table('users')
-    .whereColumn('created_at', 'updated_at', operator: '<')
+    .whereColumn('created_at', 'updated_at', comparator: '<')
     .get();
 
 // Nested WHERE groups
@@ -177,6 +187,12 @@ final results = await laconic.table('users')
 
 ### Aggregates
 
+`exists()` and `doesntExist()` retain GROUP BY and HAVING conditions.
+`count()` counts groups for grouped queries, distinct rows for distinct queries,
+and rows of the complete UNION. Scalar grouped aggregates (`sum`, `avg`, `min`,
+`max`) return the first group; select aggregate expressions with `get()` to read
+all groups.
+
 ```dart
 final count = await laconic.table('users').count();
 final total = await laconic.table('orders').sum('amount');
@@ -254,6 +270,9 @@ final users = await laconic.table('users')
 
 ### Row Locking
 
+Row locks require MySQL or PostgreSQL and should be used inside a transaction.
+SQLite does not support these row-lock clauses.
+
 ```dart
 // FOR UPDATE — prevent other transactions from modifying selected rows
 final users = await laconic.table('users')
@@ -268,7 +287,31 @@ final users = await laconic.table('users')
     .get();
 ```
 
+### UNION
+
+`union()` removes duplicate rows; `unionAll()` retains them. Each branch keeps
+its selected columns, filters, groups, HAVING and pagination. Ordering, limit
+and offset on the parent builder apply to the complete UNION. Use output column
+names for that final ordering. Both branches must select compatible columns.
+`get()`, `first()`, `sole()`, `value()`, `pluck()`, aggregates, `exists()`,
+`toSql()` and `getBindings()` all include the UNION.
+
+```dart
+final results = await laconic.table('users').select(['id', 'name'])
+    .where('role', 'admin')
+    .union((q) => q.from('users').select(['id', 'name']).where('role', 'moderator'))
+    .orderBy('id').limit(20).get();
+```
+
 ### Chunking Large Results
+
+`chunkById` reads in ascending order of a unique, non-null cursor column
+(default `id`). It replaces existing ordering, applies an initial offset only
+to the first batch, and requires the cursor column in the selected result.
+`column` chooses the cursor; `alias` qualifies it with a table alias.
+Existing OR filters and UNION branches are included in cursor pagination.
+All chunk sizes must be positive. `chunk()` and `each()` use OFFSET pagination;
+`chunkById()` advances by the last cursor value.
 
 ```dart
 // Process 100 records at a time
@@ -291,6 +334,12 @@ await laconic.table('users').each((user) async {
 
 ### Transactions
 
+Await every query inside the transaction callback. MySQL and PostgreSQL pin
+queries to one connection/session per driver instance; calls through another
+driver keep that driver's own connection. SQLite queues overlapping transactions
+and unrelated queries on its single connection. Nested transactions on the same
+driver instance throw `LaconicException`; savepoints are not created automatically.
+
 ```dart
 await laconic.transaction(() async {
   final userId = await laconic.table('users').insertGetId({
@@ -302,6 +351,20 @@ await laconic.transaction(() async {
   ]);
 });
 ```
+
+## Results and errors
+
+`LaconicResult` supports `row['column']`, `row.columns`, `row.values` and
+`row.toMap()`. Driver results share column metadata and a name-to-index map;
+column lookup uses that index until the row's mutable `columns` list is requested.
+After that, lookup scans the row's list so edits remain visible. Both `columns`
+and `values` remain mutable. Duplicate names keep their first position and last
+value. Custom drivers can use `LaconicResult.fromRows(columns, rows)`; it retains
+each value list when column names are unique.
+
+Driver failures are reported as `LaconicException`. Besides `message`, the
+optional `driver` and `code` fields identify the backend and its error code.
+Use the backend together with the code when handling an error; codes may be null.
 
 ## Custom Drivers
 
@@ -346,6 +409,15 @@ class MyDriver implements DatabaseDriver {
   }
 }
 ```
+
+## Upgrading to 5.0
+
+- Install the core and driver versions shown above: SQLite/PostgreSQL drivers use the 3.0 series and MySQL uses the 4.0 series.
+- Custom grammars extending `SqlGrammar` inherit `compileUnion`; classes implementing `SqlGrammar` must implement the added method.
+- `chunkById` uses ascending cursor order and a first-batch offset. Parent UNION ordering and pagination apply to the complete result.
+- Official drivers isolate transactions by instance and explicitly reject same-instance nested transactions.
+
+See the [CHANGELOG](CHANGELOG.md) for the full release notes.
 
 ## License
 

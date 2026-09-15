@@ -1,9 +1,20 @@
-## Unreleased
+## 4.0.0
 
-- Reassemble fragmented packets with linear copying, including TLS and multi-packet results.
-- Serialize commands on each connection until the complete response is consumed, preventing concurrent queries from exchanging responses. Transaction queries also serialize preparation and cache access.
-- Isolate transaction contexts by driver instance. Nested transactions on the same instance are explicitly rejected.
-- Convert typed row values directly into shared result metadata, removing intermediate maps.
+### Breaking changes and migration
+
+- Requires `laconic: ^5.0.0` and adopts its UNION, cursor-pagination and custom-grammar contracts.
+- Reject nested transactions on the same driver instance with `LaconicException`. Transactions on different driver instances remain independent.
+
+### Fixes
+
+- Serialize commands on each connection until the complete response is consumed, including streaming results, preventing concurrent commands from exchanging responses.
+- Serialize transaction preparation and cache access so concurrent queries reuse the correct statement and connection.
+- Isolate transaction contexts by driver instance to prevent calls through a second driver from running against the first driver's database.
+
+### Performance
+
+- Reassemble fragmented packets with linear copying and reuse complete packet views, reducing large-result overhead over TCP and TLS. Preserve packet sequence checks and multi-packet assembly.
+- Convert typed row values directly into shared result metadata, preserving mutable results and duplicate-column behavior.
 
 ## 3.4.0
 
@@ -14,7 +25,6 @@
   entry); client-side and protocol errors carry no code.
 - `MysqlDriver.driverName` constant identifies the driver.
 
-## 3.3.0
 ## 3.3.0
 
 ### Changed

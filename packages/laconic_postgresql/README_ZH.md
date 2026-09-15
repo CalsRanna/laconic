@@ -1,13 +1,18 @@
 # laconic_postgresql
 
+[English](README.md)
+
 [Laconic](https://pub.dev/packages/laconic) 查询构建器的 PostgreSQL 驱动。
 
 ## 安装
 
+本包声明 Dart SDK `>=3.7.0 <4.0.0`；当前解析的 `postgres 3.5.9` 需要 Dart 3.9
+或更高版本。运行完整 workspace 时还需满足 SQLite 依赖的 Dart 3.10 要求。
+
 ```yaml
 dependencies:
-  laconic: ^3.0.0
-  laconic_postgresql: ^2.0.0
+  laconic: ^5.0.0
+  laconic_postgresql: ^3.0.0
 ```
 
 ## 使用
@@ -61,7 +66,10 @@ void main() async {
 
 ## 连接池
 
-PostgreSQL 驱动内部使用连接池以提升性能。连接会自动管理，每次查询后释放回池中。
+连接池在首次使用时创建，最多 10 个连接。事务外查询借用连接，完成后归还；
+事务在整个回调期间持有同一连接。预编译语句按可复用的物理连接缓存，每连接最多 50 条。
+淘汰或执行报错时释放语句，连接关闭时清理缓存元数据。事务使用单独的会话缓存，
+在提交或回滚前释放。应用结束时调用 `close()` 关闭连接池。
 
 ## 查询监听器
 
@@ -82,6 +90,12 @@ final laconic = Laconic(
 
 ## 事务
 
+在事务回调中等待所有查询完成。同一驱动实例不支持嵌套事务，嵌套调用会抛出
+`LaconicException`；不会自动创建 savepoint。不同驱动实例使用各自的事务上下文。
+
+事务内查询固定到同一连接或会话并串行执行。可以等待 `Future.wait` 中的多个查询，
+每个查询仍接收自己的结果；通过另一驱动实例发起的查询使用另一实例的连接。
+
 ```dart
 await laconic.transaction(() async {
   final userId = await laconic.table('users').insertGetId({
@@ -94,15 +108,7 @@ await laconic.transaction(() async {
 });
 ```
 
-## 参数绑定
-
-PostgreSQL 使用编号占位符（`$1`、`$2`、...）而不是 `?`。驱动会自动处理这个转换，因此你可以使用与其他数据库相同的查询构建器 API。
-
-## 许可证
-
-MIT License
-
-## 原始 SQL 参数
+## 参数绑定与原始 SQL
 
 原始子句和驱动查询支持 `?` 或 PostgreSQL 原生 `$1`、`$2` 等占位符。
 每个原始子句中的 `$N` 从本地 `$1` 开始编号，组合完整查询时自动偏移；
@@ -119,6 +125,15 @@ await laconic.select('SELECT ?::jsonb ? ? AS found', ['{"key":1}', 'key']);
 支持保留 PostgreSQL 的 `?`、`?|`、`?&`、`@?` JSON 运算符，
 也可以用 `??` 显式表示问号运算符。
 
-预编译语句按物理连接缓存，每个连接最多 50 条，淘汰时释放服务端资源。
-事务拥有单独的会话缓存，事务结束时释放。不同驱动实例的事务相互独立；
-同一个驱动实例不支持嵌套事务。
+占位符转换采用单次扫描，结果行直接构建值列表并共享列元数据。
+
+## 从 2.x 升级到 3.0
+
+- 与 `laconic: ^5.0.0` 一起安装，应用采用核心包 5.0 的 UNION 和游标分页约定。
+- 原始 SQL 参数严格按上述规则编号并验证数量；引用字符串内的问号不会被替换。
+- 同实例嵌套事务会明确报错，跨实例调用保留各自的连接和事务归属。
+- 完整发布记录见 [CHANGELOG](CHANGELOG.md)。
+
+## 许可证
+
+MIT License

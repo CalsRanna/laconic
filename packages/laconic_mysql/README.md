@@ -6,10 +6,13 @@ MySQL driver for the [Laconic](https://pub.dev/packages/laconic) query builder.
 
 ## Installation
 
+The package declares Dart SDK `>=3.7.0 <4.0.0`. Running the full workspace
+also requires Dart 3.10 for its SQLite dependency.
+
 ```yaml
 dependencies:
-  laconic: ^3.0.0
-  laconic_mysql: ^3.1.0
+  laconic: ^5.0.0
+  laconic_mysql: ^4.0.0
 ```
 
 ## Usage
@@ -119,6 +122,13 @@ For a trusted local or private network where key pinning is not required,
 automatically. This protects the password from passive observation, but it
 does not authenticate the server. Prefer TLS whenever possible.
 
+## Upgrading from 3.x to 4.0
+
+- Install with `laconic: ^5.0.0` and adopt the core 5.0 UNION and cursor-pagination contracts.
+- Commands complete in order on each connection; transaction queries also serialize preparation, cache access and command execution.
+- Same-instance nested transactions now fail explicitly. Separate driver instances retain their own database and transaction context.
+- See the [CHANGELOG](CHANGELOG.md) for the complete release notes.
+
 ## Migrating from 2.x
 
 - TLS is now enabled by default. Add `useSsl: false` only if your trusted MySQL
@@ -138,6 +148,15 @@ The driver maintains a small internal connection pool:
 - Call `close()` to shut down the pool when the application exits
 
 This avoids connection-slot exhaustion after repeated query failures.
+
+## Result handling and performance
+
+Parameterized queries use the binary protocol with a prepared-statement cache
+of up to 50 entries per connection; queries without parameters use the text
+protocol. Fragmented packets are assembled incrementally into a buffer sized
+from their header, avoiding repeated copies of all received data for large fields
+and TLS fragments. Typed row values share column metadata while preserving
+mutable results and duplicate-column behavior.
 
 ## Update Results
 
@@ -167,6 +186,14 @@ final laconic = Laconic(
 ```
 
 ## Transactions
+
+Await every query inside the transaction callback. Nested transactions on the
+same driver instance throw `LaconicException`; savepoints are not created
+automatically. Different driver instances retain independent transaction contexts.
+
+Transaction queries are pinned to one connection/session and execute serially.
+You can await queries with `Future.wait`; each query receives its own result.
+Calls through another driver instance use that instance's own connection.
 
 ```dart
 await laconic.transaction(() async {

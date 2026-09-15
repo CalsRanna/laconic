@@ -8,18 +8,18 @@ A Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and Postgr
 
 ## Features
 
-- **Laravel-style API** - Familiar query builder syntax with 80+ methods covering ~90% of Laravel Query Builder's core functionality
+- **Laravel-style API** - Familiar query builder syntax with 80+ methods for filtering, joins, aggregates and batch processing
 - **Multi-database Support** - MySQL, SQLite, and PostgreSQL via separate driver packages
 - **Driver Abstraction** - Clean separation between core query builder and database-specific implementations
 - **Complete JOIN Support** - INNER, LEFT, RIGHT, CROSS JOIN with EXISTS subqueries and 30+ condition methods
 - **Subqueries** - WHERE EXISTS, UNION, nested WHERE groups
-- **Row Locking** - `FOR UPDATE` and `FOR SHARE` support
-- **Upsert** - `INSERT ... ON CONFLICT DO UPDATE` across all three databases
+- **Row Locking** - `FOR UPDATE` and shared locks for MySQL/PostgreSQL
+- **Upsert** - Insert or update using each database's native syntax
 - **Date WHERE** - `whereDate`, `whereTime`, `whereDay`, `whereMonth`, `whereYear`
 - **Chunking** - Process large result sets in batches with `chunk`, `chunkById`, `each`
 - **Debugging** - `toSql()`, `getBindings()`, `dump()`, `dd()` for query inspection
 - **Chainable Methods** - Fluent query building experience
-- **Parameterized Queries** - Automatic SQL injection prevention
+- **Parameterized Queries** - Bound values for query parameters; raw SQL and identifiers must be trusted
 - **Transaction Support** - Complete transaction management
 - **Query Listener** - Built-in debugging and logging
 
@@ -27,21 +27,25 @@ A Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and Postgr
 
 | Package | Description | Version |
 |---------|-------------|---------|
-| [laconic](https://pub.dev/packages/laconic) | Core query builder | 3.0.0 |
-| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite driver | 2.0.0 |
-| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL driver | 3.1.0 |
-| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL driver | 2.0.0 |
+| [laconic](https://pub.dev/packages/laconic) | Core query builder | 5.0.0 |
+| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite driver | 3.0.0 |
+| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL driver | 4.0.0 |
+| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL driver | 3.0.0 |
 
 ## Installation
+
+The core declares Dart SDK `>=3.7.0 <4.0.0`. Running the whole workspace or
+the SQLite example below requires Dart 3.10 or a later 3.x SDK with the currently
+resolved `sqlite3 3.3.4` dependency.
 
 Add the core package and the driver you need:
 
 ```yaml
 dependencies:
-  laconic: ^3.0.0
-  laconic_sqlite: ^2.0.0    # For SQLite
-  # laconic_mysql: ^3.1.0   # For MySQL
-  # laconic_postgresql: ^2.0.0  # For PostgreSQL
+  laconic: ^5.0.0
+  laconic_sqlite: ^3.0.0    # For SQLite
+  # laconic_mysql: ^4.0.0   # For MySQL
+  # laconic_postgresql: ^3.0.0  # For PostgreSQL
 ```
 
 Then run:
@@ -163,6 +167,10 @@ final sql = laconic.table('users').where('age', 18, comparator: '>').toSql();
 
 ### WHERE Clauses
 
+An empty `whereIn` compiles to false and an empty `whereNotIn` to true, while
+retaining the complete Boolean expression. For example,
+`whereIn('id', []).orWhere('id', 1)` can still return the row with ID 1.
+
 ```dart
 // Basic where
 final adults = await laconic.table('users')
@@ -257,6 +265,12 @@ final results = await laconic.table('users').crossJoin('roles').get();
 
 ### Aggregates
 
+`exists()` and `doesntExist()` retain GROUP BY and HAVING conditions.
+`count()` counts groups for grouped queries, distinct rows for distinct queries,
+and rows of the complete UNION. Scalar grouped aggregates (`sum`, `avg`, `min`,
+`max`) return the first group; select aggregate expressions with `get()` to read
+all groups.
+
 ```dart
 final count = await laconic.table('users').count();
 final total = await laconic.table('orders').sum('amount');
@@ -315,10 +329,10 @@ await laconic.table('logs').truncate();
 // Note: delete(), increment(), and decrement() require a WHERE clause by default
 // to prevent accidental mass operations.
 
-// Row Locking
+// Row Locking (MySQL/PostgreSQL; use inside a transaction)
 final locked = await laconic.table('users')
     .where('status', 'pending')
-    .lockForUpdate()   // FOR UPDATE (all DBs)
+    .lockForUpdate()   // FOR UPDATE (MySQL/PostgreSQL only)
     .get();
 
 final shared = await laconic.table('users')
@@ -344,6 +358,13 @@ final users = await laconic.table('users')
 
 ### UNION
 
+`union()` removes duplicate rows; `unionAll()` retains them. Each branch keeps
+its selected columns, filters, groups, HAVING and pagination. Ordering, limit
+and offset on the parent builder apply to the complete UNION. Use output column
+names for that final ordering. Both branches must select compatible columns.
+`get()`, `first()`, `sole()`, `value()`, `pluck()`, aggregates, `exists()`,
+`toSql()` and `getBindings()` all include the UNION.
+
 ```dart
 final results = await laconic.table('users')
     .where('role', 'admin')
@@ -352,6 +373,14 @@ final results = await laconic.table('users')
 ```
 
 ### Chunking Large Results
+
+`chunkById` reads in ascending order of a unique, non-null cursor column
+(default `id`). It replaces existing ordering, applies an initial offset only
+to the first batch, and requires the cursor column in the selected result.
+`column` chooses the cursor; `alias` qualifies it with a table alias.
+Existing OR filters and UNION branches are included in cursor pagination.
+All chunk sizes must be positive. `chunk()` and `each()` use OFFSET pagination;
+`chunkById()` advances by the last cursor value.
 
 ```dart
 // Process 100 records at a time
@@ -378,6 +407,12 @@ final results = await activeQuery.clone().get();
 ```
 
 ### Transactions
+
+Await every query inside the transaction callback. MySQL and PostgreSQL pin
+queries to one connection/session per driver instance; calls through another
+driver keep that driver's own connection. SQLite queues overlapping transactions
+and unrelated queries on its single connection. Nested transactions on the same
+driver instance throw `LaconicException`; savepoints are not created automatically.
 
 ```dart
 await laconic.transaction(() async {
@@ -436,21 +471,40 @@ class MyDriver implements DatabaseDriver {
 
 ## Testing
 
+Run from the workspace root. Core and SQLite tests do not require Docker.
+MySQL/PostgreSQL tests use the local databases in `docker-compose.yml`, on
+ports 3306 and 5433 respectively.
+
 ```bash
-# Run all tests
-dart test
+dart pub get
+dart analyze
 
-# Run specific package tests
-dart test packages/laconic/test
-dart test packages/laconic_sqlite/test
-dart test packages/laconic_mysql/test
-dart test packages/laconic_postgresql/test
+# Tests that do not require Docker
+dart test packages/laconic/test packages/laconic_sqlite/test
 
-# Start Docker containers for MySQL/PostgreSQL testing
-docker-compose up -d
-dart test
-docker-compose down
+# Wait for healthy databases, then run all four packages
+docker compose up -d --wait
+dart test packages/laconic/test packages/laconic_sqlite/test packages/laconic_mysql/test packages/laconic_postgresql/test --concurrency=1
+docker compose down
 ```
+
+Coverage includes query semantics, duplicate column names, fragmented packets,
+large TLS results, concurrent commands, transaction isolation and server-side
+statement disposal.
+
+## Upgrading to the current release
+
+- The core is `5.0.0`, MySQL is `4.0.0`, and SQLite/PostgreSQL are `3.0.0`. Update the core and your chosen drivers together.
+- Custom grammars using `implements SqlGrammar` must implement `compileUnion`; those using `extends SqlGrammar` inherit its default implementation.
+- `chunkById` reads in ascending cursor order and applies an existing offset only to the first batch. Parent UNION ordering and pagination apply to the complete result.
+- Official drivers isolate transactions by instance and explicitly reject same-instance nested transactions.
+- Results share column indexes while retaining mutable `columns` and `values`. Requesting a row's mutable column list switches that row to linear lookup so edits remain visible.
+
+Performance changes include linear MySQL packet reassembly, PostgreSQL statement
+reuse and disposal per physical connection, shared result column metadata, and
+single-pass raw SQL parameter conversion.
+
+Release notes: [core](packages/laconic/CHANGELOG.md), [SQLite](packages/laconic_sqlite/CHANGELOG.md), [MySQL](packages/laconic_mysql/CHANGELOG.md), [PostgreSQL](packages/laconic_postgresql/CHANGELOG.md).
 
 ## Migration from 1.x
 
@@ -460,7 +514,7 @@ import 'package:laconic/laconic.dart';
 final laconic = Laconic.mysql(MysqlConfig(...));
 ```
 
-After (2.0):
+After (2.0 and later):
 ```dart
 import 'package:laconic/laconic.dart';
 import 'package:laconic_mysql/laconic_mysql.dart';

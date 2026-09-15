@@ -1,9 +1,22 @@
-## Unreleased
+## 3.0.0
 
-- Cache prepared statements per physical pooled connection, reuse them across queries, and dispose statements on eviction or errors. Transaction statements are disposed before their session ends.
-- Isolate transaction contexts by driver instance and reject nested transactions on the same instance.
-- Scan raw SQL placeholders once, preserving quoted strings, comments, dollar quotes and JSON operators. Rebase native `$N` parameters when embedding raw clauses or UNION branches and validate binding counts.
-- Convert row values directly into shared result metadata, preserving mutable result values.
+### Breaking changes and migration
+
+- Requires `laconic: ^5.0.0` and adopts its UNION, cursor-pagination and custom-grammar contracts.
+- Reject nested transactions on the same driver instance with `LaconicException`; separate driver instances keep independent transaction contexts.
+- Validate raw SQL binding counts. Native `$N` positions are local to each raw clause; when mixed with `?`, question-mark parameters follow the largest native position. Repeated native positions reuse their binding.
+
+### Fixes
+
+- Rebase parameters when embedding raw clauses, EXISTS subqueries and UNION branches without changing quoted text.
+- Preserve strings, quoted identifiers, nested comments, dollar-quoted strings and JSON operators during placeholder conversion; support `??` as an explicit question-mark operator escape.
+- Prevent cross-driver transaction routing. Serialize transaction cache access and dispose session statements before the transaction session ends, including rollback paths.
+
+### Performance
+
+- Cache prepared statements per reusable physical connection, with at most 50 per connection. Dispose statements on eviction or execution errors and remove cache metadata when connections close.
+- Convert raw SQL placeholders in a single scan.
+- Convert row values directly into shared result metadata while retaining mutable values and duplicate-column behavior.
 
 ## 2.3.0
 
@@ -14,7 +27,6 @@
   violation); non-server errors carry no code.
 - `PostgresqlDriver.driverName` constant identifies the driver.
 
-## 2.2.0
 ## 2.2.0
 
 ### Changed

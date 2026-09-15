@@ -1,5 +1,7 @@
 # Laconic
 
+[English](README.md)
+
 一个 Laravel 风格的 Dart SQL 查询构建器，支持 MySQL、SQLite 和 PostgreSQL 数据库。
 
 这是核心包，提供查询构建器 API 和抽象驱动接口。你还需要安装对应数据库的驱动包：
@@ -10,19 +12,22 @@
 
 ## 特性
 
-- **Laravel 风格 API** - 熟悉的查询构建器语法，57 个方法
+- **Laravel 风格 API** - 熟悉的查询构建器语法，80+ 个方法
 - **流畅接口** - 链式方法优雅构建查询
-- **参数化查询** - 自动防止 SQL 注入
+- **参数化查询** - 查询值使用参数绑定；原始 SQL 和标识符须来自可信来源
 - **事务支持** - 完整的事务管理
 - **查询监听器** - 内置调试和日志功能
 - **驱动抽象** - 查询构建器与数据库实现清晰分离
 
 ## 安装
 
+核心包声明 Dart SDK `>=3.7.0 <4.0.0`。运行整个 workspace 或本页的 SQLite 示例时，
+当前解析的 `sqlite3 3.3.4` 需要 Dart 3.10 或更高的 3.x SDK。
+
 ```yaml
 dependencies:
-  laconic: ^3.0.0
-  laconic_sqlite: ^2.0.0  # 或其他驱动
+  laconic: ^5.0.0
+  laconic_sqlite: ^3.0.0  # 或其他驱动
 ```
 
 ## 快速开始
@@ -65,6 +70,9 @@ final roles = await laconic.table('users').distinct().select(['role']).get();
 
 ### WHERE 子句
 
+空的 `whereIn` 编译为恒假条件，`whereNotIn` 编译为恒真条件，仍参与完整的布尔运算。
+例如 `whereIn('id', []).orWhere('id', 1)` 仍可返回 id 为 1 的行。
+
 ```dart
 // 基本 where
 final adults = await laconic.table('users')
@@ -100,7 +108,7 @@ final users = await laconic.table('users')
 
 // 列对比
 final users = await laconic.table('users')
-    .whereColumn('created_at', 'updated_at', operator: '<')
+    .whereColumn('created_at', 'updated_at', comparator: '<')
     .get();
 
 // 嵌套 WHERE 分组
@@ -155,6 +163,11 @@ final results = await laconic.table('users')
 ```
 
 ### 聚合函数
+
+`exists()` 和 `doesntExist()` 保留 GROUP BY 和 HAVING 条件。分组查询的 `count()`
+返回组数，distinct 查询返回去重后的行数，UNION 查询统计完整联合结果。
+分组后的 `sum`、`avg`、`min`、`max` 只返回第一组的聚合值；如需全部分组，
+请选择聚合表达式并调用 `get()`。
 
 ```dart
 final count = await laconic.table('users').count();
@@ -212,7 +225,42 @@ final users = await laconic.table('users')
     .get();
 ```
 
+### UNION
+
+`union()` 会去除重复行，`unionAll()` 保留重复行。每个分支保留选择列、过滤、
+分组、HAVING 和分页；父构造器上的排序、limit 和 offset 作用于完整 UNION。
+最终排序应使用输出列名，两侧分支必须选择兼容的列。
+`get()`、`first()`、`sole()`、`value()`、`pluck()`、聚合、`exists()`、
+`toSql()` 和 `getBindings()` 都会包含 UNION。
+
+```dart
+final results = await laconic.table('users').select(['id', 'name'])
+    .where('role', 'admin')
+    .union((q) => q.from('users').select(['id', 'name']).where('role', 'moderator'))
+    .orderBy('id').limit(20).get();
+```
+
+### 大数据集分块处理
+
+`chunkById` 按唯一、非 null 的游标列升序读取，默认列为 `id`。它会替换已有排序，
+初始 offset 只作用于第一批，且查询结果必须包含游标列。
+`column` 指定游标列，`alias` 用于添加表别名前缀。游标过滤覆盖原有 OR 条件和完整 UNION。
+所有分块大小必须为正数。`chunk()` 和 `each()` 使用 OFFSET 分页，
+`chunkById()` 使用上一批最后一行的游标值继续读取。
+
+```dart
+await laconic.table('users').select(['id', 'name']).chunkById(100, (rows) async {
+  for (final row in rows) {
+    await processUser(row);
+  }
+});
+```
+
 ### 事务
+
+在事务回调中等待所有查询完成。MySQL 和 PostgreSQL 按驱动实例固定事务连接或会话，
+通过另一驱动发起的查询仍使用另一驱动自己的连接。SQLite 会在单连接上排队执行
+重叠事务及无关查询。同一驱动实例的嵌套事务抛出 `LaconicException`，不会自动创建 savepoint。
 
 ```dart
 await laconic.transaction(() async {
@@ -225,6 +273,17 @@ await laconic.transaction(() async {
   ]);
 });
 ```
+
+## 结果与异常
+
+`LaconicResult` 支持 `row['column']`、`row.columns`、`row.values` 和 `row.toMap()`。
+驱动结果共享列元数据和列名索引；读取某行可修改的 `columns` 列表后，该行改为扫描
+自己的列名列表，以便正确反映外部修改。`columns` 和 `values` 都保留可修改行为。
+重复列名使用首次出现的位置和最后出现的值。自定义驱动可以调用
+`LaconicResult.fromRows(columns, rows)`；列名唯一时，该方法保留传入的值列表。
+
+驱动错误通过 `LaconicException` 报告。除 `message` 外，可选的 `driver` 和 `code`
+分别表示数据库类型及其错误码；处理异常时应同时判断两者，错误码可能为 null。
 
 ## 自定义驱动
 
@@ -269,6 +328,15 @@ class MyDriver implements DatabaseDriver {
   }
 }
 ```
+
+## 升级到 5.0
+
+- 安装本页所列的新版本核心包与驱动。SQLite/PostgreSQL 驱动使用 3.0 系列，MySQL 驱动使用 4.0 系列。
+- 使用 `extends SqlGrammar` 的自定义语法继承默认 `compileUnion`；使用 `implements SqlGrammar` 的类必须实现新增方法。
+- `chunkById` 采用上述升序游标及首批 offset 约定；UNION 的父级排序和分页作用于完整结果。
+- 官方驱动按实例隔离事务，并明确拒绝同实例嵌套事务。
+
+完整发布记录见 [CHANGELOG](CHANGELOG.md)。
 
 ## 许可证
 

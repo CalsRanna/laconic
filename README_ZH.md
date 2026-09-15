@@ -8,18 +8,18 @@
 
 ## 特性
 
-- **Laravel 风格 API** - 熟悉的查询构建器语法，80+ 个方法覆盖 Laravel Query Builder 约 90% 的核心功能
+- **Laravel 风格 API** - 熟悉的查询构建器语法，80+ 个方法支持过滤、联表、聚合和批量处理
 - **多数据库支持** - 通过独立驱动包支持 MySQL、SQLite 和 PostgreSQL
 - **驱动抽象** - 核心查询构建器与数据库实现清晰分离
 - **完整 JOIN 支持** - INNER、LEFT、RIGHT、CROSS JOIN，支持 EXISTS 子查询和 30+ 条件方法
 - **子查询** - WHERE EXISTS、UNION、嵌套 WHERE 分组
-- **行锁** - `FOR UPDATE` 和 `FOR SHARE` 支持
-- **Upsert** - 跨三种数据库的 `INSERT ... ON CONFLICT DO UPDATE`
+- **行锁** - MySQL/PostgreSQL 的 `FOR UPDATE` 和共享锁
+- **Upsert** - 使用各数据库原生语法插入或更新
 - **日期 WHERE** - `whereDate`、`whereTime`、`whereDay`、`whereMonth`、`whereYear`
 - **分块处理** - `chunk`、`chunkById`、`each` 处理大数据集
 - **调试工具** - `toSql()`、`getBindings()`、`dump()`、`dd()` 查询检查
 - **链式方法** - 流畅的查询构建体验
-- **参数化查询** - 自动防止 SQL 注入
+- **参数化查询** - 查询值使用参数绑定；原始 SQL 和标识符须来自可信来源
 - **事务支持** - 完整的事务管理
 - **查询监听器** - 内置调试和日志功能
 
@@ -27,21 +27,24 @@
 
 | 包 | 描述 | 版本 |
 |---|------|------|
-| [laconic](https://pub.dev/packages/laconic) | 核心查询构建器 | 3.0.0 |
-| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite 驱动 | 2.0.0 |
-| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 3.1.0 |
-| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 2.0.0 |
+| [laconic](https://pub.dev/packages/laconic) | 核心查询构建器 | 5.0.0 |
+| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite 驱动 | 3.0.0 |
+| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 4.0.0 |
+| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 3.0.0 |
 
 ## 安装
+
+核心包声明 Dart SDK `>=3.7.0 <4.0.0`。运行整个 workspace 或本页的 SQLite 示例时，
+当前解析的 `sqlite3 3.3.4` 需要 Dart 3.10 或更高的 3.x SDK。
 
 添加核心包和你需要的驱动：
 
 ```yaml
 dependencies:
-  laconic: ^3.0.0
-  laconic_sqlite: ^2.0.0    # SQLite
-  # laconic_mysql: ^3.1.0   # MySQL
-  # laconic_postgresql: ^2.0.0  # PostgreSQL
+  laconic: ^5.0.0
+  laconic_sqlite: ^3.0.0    # SQLite
+  # laconic_mysql: ^4.0.0   # MySQL
+  # laconic_postgresql: ^3.0.0  # PostgreSQL
 ```
 
 然后运行：
@@ -163,6 +166,9 @@ final sql = laconic.table('users').where('age', 18, comparator: '>').toSql();
 
 ### WHERE 子句
 
+空的 `whereIn` 编译为恒假条件，`whereNotIn` 编译为恒真条件，仍参与完整的布尔运算。
+例如 `whereIn('id', []).orWhere('id', 1)` 仍可返回 id 为 1 的行。
+
 ```dart
 // 基本 where
 final adults = await laconic.table('users')
@@ -257,6 +263,11 @@ final results = await laconic.table('users').crossJoin('roles').get();
 
 ### 聚合函数
 
+`exists()` 和 `doesntExist()` 保留 GROUP BY 和 HAVING 条件。分组查询的 `count()`
+返回组数，distinct 查询返回去重后的行数，UNION 查询统计完整联合结果。
+分组后的 `sum`、`avg`、`min`、`max` 只返回第一组的聚合值；如需全部分组，
+请选择聚合表达式并调用 `get()`。
+
 ```dart
 final count = await laconic.table('users').count();
 final total = await laconic.table('orders').sum('amount');
@@ -314,10 +325,10 @@ await laconic.table('logs').truncate();
 
 // 注意：delete()、increment()、decrement() 默认需要 WHERE 子句
 
-// 行锁
+// 行锁（MySQL/PostgreSQL；在事务内使用）
 final locked = await laconic.table('users')
     .where('status', 'pending')
-    .lockForUpdate()   // FOR UPDATE（所有数据库）
+    .lockForUpdate()   // FOR UPDATE（仅 MySQL/PostgreSQL）
     .get();
 
 final shared = await laconic.table('users')
@@ -343,6 +354,12 @@ final users = await laconic.table('users')
 
 ### UNION
 
+`union()` 会去除重复行，`unionAll()` 保留重复行。每个分支保留选择列、过滤、
+分组、HAVING 和分页；父构造器上的排序、limit 和 offset 作用于完整 UNION。
+最终排序应使用输出列名，两侧分支必须选择兼容的列。
+`get()`、`first()`、`sole()`、`value()`、`pluck()`、聚合、`exists()`、
+`toSql()` 和 `getBindings()` 都会包含 UNION。
+
 ```dart
 final results = await laconic.table('users')
     .where('role', 'admin')
@@ -351,6 +368,12 @@ final results = await laconic.table('users')
 ```
 
 ### 大数据集分块处理
+
+`chunkById` 按唯一、非 null 的游标列升序读取，默认列为 `id`。它会替换已有排序，
+初始 offset 只作用于第一批，且查询结果必须包含游标列。
+`column` 指定游标列，`alias` 用于添加表别名前缀。游标过滤覆盖原有 OR 条件和完整 UNION。
+所有分块大小必须为正数。`chunk()` 和 `each()` 使用 OFFSET 分页，
+`chunkById()` 使用上一批最后一行的游标值继续读取。
 
 ```dart
 // 每次处理 100 条记录
@@ -377,6 +400,10 @@ final results = await activeQuery.clone().get();
 ```
 
 ### 事务
+
+在事务回调中等待所有查询完成。MySQL 和 PostgreSQL 按驱动实例固定事务连接或会话，
+通过另一驱动发起的查询仍使用另一驱动自己的连接。SQLite 会在单连接上排队执行
+重叠事务及无关查询。同一驱动实例的嵌套事务抛出 `LaconicException`，不会自动创建 savepoint。
 
 ```dart
 await laconic.transaction(() async {
@@ -435,21 +462,36 @@ class MyDriver implements DatabaseDriver {
 
 ## 测试
 
+从 workspace 根目录运行。核心包和 SQLite 测试无需 Docker；MySQL/PostgreSQL
+测试使用 `docker-compose.yml` 中的本地测试库（端口分别为 3306 和 5433）。
+
 ```bash
-# 运行所有测试
-dart test
+dart pub get
+dart analyze
 
-# 运行特定包的测试
-dart test packages/laconic/test
-dart test packages/laconic_sqlite/test
-dart test packages/laconic_mysql/test
-dart test packages/laconic_postgresql/test
+# 无需 Docker 的测试
+dart test packages/laconic/test packages/laconic_sqlite/test
 
-# 启动 Docker 容器进行 MySQL/PostgreSQL 测试
-docker-compose up -d
-dart test
-docker-compose down
+# 启动并等待数据库健康，再运行四个包的完整测试
+docker compose up -d --wait
+dart test packages/laconic/test packages/laconic_sqlite/test packages/laconic_mysql/test packages/laconic_postgresql/test --concurrency=1
+docker compose down
 ```
+
+覆盖查询语义、重复列名、分片接收、TLS 大结果、并发命令、事务隔离和服务端语句缓存释放。
+
+## 升级到当前版本
+
+- 核心包为 `5.0.0`，MySQL 驱动为 `4.0.0`，SQLite/PostgreSQL 驱动为 `3.0.0`；请一起更新核心包和所用驱动。
+- 自定义语法若使用 `implements SqlGrammar`，需要实现 `compileUnion`；使用 `extends SqlGrammar` 可以继承默认实现。
+- `chunkById` 按游标升序读取，已有 offset 仅应用于首批；UNION 父构造器的排序和分页作用于完整结果。
+- 官方驱动隔离不同实例的事务，并明确拒绝同实例嵌套事务。
+- 结果共享列名索引并保留可修改的 `columns`/`values`；获取某行的可修改列名列表后，该行改用兼容修改的线性查找。
+
+本次性能改进包括 MySQL 分片数据线性重组、PostgreSQL 按物理连接复用并释放预编译语句、
+共享结果列元数据，以及单次扫描原始 SQL 参数。
+
+发布记录：[核心包](packages/laconic/CHANGELOG.md)、[SQLite](packages/laconic_sqlite/CHANGELOG.md)、[MySQL](packages/laconic_mysql/CHANGELOG.md)、[PostgreSQL](packages/laconic_postgresql/CHANGELOG.md)。
 
 ## 从 1.x 迁移
 
@@ -459,7 +501,7 @@ import 'package:laconic/laconic.dart';
 final laconic = Laconic.mysql(MysqlConfig(...));
 ```
 
-之后（2.0）：
+之后（2.0 及更高版本）：
 ```dart
 import 'package:laconic/laconic.dart';
 import 'package:laconic_mysql/laconic_mysql.dart';

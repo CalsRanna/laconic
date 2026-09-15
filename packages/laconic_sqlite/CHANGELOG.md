@@ -1,8 +1,19 @@
-## Unreleased
+## 3.0.0
 
-- Serialize overlapping transactions and unrelated queries on the single connection. Only roll back transactions successfully opened by the current call; reject nested transactions on the same instance.
-- Convert row values directly into shared result metadata, preserving mutable result values.
-- Read the last inserted ID through the native getter without a second SQL query.
+### Breaking changes and migration
+
+- Requires `laconic: ^5.0.0` and adopts its UNION, cursor-pagination and custom-grammar contracts.
+- Queue overlapping transactions and unrelated queries on the driver's single connection. Reject nested transactions on the same driver instance with `LaconicException`.
+
+### Fixes
+
+- Only roll back transactions successfully opened by the current call, preventing failed or overlapping transactions from rolling back another transaction's writes.
+- Keep unrelated writes outside an active transaction and reject queries originating from an expired transaction context.
+
+### Performance
+
+- Convert row values directly into shared result metadata, preserving mutable columns and values and duplicate-column behavior.
+- Read the last inserted ID through the native getter without executing a second SQL query.
 
 ## 2.3.0
 
@@ -10,10 +21,9 @@
 
 - `LaconicException` from driver errors now fills `driver: 'sqlite'` and
   `code` with the SQLite extended result code (e.g. `2067` for a UNIQUE
-  constraint violation, `1555` for a FOREIGN KEY violation).
+  constraint violation, `1555` for a PRIMARY KEY violation).
 - `SqliteDriver.driverName` constant identifies the driver.
 
-## 2.2.0
 ## 2.2.0
 
 ### Changed

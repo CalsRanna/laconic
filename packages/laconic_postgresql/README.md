@@ -1,13 +1,19 @@
 # laconic_postgresql
 
+[中文文档](README_ZH.md)
+
 PostgreSQL driver for the [Laconic](https://pub.dev/packages/laconic) query builder.
 
 ## Installation
 
+The package declares Dart SDK `>=3.7.0 <4.0.0`; the currently resolved
+`postgres 3.5.9` requires Dart 3.9 or later. The full workspace also needs
+Dart 3.10 for its SQLite dependency.
+
 ```yaml
 dependencies:
-  laconic: ^3.0.0
-  laconic_postgresql: ^2.0.0
+  laconic: ^5.0.0
+  laconic_postgresql: ^3.0.0
 ```
 
 ## Usage
@@ -61,7 +67,12 @@ void main() async {
 
 ## Connection Pooling
 
-The PostgreSQL driver uses connection pooling internally for better performance. Connections are managed automatically and released back to the pool after each query.
+The pool opens lazily and allows up to 10 connections. Queries outside a
+transaction borrow and return a connection; transactions hold one for the entire
+callback. Prepared statements are cached per reusable physical connection, up to
+50 each. Eviction or execution errors dispose statements, and closing a connection
+removes its cache metadata. Transactions use a separate session cache that is
+disposed before commit or rollback. Call `close()` to shut down the pool.
 
 ## Query Listener
 
@@ -82,6 +93,14 @@ final laconic = Laconic(
 
 ## Transactions
 
+Await every query inside the transaction callback. Nested transactions on the
+same driver instance throw `LaconicException`; savepoints are not created
+automatically. Different driver instances retain independent transaction contexts.
+
+Transaction queries are pinned to one connection/session and execute serially.
+You can await queries with `Future.wait`; each query receives its own result.
+Calls through another driver instance use that instance's own connection.
+
 ```dart
 await laconic.transaction(() async {
   final userId = await laconic.table('users').insertGetId({
@@ -94,15 +113,7 @@ await laconic.transaction(() async {
 });
 ```
 
-## Parameter Binding
-
-PostgreSQL uses numbered placeholders (`$1`, `$2`, ...) instead of `?`. The driver handles this conversion automatically, so you can use the same query builder API as with other databases.
-
-## License
-
-MIT License
-
-## Raw SQL parameters
+## Parameter binding and raw SQL
 
 Raw clauses and driver queries accept `?` or native `$1`, `$2`, … parameters.
 Native numbers in each raw clause start locally at `$1`; the grammar rebases them
@@ -120,7 +131,16 @@ Question marks inside strings, quoted identifiers, comments and dollar-quoted
 strings are preserved. PostgreSQL JSON operators `?`, `?|`, `?&` and `@?` are
 preserved; `??` explicitly escapes a bare question-mark operator in raw SQL.
 
-Prepared statements are cached per physical connection (up to 50 each) and are
-released on eviction. Transactions have a session-local cache, released when the
-transaction ends. Transactions on different driver instances remain independent;
-nested transactions on the same instance are not supported.
+Placeholder conversion uses a single scan, and row values share column metadata
+without intermediate map conversion.
+
+## Upgrading from 2.x to 3.0
+
+- Install with `laconic: ^5.0.0` and adopt the core 5.0 UNION and cursor-pagination contracts.
+- Raw SQL parameters follow the numbering and count validation above; question marks in quoted strings are retained.
+- Same-instance nested transactions fail explicitly; calls through other driver instances retain their own connection and transaction context.
+- See the [CHANGELOG](CHANGELOG.md) for the complete release notes.
+
+## License
+
+MIT License
