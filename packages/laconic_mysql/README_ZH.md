@@ -11,8 +11,8 @@
 
 ```yaml
 dependencies:
-  laconic: ^5.0.0
-  laconic_mysql: ^4.0.0
+  laconic: ^5.0.1
+  laconic_mysql: ^4.0.1
 ```
 
 ## 使用
@@ -121,7 +121,7 @@ final config = MysqlConfig(
 
 ## 从 3.x 升级到 4.0
 
-- 与 `laconic: ^5.0.0` 一起安装，应用采用核心包 5.0 的 UNION 和游标分页约定。
+- 与 `laconic: ^5.0.1` 一起安装，应用采用核心包 5.0 的 UNION 和游标分页约定。
 - 同一连接上的命令按顺序完成；事务内多个查询也会串行执行准备、缓存访问和命令收发。
 - 同实例嵌套事务会明确报错；使用多个驱动实例时，各自保留数据库与事务归属。
 - 完整发布记录见 [CHANGELOG](CHANGELOG.md)。

@@ -27,10 +27,10 @@
 
 | 包 | 描述 | 版本 |
 |---|------|------|
-| [laconic](https://pub.dev/packages/laconic) | 核心查询构建器 | 5.0.0 |
-| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite 驱动 | 3.0.0 |
-| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 4.0.0 |
-| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 3.0.0 |
+| [laconic](https://pub.dev/packages/laconic) | 核心查询构建器 | 5.0.1 |
+| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite 驱动 | 3.0.1 |
+| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 4.0.1 |
+| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 3.0.1 |
 
 ## 安装
 
@@ -41,10 +41,10 @@
 
 ```yaml
 dependencies:
-  laconic: ^5.0.0
-  laconic_sqlite: ^3.0.0    # SQLite
-  # laconic_mysql: ^4.0.0   # MySQL
-  # laconic_postgresql: ^3.0.0  # PostgreSQL
+  laconic: ^5.0.1
+  laconic_sqlite: ^3.0.1    # SQLite
+  # laconic_mysql: ^4.0.1   # MySQL
+  # laconic_postgresql: ^3.0.1  # PostgreSQL
 ```
 
 然后运行：
@@ -482,7 +482,7 @@ docker compose down
 
 ## 升级到当前版本
 
-- 核心包为 `5.0.0`，MySQL 驱动为 `4.0.0`，SQLite/PostgreSQL 驱动为 `3.0.0`；请一起更新核心包和所用驱动。
+- 核心包为 `5.0.1`，MySQL 驱动为 `4.0.1`，SQLite/PostgreSQL 驱动为 `3.0.1`；请一起更新核心包和所用驱动。
 - 自定义语法若使用 `implements SqlGrammar`，需要实现 `compileUnion`；使用 `extends SqlGrammar` 可以继承默认实现。
 - `chunkById` 按游标升序读取，已有 offset 仅应用于首批；UNION 父构造器的排序和分页作用于完整结果。
 - 官方驱动隔离不同实例的事务，并明确拒绝同实例嵌套事务。

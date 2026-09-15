@@ -26,8 +26,8 @@
 
 ```yaml
 dependencies:
-  laconic: ^5.0.0
-  laconic_sqlite: ^3.0.0  # 或其他驱动
+  laconic: ^5.0.1
+  laconic_sqlite: ^3.0.1  # 或其他驱动
 ```
 
 ## 快速开始

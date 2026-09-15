@@ -11,8 +11,8 @@ also requires Dart 3.10 for its SQLite dependency.
 
 ```yaml
 dependencies:
-  laconic: ^5.0.0
-  laconic_mysql: ^4.0.0
+  laconic: ^5.0.1
+  laconic_mysql: ^4.0.1
 ```
 
 ## Usage
@@ -124,7 +124,7 @@ does not authenticate the server. Prefer TLS whenever possible.
 
 ## Upgrading from 3.x to 4.0
 
-- Install with `laconic: ^5.0.0` and adopt the core 5.0 UNION and cursor-pagination contracts.
+- Install with `laconic: ^5.0.1` and adopt the core 5.0 UNION and cursor-pagination contracts.
 - Commands complete in order on each connection; transaction queries also serialize preparation, cache access and command execution.
 - Same-instance nested transactions now fail explicitly. Separate driver instances retain their own database and transaction context.
 - See the [CHANGELOG](CHANGELOG.md) for the complete release notes.

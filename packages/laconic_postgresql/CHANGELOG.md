@@ -1,3 +1,10 @@
+## 3.0.1
+
+- Republish with a plain semantic version without build metadata.
+- Update the core dependency to `laconic: ^5.0.1`.
+- Update README installation examples for the coordinated patch release.
+- No runtime behavior changes.
+
 ## 3.0.0
 
 ### Breaking changes and migration

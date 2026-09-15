@@ -11,8 +11,8 @@ Use Dart 3.10 or a later 3.x SDK with the workspace's currently resolved
 
 ```yaml
 dependencies:
-  laconic: ^5.0.0
-  laconic_sqlite: ^3.0.0
+  laconic: ^5.0.1
+  laconic_sqlite: ^3.0.1
 ```
 
 ## Usage
@@ -109,7 +109,7 @@ Call `close()` to release cached statements and the database connection.
 
 ## Upgrading from 2.x to 3.0
 
-- Install with `laconic: ^5.0.0` and adopt the core 5.0 UNION and cursor-pagination contracts.
+- Install with `laconic: ^5.0.1` and adopt the core 5.0 UNION and cursor-pagination contracts.
 - Same-instance nested transactions fail explicitly; overlapping transactions and unrelated queries wait in a queue instead of joining the current transaction.
 - Result `columns` and `values` remain mutable.
 - See the [CHANGELOG](CHANGELOG.md) for the complete release notes.

@@ -1,6 +1,6 @@
 name: laconic_sqlite
 description: SQLite driver for the Laconic query builder.
-version: 3.0.0+108
+version: 3.0.1
 homepage: https://github.com/CalsRanna/laconic
 repository: https://github.com/CalsRanna/laconic
 
@@ -10,7 +10,7 @@ environment:
 resolution: workspace
 
 dependencies:
-  laconic: ^5.0.0+108
+  laconic: ^5.0.1
   sqlite3: ^3.3.2
 
 dev_dependencies:

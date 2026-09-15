@@ -11,8 +11,8 @@
 
 ```yaml
 dependencies:
-  laconic: ^5.0.0
-  laconic_sqlite: ^3.0.0
+  laconic: ^5.0.1
+  laconic_sqlite: ^3.0.1
 ```
 
 ## 使用
@@ -103,7 +103,7 @@ last-insert-ID getter，结果转换直接构建值列表并共享列元数据�
 
 ## 从 2.x 升级到 3.0
 
-- 与 `laconic: ^5.0.0` 一起安装，应用采用核心包 5.0 的 UNION 和游标分页约定。
+- 与 `laconic: ^5.0.1` 一起安装，应用采用核心包 5.0 的 UNION 和游标分页约定。
 - 同实例嵌套事务会明确报错；重叠事务及无关查询会排队，避免混入当前事务。
 - 结果的 `columns` 和 `values` 仍可修改。
 - 完整发布记录见 [CHANGELOG](CHANGELOG.md)。

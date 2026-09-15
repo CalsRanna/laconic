@@ -27,10 +27,10 @@ A Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and Postgr
 
 | Package | Description | Version |
 |---------|-------------|---------|
-| [laconic](https://pub.dev/packages/laconic) | Core query builder | 5.0.0 |
-| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite driver | 3.0.0 |
-| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL driver | 4.0.0 |
-| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL driver | 3.0.0 |
+| [laconic](https://pub.dev/packages/laconic) | Core query builder | 5.0.1 |
+| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite driver | 3.0.1 |
+| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL driver | 4.0.1 |
+| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL driver | 3.0.1 |
 
 ## Installation
 
@@ -42,10 +42,10 @@ Add the core package and the driver you need:
 
 ```yaml
 dependencies:
-  laconic: ^5.0.0
-  laconic_sqlite: ^3.0.0    # For SQLite
-  # laconic_mysql: ^4.0.0   # For MySQL
-  # laconic_postgresql: ^3.0.0  # For PostgreSQL
+  laconic: ^5.0.1
+  laconic_sqlite: ^3.0.1    # For SQLite
+  # laconic_mysql: ^4.0.1   # For MySQL
+  # laconic_postgresql: ^3.0.1  # For PostgreSQL
 ```
 
 Then run:
@@ -494,7 +494,7 @@ statement disposal.
 
 ## Upgrading to the current release
 
-- The core is `5.0.0`, MySQL is `4.0.0`, and SQLite/PostgreSQL are `3.0.0`. Update the core and your chosen drivers together.
+- The core is `5.0.1`, MySQL is `4.0.1`, and SQLite/PostgreSQL are `3.0.1`. Update the core and your chosen drivers together.
 - Custom grammars using `implements SqlGrammar` must implement `compileUnion`; those using `extends SqlGrammar` inherit its default implementation.
 - `chunkById` reads in ascending cursor order and applies an existing offset only to the first batch. Parent UNION ordering and pagination apply to the complete result.
 - Official drivers isolate transactions by instance and explicitly reject same-instance nested transactions.

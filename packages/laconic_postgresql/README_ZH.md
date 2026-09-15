@@ -11,8 +11,8 @@
 
 ```yaml
 dependencies:
-  laconic: ^5.0.0
-  laconic_postgresql: ^3.0.0
+  laconic: ^5.0.1
+  laconic_postgresql: ^3.0.1
 ```
 
 ## 使用
@@ -129,7 +129,7 @@ await laconic.select('SELECT ?::jsonb ? ? AS found', ['{"key":1}', 'key']);
 
 ## 从 2.x 升级到 3.0
 
-- 与 `laconic: ^5.0.0` 一起安装，应用采用核心包 5.0 的 UNION 和游标分页约定。
+- 与 `laconic: ^5.0.1` 一起安装，应用采用核心包 5.0 的 UNION 和游标分页约定。
 - 原始 SQL 参数严格按上述规则编号并验证数量；引用字符串内的问号不会被替换。
 - 同实例嵌套事务会明确报错，跨实例调用保留各自的连接和事务归属。
 - 完整发布记录见 [CHANGELOG](CHANGELOG.md)。

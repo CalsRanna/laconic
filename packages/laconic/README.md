@@ -27,8 +27,8 @@ resolved `sqlite3 3.3.4` dependency.
 
 ```yaml
 dependencies:
-  laconic: ^5.0.0
-  laconic_sqlite: ^3.0.0  # Or your preferred driver
+  laconic: ^5.0.1
+  laconic_sqlite: ^3.0.1  # Or your preferred driver
 ```
 
 ## Quick Start

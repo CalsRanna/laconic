@@ -1,3 +1,9 @@
+## 5.0.1
+
+- Republish with a plain semantic version without build metadata.
+- Update README installation examples for the coordinated patch release.
+- No runtime behavior changes.
+
 ## 5.0.0
 
 ### Breaking changes and migration
