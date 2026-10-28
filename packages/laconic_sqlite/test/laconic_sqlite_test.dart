@@ -874,13 +874,46 @@ void main() {
       );
     });
 
-    test('full text and JSON overlaps are unsupported on SQLite', () {
+    test('full text search works with FTS5', () async {
+      const probe = 'laconic_fts_probe';
+      await laconic.statement('drop table if exists $probe');
+      await laconic.statement(
+        'create virtual table $probe using fts5(body)',
+      );
+      try {
+        await laconic.table(probe).insert([
+          {'body': 'the quick brown fox'},
+          {'body': 'lazy dog'},
+        ]);
+        expect(
+          await laconic.table(probe).whereFullText(['body'], 'fox').count(),
+          1,
+        );
+      } finally {
+        await laconic.statement('drop table if exists $probe');
+      }
+    });
+
+    test('binary comparisons and lateral joins are unsupported on SQLite', () {
       expect(
-        () => laconic.table(userTable).whereFullText(['name'], 'john').toSql(),
+        () => laconic.table(userTable).whereBinary('name', 'John').toSql(),
         throwsA(isA<LaconicException>()),
       );
       expect(
-        () => laconic.table(userTable).whereJsonOverlaps('x', ['a']).toSql(),
+        () =>
+            laconic
+                .table(userTable)
+                .joinLateral((q) => q.from(postTable).select(['id']), 'p')
+                .toSql(),
+        throwsA(isA<LaconicException>()),
+      );
+    });
+
+    test('updateFrom is unsupported on SQLite', () async {
+      await expectLater(
+        laconic.table(userTable).where('id', 1).updateFrom(postTable, {
+          'name': 'x',
+        }),
         throwsA(isA<LaconicException>()),
       );
     });

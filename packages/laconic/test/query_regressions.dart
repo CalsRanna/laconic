@@ -5,6 +5,7 @@ import 'package:test/test.dart';
 void queryRegressions(Laconic Function() createDatabase) {
   const table = 'laconic_query_regressions';
   const jsonTable = 'laconic_json_probe';
+  const groupLimitTable = 'laconic_group_limit_probe';
   late Laconic db;
   QueryBuilder query() => db.table(table);
   List<Object?> ids(List<LaconicResult> rows) => [
@@ -35,13 +36,39 @@ void queryRegressions(Laconic Function() createDatabase) {
       'CREATE TABLE $jsonTable (id INT PRIMARY KEY, tags TEXT, payload TEXT)',
     );
     await db.table(jsonTable).insert([
-      {'id': 1, 'tags': '["a","b"]', 'payload': '{"name":"John","count":2}'},
-      {'id': 2, 'tags': '["b","c"]', 'payload': '{"name":"Jane","count":1}'},
-      {'id': 3, 'tags': '["d"]', 'payload': '{"name":"Jack","count":3}'},
+      {
+        'id': 1,
+        'tags': '["a","b"]',
+        'payload': '{"name":"John","count":2,"tags":["a","b"]}',
+      },
+      {
+        'id': 2,
+        'tags': '["b","c"]',
+        'payload': '{"name":"Jane","count":1,"tags":["b","c"]}',
+      },
+      {
+        'id': 3,
+        'tags': '["d"]',
+        'payload': '{"name":"Jack","count":3,"tags":["d"]}',
+      },
+    ]);
+
+    await db.statement('DROP TABLE IF EXISTS $groupLimitTable');
+    await db.statement(
+      'CREATE TABLE $groupLimitTable '
+      '(id INT PRIMARY KEY, grp VARCHAR(10), val INT)',
+    );
+    await db.table(groupLimitTable).insert([
+      {'id': 1, 'grp': 'a', 'val': 10},
+      {'id': 2, 'grp': 'a', 'val': 20},
+      {'id': 3, 'grp': 'a', 'val': 30},
+      {'id': 4, 'grp': 'b', 'val': 1},
+      {'id': 5, 'grp': 'b', 'val': 2},
     ]);
   });
   tearDownAll(() async {
     try {
+      await db.statement('DROP TABLE IF EXISTS $groupLimitTable');
       await db.statement('DROP TABLE IF EXISTS $jsonTable');
       await db.statement('DROP TABLE IF EXISTS $table');
     } finally {
@@ -961,6 +988,97 @@ void queryRegressions(Laconic Function() createDatabase) {
       ),
       [1, 2],
     );
+  });
+
+  test('JSON paths and overlaps work', () async {
+    expect(
+      ids(
+        await db
+            .table(jsonTable)
+            .whereJsonContains('payload->tags', 'b')
+            .orderBy('id')
+            .get(),
+      ),
+      [1, 2],
+    );
+    expect(
+      ids(
+        await db
+            .table(jsonTable)
+            .whereJsonLength('payload->tags', 2)
+            .orderBy('id')
+            .get(),
+      ),
+      [1, 2],
+    );
+    expect(
+      await db.table(jsonTable).whereJsonContainsKey('payload->name').count(),
+      3,
+    );
+    expect(
+      ids(
+        await db
+            .table(jsonTable)
+            .whereJsonOverlaps('tags', ['b'])
+            .orderBy('id')
+            .get(),
+      ),
+      [1, 2],
+    );
+    expect(
+      ids(
+        await db.table(jsonTable).whereJsonDoesntOverlap('tags', ['b']).get(),
+      ),
+      [3],
+    );
+  });
+
+  test('groupLimit limits rows per partition', () async {
+    List<Object?> sortedIds(List<LaconicResult> rows) =>
+        rows.map((row) => row['id']).toList()..sort();
+
+    expect(
+      sortedIds(
+        await db
+            .table(groupLimitTable)
+            .groupLimit(2, 'grp')
+            .orderBy('val')
+            .get(),
+      ),
+      [1, 2, 4, 5],
+    );
+
+    expect(
+      sortedIds(
+        await db
+            .table(groupLimitTable)
+            .groupLimit(2, 'grp')
+            .orderByDesc('val')
+            .get(),
+      ),
+      [2, 3, 4, 5],
+    );
+
+    expect(
+      sortedIds(
+        await db
+            .table(groupLimitTable)
+            .groupLimit(2, 'grp')
+            .orderBy('val')
+            .offset(1)
+            .get(),
+      ),
+      [2, 5],
+    );
+
+    final values =
+        await db
+                .table(groupLimitTable)
+                .groupLimit(1, 'grp')
+                .orderBy('val')
+                .pluck('val')
+            as List<Object?>;
+    expect(values.map((value) => '$value').toList()..sort(), ['1', '10']);
   });
 
   test('insertOrIgnoreUsing ignores duplicate rows', () async {

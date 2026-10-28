@@ -700,11 +700,73 @@ void main() {
       }
     });
 
-    test('JSON overlaps is unsupported on PostgreSQL', () {
+    test('JSON overlaps compiles on PostgreSQL', () {
       expect(
-        () => laconic.table(userTable).whereJsonOverlaps('x', ['a']).toSql(),
+        laconic
+            .table(userTable)
+            .whereJsonOverlaps('x', ['a'])
+            .toSql()
+            .toLowerCase(),
+        contains('?|'),
+      );
+    });
+
+    test('whereBinary is unsupported on PostgreSQL', () {
+      expect(
+        () => laconic.table(userTable).whereBinary('name', 'John').toSql(),
         throwsA(isA<LaconicException>()),
       );
+    });
+
+    test('leftJoinLateral counts related rows', () async {
+      final rows =
+          await laconic
+              .table('$userTable u')
+              .select(['u.id', 'p.cnt'])
+              .leftJoinLateral(
+                (q) => q
+                    .from('$postTable p2')
+                    .selectRaw('count(*) as cnt')
+                    .whereColumn('p2.user_id', 'u.id'),
+                'p',
+              )
+              .orderBy('u.id')
+              .get();
+      expect(rows.length, 3);
+      expect(rows.map((r) => '${r['cnt']}').toList(), ['2', '1', '0']);
+    });
+
+    test('updateFrom updates using another table', () async {
+      const target = 'laconic_update_from_target';
+      const source = 'laconic_update_from_source';
+      await laconic.statement('drop table if exists $target');
+      await laconic.statement('drop table if exists $source');
+      await laconic.statement(
+        'create table $target (id int primary key, val text)',
+      );
+      await laconic.statement(
+        'create table $source (id int primary key, val text)',
+      );
+      try {
+        await laconic.table(target).insert([
+          {'id': 1, 'val': 'old'},
+          {'id': 2, 'val': 'old2'},
+        ]);
+        await laconic.table(source).insert([
+          {'id': 1, 'val': 'new'},
+        ]);
+
+        final affected = await laconic
+            .table(target)
+            .whereColumn('$target.id', '$source.id')
+            .updateFrom(source, {'val': raw('$source.val')});
+        expect(affected, 1);
+        expect(await laconic.table(target).where('id', 1).value('val'), 'new');
+        expect(await laconic.table(target).where('id', 2).value('val'), 'old2');
+      } finally {
+        await laconic.statement('drop table if exists $target');
+        await laconic.statement('drop table if exists $source');
+      }
     });
 
     test('distinct with columns compiles DISTINCT ON', () {

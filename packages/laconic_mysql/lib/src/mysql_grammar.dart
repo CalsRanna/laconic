@@ -342,6 +342,12 @@ class MysqlGrammar extends SqlGrammar {
         bindings.addAll(tableBindings);
       }
 
+      if (type == 'lateral') {
+        final joinType = join['joinType'] as String? ?? 'inner';
+        buffer.write(' $joinType join lateral $table on true');
+        continue;
+      }
+
       switch (type) {
         case 'left':
           buffer.write(' left join $table');
@@ -349,6 +355,8 @@ class MysqlGrammar extends SqlGrammar {
           buffer.write(' right join $table');
         case 'cross':
           buffer.write(' cross join $table');
+        case 'straight':
+          buffer.write(' straight_join $table');
         case 'inner':
         default:
           buffer.write(' join $table');
@@ -497,20 +505,48 @@ class MysqlGrammar extends SqlGrammar {
           '$boolean${where['column']} ${where['comparator']} (${where['sql']})',
         );
         bindings.addAll(where['bindings'] as List<Object?>);
+      } else if (type == 'binary') {
+        final not = where['not'] as bool;
+        final operator = not ? '!= binary' : '= binary';
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add('$boolean${where['column']} $operator ${value.sql}');
+        } else {
+          parts.add('$boolean${where['column']} $operator ?');
+          bindings.add(value);
+        }
       } else if (type == 'jsonContains') {
         final not = where['not'] as bool;
         final value = where['value'];
+        final path = where['path'] as String?;
         if (value is Expression) {
-          parts.add(
-            '$boolean${not ? 'not ' : ''}'
-            'json_contains(${where['column']}, ${value.sql})',
-          );
+          if (path == null) {
+            parts.add(
+              '$boolean${not ? 'not ' : ''}'
+              'json_contains(${where['column']}, ${value.sql})',
+            );
+          } else {
+            parts.add(
+              '$boolean${not ? 'not ' : ''}'
+              'json_contains(${where['column']}, ${value.sql}, ?)',
+            );
+            bindings.add(path);
+          }
         } else {
-          parts.add(
-            '$boolean${not ? 'not ' : ''}'
-            'json_contains(${where['column']}, ?)',
-          );
-          bindings.add(jsonEncode(value));
+          if (path == null) {
+            parts.add(
+              '$boolean${not ? 'not ' : ''}'
+              'json_contains(${where['column']}, ?)',
+            );
+            bindings.add(jsonEncode(value));
+          } else {
+            parts.add(
+              '$boolean${not ? 'not ' : ''}'
+              'json_contains(${where['column']}, ?, ?)',
+            );
+            bindings.add(jsonEncode(value));
+            bindings.add(path);
+          }
         }
       } else if (type == 'jsonContainsKey') {
         final not = where['not'] as bool;
@@ -523,7 +559,9 @@ class MysqlGrammar extends SqlGrammar {
         final path = where['path'] as String?;
         final comparator = where['comparator'];
         if (path != null) {
-          parts.add('${boolean}json_length(${where['column']}, ?) $comparator ?');
+          parts.add(
+            '${boolean}json_length(${where['column']}, ?) $comparator ?',
+          );
           bindings.add(path);
         } else {
           parts.add('${boolean}json_length(${where['column']}) $comparator ?');
@@ -532,7 +570,23 @@ class MysqlGrammar extends SqlGrammar {
       } else if (type == 'jsonOverlaps') {
         final not = where['not'] as bool;
         final value = where['value'];
-        if (value is Expression) {
+        final path = where['path'] as String?;
+        if (path != null) {
+          if (value is Expression) {
+            parts.add(
+              '$boolean${not ? 'not ' : ''}'
+              'json_overlaps(json_extract(${where['column']}, ?), ${value.sql})',
+            );
+            bindings.add(path);
+          } else {
+            parts.add(
+              '$boolean${not ? 'not ' : ''}'
+              'json_overlaps(json_extract(${where['column']}, ?), ?)',
+            );
+            bindings.add(path);
+            bindings.add(jsonEncode(value));
+          }
+        } else if (value is Expression) {
           parts.add(
             '$boolean${not ? 'not ' : ''}'
             'json_overlaps(${where['column']}, ${value.sql})',
@@ -565,7 +619,9 @@ class MysqlGrammar extends SqlGrammar {
             '${value.sql}$modeSql$expandedSql)',
           );
         } else {
-          parts.add('${boolean}match ($columns) against (?$modeSql$expandedSql)');
+          parts.add(
+            '${boolean}match ($columns) against (?$modeSql$expandedSql)',
+          );
           bindings.add(value);
         }
       } else if (type == 'column') {

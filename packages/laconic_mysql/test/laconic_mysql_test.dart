@@ -765,6 +765,73 @@ void main() {
       );
     });
 
+    test('whereBinary is case-sensitive', () async {
+      expect(
+        await laconic.table(userTable).whereBinary('name', 'John').count(),
+        1,
+      );
+      expect(
+        await laconic.table(userTable).whereBinary('name', 'john').count(),
+        0,
+      );
+      expect(
+        await laconic.table(userTable).whereNotBinary('name', 'john').count(),
+        3,
+      );
+    });
+
+    test('straightJoin compiles and executes', () async {
+      expect(
+        laconic
+            .table('$userTable u')
+            .straightJoin(
+              '$postTable p',
+              (join) => join.on('u.id', 'p.user_id'),
+            )
+            .toSql()
+            .toLowerCase(),
+        contains('straight_join'),
+      );
+
+      final rows =
+          await laconic
+              .table('$userTable u')
+              .select(['u.id'])
+              .straightJoin(
+                '$postTable p',
+                (join) => join.on('u.id', 'p.user_id'),
+              )
+              .get();
+      expect(rows.length, 3);
+    });
+
+    test('leftJoinLateral counts related rows', () async {
+      final rows =
+          await laconic
+              .table('$userTable u')
+              .select(['u.id', 'p.cnt'])
+              .leftJoinLateral(
+                (q) => q
+                    .from('$postTable p2')
+                    .selectRaw('count(*) as cnt')
+                    .whereColumn('p2.user_id', 'u.id'),
+                'p',
+              )
+              .orderBy('u.id')
+              .get();
+      expect(rows.length, 3);
+      expect(rows.map((r) => '${r['cnt']}').toList(), ['2', '1', '0']);
+    });
+
+    test('updateFrom is unsupported on MySQL', () async {
+      await expectLater(
+        laconic.table(userTable).where('id', 1).updateFrom(postTable, {
+          'name': 'x',
+        }),
+        throwsA(isA<LaconicException>()),
+      );
+    });
+
     test('join supports raw and nested conditions', () async {
       final rows =
           await laconic

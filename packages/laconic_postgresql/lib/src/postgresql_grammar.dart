@@ -329,6 +329,42 @@ class PostgresqlGrammar extends SqlGrammar {
   }
 
   @override
+  CompiledQuery compileUpdateFrom({
+    required String table,
+    required String from,
+    required Map<String, Object?> data,
+    required List<Map<String, dynamic>> wheres,
+  }) {
+    final buffer = StringBuffer();
+    final bindings = <Object?>[];
+
+    buffer.write('update $table set ');
+
+    final entries = data.entries.toList();
+    for (var i = 0; i < entries.length; i++) {
+      final value = entries[i].value;
+      if (value is Expression) {
+        buffer.write('${entries[i].key} = ${value.sql}');
+      } else {
+        buffer.write('${entries[i].key} = \$${bindings.length + 1}');
+        bindings.add(value);
+      }
+      if (i < entries.length - 1) {
+        buffer.write(', ');
+      }
+    }
+
+    buffer.write(' from $from');
+
+    if (wheres.isNotEmpty) {
+      buffer.write(' where ');
+      buffer.write(_compileWheres(wheres, bindings));
+    }
+
+    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
+  }
+
+  @override
   CompiledQuery compileDelete({
     required String table,
     required List<Map<String, dynamic>> wheres,
@@ -432,6 +468,12 @@ class PostgresqlGrammar extends SqlGrammar {
         bindings.addAll(embedded.bindings);
       }
 
+      if (type == 'lateral') {
+        final joinType = join['joinType'] as String? ?? 'inner';
+        buffer.write(' $joinType join lateral $tableSql on true');
+        continue;
+      }
+
       switch (type) {
         case 'left':
           buffer.write(' left join $tableSql');
@@ -439,6 +481,8 @@ class PostgresqlGrammar extends SqlGrammar {
           buffer.write(' right join $tableSql');
         case 'cross':
           buffer.write(' cross join $tableSql');
+        case 'straight':
+          buffer.write(' join $tableSql');
         case 'inner':
         default:
           buffer.write(' join $tableSql');
@@ -619,18 +663,39 @@ class PostgresqlGrammar extends SqlGrammar {
           '$boolean${where['column']} ${where['comparator']} (${embedded.sql})',
         );
         bindings.addAll(embedded.bindings);
+      } else if (type == 'binary') {
+        throw LaconicException(
+          'PostgreSQL does not support binary comparison operations',
+        );
       } else if (type == 'jsonContains') {
         final not = where['not'] as bool;
         final value = where['value'];
+        final path = where['path'] as String?;
+        String target;
+        if (path == null || path == r'$') {
+          target = '(${where['column']})::jsonb';
+        } else {
+          final segments = _jsonPathSegments(path);
+          final placeholders = <String>[];
+          for (final segment in segments) {
+            placeholders.add('\$${bindings.length + 1}');
+            bindings.add(segment);
+          }
+          target =
+              placeholders.isEmpty
+                  ? '(${where['column']})::jsonb'
+                  : 'jsonb_extract_path((${where['column']})::jsonb, '
+                      '${placeholders.join(', ')})';
+        }
         if (value is Expression) {
           parts.add(
             '$boolean${not ? 'not ' : ''}'
-            '((${where['column']})::jsonb @> (${value.sql})::jsonb)',
+            '($target @> (${value.sql})::jsonb)',
           );
         } else {
           parts.add(
             '$boolean${not ? 'not ' : ''}'
-            '((${where['column']})::jsonb @> \$${bindings.length + 1}::jsonb)',
+            '($target @> \$${bindings.length + 1}::jsonb)',
           );
           bindings.add(jsonEncode(value));
         }
@@ -668,9 +733,37 @@ class PostgresqlGrammar extends SqlGrammar {
         parts.add('$boolean$target $comparator \$${bindings.length + 1}');
         bindings.add(where['value']);
       } else if (type == 'jsonOverlaps') {
-        throw LaconicException(
-          'PostgreSQL does not support JSON overlaps operations',
-        );
+        final not = where['not'] as bool;
+        final value = where['value'];
+        if (value is! List) {
+          throw LaconicException('JSON overlaps requires a list of values');
+        }
+        final path = where['path'] as String?;
+        String target;
+        if (path == null || path == r'$') {
+          target = '(${where['column']})::jsonb';
+        } else {
+          final segments = _jsonPathSegments(path);
+          final placeholders = <String>[];
+          for (final segment in segments) {
+            placeholders.add('\$${bindings.length + 1}');
+            bindings.add(segment);
+          }
+          target =
+              placeholders.isEmpty
+                  ? '(${where['column']})::jsonb'
+                  : 'jsonb_extract_path((${where['column']})::jsonb, '
+                      '${placeholders.join(', ')})';
+        }
+        if (value.isEmpty) {
+          parts.add('$boolean${not ? '1 = 1' : '1 = 0'}');
+        } else {
+          parts.add(
+            '$boolean${not ? 'not ' : ''}'
+            '($target ?| \$${bindings.length + 1}::text[])',
+          );
+          bindings.add(_pgTextArray(value));
+        }
       } else if (type == 'fullText') {
         final columns = where['columns'] as List<String>;
         final options = where['options'] as Map<String, dynamic>;
@@ -893,6 +986,15 @@ class PostgresqlGrammar extends SqlGrammar {
     }
 
     return parts.join('');
+  }
+
+  String _pgTextArray(Iterable<Object?> values) {
+    final parts = values.map((value) {
+      final text = value?.toString() ?? '';
+      final escaped = text.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+      return '"$escaped"';
+    });
+    return '{${parts.join(',')}}';
   }
 
   List<String> _jsonPathSegments(String path) {

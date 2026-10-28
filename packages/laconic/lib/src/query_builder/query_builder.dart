@@ -60,6 +60,9 @@ class QueryBuilder {
   /// The LIMIT value.
   int? _limit;
 
+  /// Per-partition row limit (`groupLimit`).
+  Map<String, dynamic>? _groupLimit;
+
   /// The OFFSET value.
   int? _offset;
 
@@ -470,6 +473,21 @@ class QueryBuilder {
     return this;
   }
 
+  /// Adds a MySQL `STRAIGHT_JOIN`. Other dialects compile a regular JOIN.
+  QueryBuilder straightJoin(
+    String targetTable,
+    void Function(JoinClause) builder,
+  ) {
+    final joinClause = JoinClause(_laconic);
+    builder(joinClause);
+    _joins.add({
+      'type': 'straight',
+      'table': targetTable,
+      'conditions': joinClause.conditions,
+    });
+    return this;
+  }
+
   /// Adds an INNER JOIN whose ON condition compares a column with a value.
   QueryBuilder joinWhere(
     String targetTable,
@@ -587,6 +605,27 @@ class QueryBuilder {
       type: 'right',
       where: where,
     );
+  }
+
+  /// Adds a LATERAL JOIN against a derived table.
+  QueryBuilder joinLateral(Object query, String as, {String type = 'inner'}) {
+    if (type != 'inner' && type != 'left') {
+      throw LaconicException('joinLateral supports inner or left joins');
+    }
+    final compiled = _compileSubquery(query);
+    _joins.add({
+      'type': 'lateral',
+      'joinType': type,
+      'table': '(${compiled.sql}) as $as',
+      'tableBindings': compiled.bindings,
+      'conditions': <Map<String, dynamic>>[],
+    });
+    return this;
+  }
+
+  /// Adds a LEFT LATERAL JOIN against a derived table.
+  QueryBuilder leftJoinLateral(Object query, String as) {
+    return joinLateral(query, as, type: 'left');
   }
 
   /// Adds a CROSS JOIN against a derived table.
@@ -846,6 +885,17 @@ class QueryBuilder {
   /// Alias for [limit]. Takes the specified number of records.
   QueryBuilder take(int count) {
     return limit(count);
+  }
+
+  /// Limits the number of rows per partition of [column].
+  ///
+  /// Implemented with `row_number() over (partition by column ...)`.
+  QueryBuilder groupLimit(int value, String column) {
+    if (value < 0) {
+      throw LaconicException('groupLimit must be zero or greater');
+    }
+    _groupLimit = {'value': value, 'column': column};
+    return this;
   }
 
   /// Sets LIMIT and OFFSET for a given page number (1-indexed).
@@ -1396,6 +1446,10 @@ class QueryBuilder {
           .._havings.addAll(_havings.map((h) => Map<String, dynamic>.from(h)))
           .._distinct = _distinct
           .._distinctOn = _distinctOn
+          .._groupLimit =
+              _groupLimit == null
+                  ? null
+                  : Map<String, dynamic>.from(_groupLimit!)
           .._limit = _limit
           .._offset = _offset
           .._locks.addAll(_locks.map((l) => Map<String, dynamic>.from(l)))
@@ -2210,6 +2264,42 @@ class QueryBuilder {
     return this;
   }
 
+  /// Adds a case-sensitive binary comparison. MySQL only.
+  QueryBuilder whereBinary(String column, Object? value) {
+    return _addBinary(column, value, 'and', false);
+  }
+
+  /// Adds a case-sensitive binary non-equality comparison. MySQL only.
+  QueryBuilder whereNotBinary(String column, Object? value) {
+    return _addBinary(column, value, 'and', true);
+  }
+
+  /// Adds an OR case-sensitive binary comparison. MySQL only.
+  QueryBuilder orWhereBinary(String column, Object? value) {
+    return _addBinary(column, value, 'or', false);
+  }
+
+  /// Adds an OR case-sensitive binary non-equality comparison. MySQL only.
+  QueryBuilder orWhereNotBinary(String column, Object? value) {
+    return _addBinary(column, value, 'or', true);
+  }
+
+  QueryBuilder _addBinary(
+    String column,
+    Object? value,
+    String boolean,
+    bool not,
+  ) {
+    _wheres.add({
+      'type': 'binary',
+      'column': column,
+      'value': value,
+      'boolean': boolean,
+      'not': not,
+    });
+    return this;
+  }
+
   /// Adds a JSON containment condition.
   ///
   /// MySQL and PostgreSQL compare the encoded [value] against the JSON column;
@@ -2239,9 +2329,11 @@ class QueryBuilder {
     String boolean,
     bool not,
   ) {
+    final split = _splitJsonColumn(column);
     _wheres.add({
       'type': 'jsonContains',
-      'column': column,
+      'column': split.column,
+      'path': split.path,
       'value': value,
       'boolean': boolean,
       'not': not,
@@ -2249,39 +2341,50 @@ class QueryBuilder {
     return this;
   }
 
-  /// Adds a JSON key-existence condition using a path such as `$.name`.
-  QueryBuilder whereJsonContainsKey(String column, String path) {
+  /// Adds a JSON key-existence condition.
+  ///
+  /// The path may be given as `payload->name` or as the optional [path]
+  /// argument, but not both.
+  QueryBuilder whereJsonContainsKey(String column, [String? path]) {
     return _addJsonContainsKey(column, path, 'and', false);
   }
 
-  /// Adds a JSON key-absence condition using a path such as `$.name`.
-  QueryBuilder whereJsonDoesntContainKey(String column, String path) {
+  /// Adds a JSON key-absence condition.
+  QueryBuilder whereJsonDoesntContainKey(String column, [String? path]) {
     return _addJsonContainsKey(column, path, 'and', true);
   }
 
   /// Adds an OR JSON key-existence condition.
-  QueryBuilder orWhereJsonContainsKey(String column, String path) {
+  QueryBuilder orWhereJsonContainsKey(String column, [String? path]) {
     return _addJsonContainsKey(column, path, 'or', false);
   }
 
   /// Adds an OR JSON key-absence condition.
-  QueryBuilder orWhereJsonDoesntContainKey(String column, String path) {
+  QueryBuilder orWhereJsonDoesntContainKey(String column, [String? path]) {
     return _addJsonContainsKey(column, path, 'or', true);
   }
 
   QueryBuilder _addJsonContainsKey(
     String column,
-    String path,
+    String? path,
     String boolean,
     bool not,
   ) {
-    if (path.trim().isEmpty) {
-      throw LaconicException('JSON path cannot be empty');
+    final split = _splitJsonColumn(column);
+    if (split.path != null && path != null) {
+      throw LaconicException(
+        'Specify the JSON path in the column or as an argument, not both',
+      );
+    }
+    final effectivePath =
+        split.path ?? (path == null ? null : _normalizeJsonPath(path));
+    if (effectivePath == null || effectivePath == r'$') {
+      throw LaconicException('JSON key conditions require a path');
     }
     _wheres.add({
       'type': 'jsonContainsKey',
-      'column': column,
-      'path': _normalizeJsonPath(path),
+      'column': split.column,
+      'path': effectivePath,
       'boolean': boolean,
       'not': not,
     });
@@ -2315,10 +2418,16 @@ class QueryBuilder {
     String comparator,
     String? path,
   ) {
+    final split = _splitJsonColumn(column);
+    if (split.path != null && path != null) {
+      throw LaconicException(
+        'Specify the JSON path in the column or as an argument, not both',
+      );
+    }
     _wheres.add({
       'type': 'jsonLength',
-      'column': column,
-      'path': path == null ? null : _normalizeJsonPath(path),
+      'column': split.column,
+      'path': split.path ?? (path == null ? null : _normalizeJsonPath(path)),
       'comparator': validateOperator(comparator),
       'value': value,
       'boolean': boolean,
@@ -2326,12 +2435,12 @@ class QueryBuilder {
     return this;
   }
 
-  /// Adds a JSON overlap condition. Currently supported on MySQL only.
+  /// Adds a JSON overlap condition comparing array elements.
   QueryBuilder whereJsonOverlaps(String column, Object? value) {
     return _addJsonOverlaps(column, value, 'and', false);
   }
 
-  /// Adds a JSON non-overlap condition. Currently supported on MySQL only.
+  /// Adds a JSON non-overlap condition.
   QueryBuilder whereJsonDoesntOverlap(String column, Object? value) {
     return _addJsonOverlaps(column, value, 'and', true);
   }
@@ -2352,9 +2461,11 @@ class QueryBuilder {
     String boolean,
     bool not,
   ) {
+    final split = _splitJsonColumn(column);
     _wheres.add({
       'type': 'jsonOverlaps',
-      'column': column,
+      'column': split.column,
+      'path': split.path,
       'value': value,
       'boolean': boolean,
       'not': not,
@@ -2416,6 +2527,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'fullText',
       'columns': List<String>.from(columns),
+      'table': _table,
       'value': value,
       'boolean': boolean,
       'options': {
@@ -2434,6 +2546,19 @@ class QueryBuilder {
     }
     final prefix = trimmed.startsWith('.') ? r'$' : r'$.';
     return '$prefix$trimmed';
+  }
+
+  static ({String column, String? path}) _splitJsonColumn(String column) {
+    final parts = column.split('->');
+    if (parts.length == 1) {
+      return (column: column.trim(), path: null);
+    }
+    final field = parts.removeAt(0).trim();
+    final rawPath = parts.join('.').trim();
+    return (
+      column: field,
+      path: rawPath.isEmpty ? null : _normalizeJsonPath(rawPath),
+    );
   }
 
   /// Adds an OR WHERE NULL condition to the query.
@@ -3325,6 +3450,20 @@ class QueryBuilder {
     return _laconic.affectingStatement(compiled.sql, compiled.bindings);
   }
 
+  /// Updates rows using a `FROM` clause. PostgreSQL only.
+  Future<int> updateFrom(String from, Map<String, Object?> data) async {
+    if (data.isEmpty) {
+      throw LaconicException('Cannot update with an empty data map');
+    }
+    final compiled = _grammar.compileUpdateFrom(
+      table: _table,
+      from: from,
+      data: data,
+      wheres: _wheres,
+    );
+    return _laconic.affectingStatement(compiled.sql, compiled.bindings);
+  }
+
   /// Increments multiple columns in one UPDATE statement.
   Future<int> incrementEach(
     Map<String, num> columns, {
@@ -3508,11 +3647,87 @@ class QueryBuilder {
   /// inspection via [toSql], [getBindings], or [dump].
   CompiledQuery _compileForDebug() => _compileSelect();
 
+  CompiledQuery _compileGroupLimit({
+    List<String>? columns,
+    int? limitOverride,
+  }) {
+    final groupLimit = _groupLimit!;
+    final groupValue = groupLimit['value'] as int;
+    final groupColumn = groupLimit['column'] as String;
+
+    final inner = clone();
+    inner._groupLimit = null;
+    inner._limit = null;
+    inner._offset = null;
+    inner._orders.clear();
+    inner._locks.clear();
+
+    final windowBindings = <Object?>[];
+    final orderParts = <String>[];
+    for (final order in _orders) {
+      if (order['type'] == 'raw') {
+        orderParts.add(order['sql'] as String);
+        windowBindings.addAll(order['bindings'] as List<Object?>);
+      } else {
+        orderParts.add('${order['column']} ${order['direction']}');
+      }
+    }
+    final orderSql =
+        orderParts.isEmpty ? '' : ' order by ${orderParts.join(', ')}';
+    final rowNumber =
+        'row_number() over (partition by $groupColumn$orderSql) '
+        'as laconic_row';
+
+    if (columns != null) {
+      inner._columns = List<String>.from(columns);
+      inner._selectBindings.clear();
+    }
+    if (inner._columns.isEmpty) {
+      inner._columns = ['*'];
+    }
+    inner._columns.add(rowNumber);
+    inner._selectBindings.addAll(windowBindings);
+
+    final innerCompiled = inner._compileSelect();
+    final outerColumns =
+        columns == null || columns.isEmpty ? '*' : columns.join(', ');
+    final offset = _offset;
+
+    final buffer = StringBuffer(
+      'select $outerColumns from (${innerCompiled.sql}) as laconic_group '
+      'where laconic_row <= $groupValue',
+    );
+    if (offset != null) {
+      buffer.write(' and laconic_row > $offset');
+    }
+    buffer.write(' order by laconic_row');
+    if (limitOverride != null) {
+      buffer.write(' limit $limitOverride');
+    }
+
+    return CompiledQuery(
+      sql: buffer.toString(),
+      bindings: innerCompiled.bindings,
+    );
+  }
+
   CompiledQuery _compileSelect({
     List<String>? columns,
     int? limitOverride,
     List<Map<String, dynamic>> unionWheres = const [],
   }) {
+    if (_groupLimit != null) {
+      if (_unions.isNotEmpty || unionWheres.isNotEmpty) {
+        throw LaconicException('groupLimit cannot be combined with UNION');
+      }
+      if (_distinct || _groups.isNotEmpty) {
+        throw LaconicException(
+          'groupLimit cannot be combined with distinct or group by',
+        );
+      }
+      return _compileGroupLimit(columns: columns, limitOverride: limitOverride);
+    }
+
     final hasUnion = _unions.isNotEmpty;
     final compiled = _grammar.compileSelect(
       table: _table,

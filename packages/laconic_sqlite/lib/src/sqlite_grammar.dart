@@ -336,6 +336,10 @@ class SqliteGrammar extends SqlGrammar {
         bindings.addAll(tableBindings);
       }
 
+      if (type == 'lateral') {
+        throw LaconicException('SQLite does not support lateral joins');
+      }
+
       switch (type) {
         case 'left':
           buffer.write(' left join $table');
@@ -343,6 +347,8 @@ class SqliteGrammar extends SqlGrammar {
           buffer.write(' right join $table');
         case 'cross':
           buffer.write(' cross join $table');
+        case 'straight':
+          buffer.write(' join $table');
         case 'inner':
         default:
           buffer.write(' join $table');
@@ -491,9 +497,21 @@ class SqliteGrammar extends SqlGrammar {
           '$boolean${where['column']} ${where['comparator']} (${where['sql']})',
         );
         bindings.addAll(where['bindings'] as List<Object?>);
+      } else if (type == 'binary') {
+        throw LaconicException(
+          'SQLite does not support binary comparison operations',
+        );
       } else if (type == 'jsonContains') {
         final not = where['not'] as bool;
         final value = where['value'];
+        final path = where['path'] as String?;
+        final source =
+            path == null
+                ? 'json_each(${where['column']})'
+                : 'json_each(${where['column']}, ?)';
+        if (path != null) {
+          bindings.add(path);
+        }
         final condition =
             value is Expression
                 ? 'json_each.value is ${value.sql}'
@@ -503,7 +521,7 @@ class SqliteGrammar extends SqlGrammar {
         }
         parts.add(
           '$boolean${not ? 'not ' : ''}exists '
-          '(select 1 from json_each(${where['column']}) where $condition)',
+          '(select 1 from $source where $condition)',
         );
       } else if (type == 'jsonContainsKey') {
         final not = where['not'] as bool;
@@ -527,13 +545,48 @@ class SqliteGrammar extends SqlGrammar {
         }
         bindings.add(where['value']);
       } else if (type == 'jsonOverlaps') {
-        throw LaconicException(
-          'SQLite does not support JSON overlaps operations',
-        );
+        final not = where['not'] as bool;
+        final value = where['value'];
+        if (value is! List) {
+          throw LaconicException('JSON overlaps requires a list of values');
+        }
+        final path = where['path'] as String?;
+        final source =
+            path == null
+                ? 'json_each(${where['column']})'
+                : 'json_each(${where['column']}, ?)';
+        if (path != null) {
+          bindings.add(path);
+        }
+        final placeholders = <String>[];
+        for (final item in value) {
+          placeholders.add('?');
+          bindings.add(item);
+        }
+        if (placeholders.isEmpty) {
+          parts.add('$boolean${not ? '1 = 1' : '1 = 0'}');
+        } else {
+          parts.add(
+            '$boolean${not ? 'not ' : ''}exists '
+            '(select 1 from $source where json_each.value in '
+            '(${placeholders.join(', ')}))',
+          );
+        }
       } else if (type == 'fullText') {
-        throw LaconicException(
-          'SQLite does not support whereFullText; use an FTS5 table',
-        );
+        final table = (where['table'] as String?)?.trim() ?? '';
+        if (table.isEmpty) {
+          throw LaconicException(
+            'SQLite full text conditions require a table name',
+          );
+        }
+        final tableName = table.split(RegExp(r'\s+')).first;
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add('$boolean$tableName match ${value.sql}');
+        } else {
+          parts.add('$boolean$tableName match ?');
+          bindings.add(value);
+        }
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(

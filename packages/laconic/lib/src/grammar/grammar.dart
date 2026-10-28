@@ -1,3 +1,4 @@
+import 'package:laconic/src/exception.dart';
 import 'package:laconic/src/grammar/compiled_query.dart';
 
 /// Abstract base class for SQL grammar implementations.
@@ -181,6 +182,18 @@ abstract class SqlGrammar {
     Map<String, Object?>? extra,
     required List<Map<String, dynamic>> wheres,
   });
+
+  /// Compiles an UPDATE ... FROM query.
+  ///
+  /// Only PostgreSQL implements this; other dialects throw.
+  CompiledQuery compileUpdateFrom({
+    required String table,
+    required String from,
+    required Map<String, Object?> data,
+    required List<Map<String, dynamic>> wheres,
+  }) {
+    throw LaconicException('This database engine does not support updateFrom');
+  }
 
   /// Compiles a TRUNCATE query.
   CompiledQuery compileTruncate({required String table});
