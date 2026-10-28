@@ -482,6 +482,52 @@ class MysqlGrammar extends SqlGrammar {
         parts.add(
           '$boolean$column $betweenKeyword ${betweenColumns[0]} and ${betweenColumns[1]}',
         );
+      } else if (type == 'integerInRaw') {
+        final column = where['column'];
+        final values = where['values'] as List<int>;
+        final not = where['not'] as bool;
+        if (values.isEmpty) {
+          parts.add('$boolean${not ? '1 = 1' : '1 = 0'}');
+        } else {
+          parts.add(
+            '$boolean$column ${not ? 'not in' : 'in'} (${values.join(', ')})',
+          );
+        }
+      } else if (type == 'rowValues') {
+        final columns = (where['columns'] as List<String>).join(', ');
+        final operator = where['operator'];
+        final values = where['values'] as List<Object?>;
+        final placeholders = <String>[];
+        for (final value in values) {
+          if (value is Expression) {
+            placeholders.add(value.sql);
+          } else {
+            placeholders.add('?');
+            bindings.add(value);
+          }
+        }
+        parts.add('$boolean($columns) $operator (${placeholders.join(', ')})');
+      } else if (type == 'valueBetween') {
+        final columns = where['columns'] as List<String>;
+        final not = where['not'] as bool;
+        final keyword = not ? 'not between' : 'between';
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add(
+            '$boolean${value.sql} $keyword ${columns[0]} and ${columns[1]}',
+          );
+        } else {
+          parts.add('$boolean? $keyword ${columns[0]} and ${columns[1]}');
+          bindings.add(value);
+        }
+      } else if (type == 'nullSafeEquals') {
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add('$boolean${where['column']} <=> ${value.sql}');
+        } else {
+          parts.add('$boolean${where['column']} <=> ?');
+          bindings.add(value);
+        }
       } else if (type == 'all') {
         // WHERE (col1 = ? AND col2 = ? AND col3 = ?)
         final columns = where['columns'] as List<String>;
@@ -520,7 +566,8 @@ class MysqlGrammar extends SqlGrammar {
         }
       } else if (type == 'nested') {
         final nested = _compileWheres(where['conditions'], bindings);
-        parts.add('$boolean($nested)');
+        final not = where['not'] as bool? ?? false;
+        parts.add('$boolean${not ? 'not ' : ''}($nested)');
       } else if (type == 'raw') {
         parts.add('$boolean(${where['sql']})');
         bindings.addAll(where['bindings'] as List<Object?>);
@@ -604,6 +651,20 @@ class MysqlGrammar extends SqlGrammar {
       if (having['type'] == 'raw') {
         parts.add('$boolean(${having['sql']})');
         bindings.addAll(having['bindings'] as List<Object?>);
+      } else if (having['type'] == 'nested') {
+        final nested = _compileHavings(having['conditions'], bindings);
+        parts.add('$boolean($nested)');
+      } else if (having['type'] == 'null') {
+        final not = having['not'] as bool;
+        parts.add(
+          '$boolean${having['column']} ${not ? 'is not null' : 'is null'}',
+        );
+      } else if (having['type'] == 'between') {
+        final not = having['not'] as bool;
+        parts.add(
+          '$boolean${having['column']} ${not ? 'not between' : 'between'} ? and ?',
+        );
+        bindings.addAll(having['values'] as List<Object?>);
       } else {
         final value = having['value'];
         if (value is Expression) {

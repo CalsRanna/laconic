@@ -317,4 +317,205 @@ void queryRegressions(Laconic Function() createDatabase) {
     expect(await query().sum('id'), 15);
     expect(await query().avg('id'), 3);
   });
+
+  test('negated nested groups and orWhereNone execute', () async {
+    expect(
+      ids(
+        await query()
+            .where('active', 1)
+            .whereNot((q) => q.where('id', 1).orWhere('id', 3))
+            .get(),
+      ),
+      [5],
+    );
+    expect(
+      ids(
+        await query()
+            .where('id', 1)
+            .orWhereNone(['active'], 0)
+            .orderBy('id')
+            .get(),
+      ),
+      [1, 3, 5],
+    );
+  });
+
+  test('whereIntegerInRaw interpolates integers without bindings', () async {
+    final q = query().whereIntegerInRaw('id', [1, 3]);
+    expect(ids(await q.orderBy('id').get()), [1, 3]);
+    expect(q.getBindings(), isEmpty);
+    expect(
+      ids(await query().whereIntegerNotInRaw('id', [1, 3]).orderBy('id').get()),
+      [2, 4, 5],
+    );
+    expect(await query().whereIntegerInRaw('id', []).count(), 0);
+    expect(await query().whereIntegerNotInRaw('id', []).count(), 5);
+  });
+
+  test('whereRowValues compares tuples', () async {
+    expect(
+      ids(await query().whereRowValues(['id', 'active'], '=', [1, 1]).get()),
+      [1],
+    );
+    expect(
+      await query().whereRowValues(['id', 'active'], '=', [1, 0]).count(),
+      0,
+    );
+    expect(
+      () => query().whereRowValues(['id'], '=', [1, 2]),
+      throwsA(isA<LaconicException>()),
+    );
+    expect(
+      () => query().whereRowValues([], '=', []),
+      throwsA(isA<LaconicException>()),
+    );
+    expect(
+      () => query().whereValueBetween(1, ['id']),
+      throwsA(isA<LaconicException>()),
+    );
+  });
+
+  test('whereValueBetween compares a value against two columns', () async {
+    expect(ids(await query().whereValueBetween(2, ['id', 'id']).get()), [2]);
+    expect(await query().whereValueNotBetween(2, ['id', 'id']).count(), 4);
+  });
+
+  test('whereNullSafeEquals matches NULL', () async {
+    await query().insert([
+      {'id': 93, 'active': 1, 'label': null},
+    ]);
+    try {
+      expect(ids(await query().whereNullSafeEquals('label', null).get()), [93]);
+      expect(ids(await query().whereNullSafeEquals('label', 'two').get()), [2]);
+      expect(await query().whereNullSafeEquals('label', 'missing').count(), 0);
+    } finally {
+      await query().where('id', 93).delete();
+    }
+  });
+
+  test('having between, null and nested variants execute', () async {
+    final groups =
+        await query()
+            .selectRaw('active, count(*) as total')
+            .groupBy('active')
+            .havingBetween('count(*)', min: 2, max: 3)
+            .orderBy('active')
+            .get();
+    expect(groups.length, 2);
+    expect(groups.map((r) => '${r['total']}').toList(), ['2', '3']);
+
+    expect(await query().groupBy('active').havingNull('count(*)').count(), 0);
+    expect(
+      await query().groupBy('active').havingNotNull('count(*)').count(),
+      2,
+    );
+
+    final nested =
+        await query()
+            .groupBy('active')
+            .havingNested(
+              (q) => q
+                  .having('count(*)', 2, comparator: '>=')
+                  .orHaving('count(*)', 3, comparator: '>='),
+            )
+            .count();
+    expect(nested, 2);
+  });
+
+  test('updateOrInsert updates or inserts a row', () async {
+    await query().insert([
+      {'id': 94, 'active': 1, 'label': 'before'},
+    ]);
+    try {
+      expect(
+        await query().updateOrInsert({'id': 94}, {'label': 'after'}),
+        isTrue,
+      );
+      expect(await query().where('id', 94).value('label'), 'after');
+
+      expect(
+        await query().updateOrInsert({'id': 95}, {'active': 1, 'label': 'new'}),
+        isTrue,
+      );
+      expect(await query().where('id', 95).value('label'), 'new');
+    } finally {
+      await query().whereIn('id', [94, 95]).delete();
+    }
+  });
+
+  test('incrementEach and decrementEach adjust multiple columns', () async {
+    const probe = 'laconic_adjust_probe';
+    await db.statement('drop table if exists $probe');
+    await db.statement(
+      'create table $probe (id int primary key, a int, b int)',
+    );
+    try {
+      await db.table(probe).insert([
+        {'id': 1, 'a': 10, 'b': 20},
+      ]);
+
+      await db.table(probe).where('id', 1).incrementEach({'a': 5, 'b': 2});
+      var row = await db.table(probe).find(1);
+      expect(row['a'], 15);
+      expect(row['b'], 22);
+
+      await db.table(probe).where('id', 1).decrementEach({'a': 3, 'b': 1});
+      row = await db.table(probe).find(1);
+      expect(row['a'], 12);
+      expect(row['b'], 21);
+
+      await db
+          .table(probe)
+          .where('id', 1)
+          .incrementEach({'a': 1}, extra: {'b': raw('b + 10')});
+      row = await db.table(probe).find(1);
+      expect(row['a'], 13);
+      expect(row['b'], 31);
+
+      await expectLater(
+        db.table(probe).incrementEach({'a': 1}),
+        throwsA(isA<LaconicException>()),
+      );
+    } finally {
+      await db.statement('drop table if exists $probe');
+    }
+  });
+
+  test('soleValue, implode, existsOr and pagination getters work', () async {
+    expect(await query().where('id', 1).soleValue('label'), '?');
+    await expectLater(
+      query().where('id', 999).soleValue('label'),
+      throwsA(isA<LaconicException>()),
+    );
+
+    expect(
+      await query().orderBy('id').implode('label', '|'),
+      '?|two|three|four|five',
+    );
+
+    expect(await query().where('id', 1).existsOr(false), isTrue);
+    expect(await query().where('id', 999).existsOr(false), isFalse);
+    expect(await query().where('id', 999).doesntExistOr(false), isTrue);
+    expect(await query().where('id', 1).doesntExistOr(false), isFalse);
+
+    final paginated = query().limit(2).offset(1);
+    expect(paginated.getLimit(), 2);
+    expect(paginated.getOffset(), 1);
+  });
+
+  test('joinWhere joins on a bound value', () async {
+    final rows =
+        await db
+            .table('$table u')
+            .select(['u.id'])
+            .joinWhere('$table p', 'p.id', '=', 1)
+            .get();
+    expect(rows.length, 5);
+  });
+
+  test('toRawSql substitutes bindings', () async {
+    final sql = query().where('id', 1).where('label', "O'Reilly").toRawSql();
+    expect(sql, contains('id = 1'));
+    expect(sql, contains("label = 'O''Reilly'"));
+  });
 }

@@ -8,6 +8,9 @@ import 'postgresql_placeholders.dart';
 /// - RETURNING clause for insertGetId
 class PostgresqlGrammar extends SqlGrammar {
   @override
+  bool get numberedPlaceholders => true;
+
+  @override
   CompiledQuery compileSelect({
     required String table,
     required List<String> columns,
@@ -593,6 +596,60 @@ class PostgresqlGrammar extends SqlGrammar {
           '${betweenColumns[0]} and '
           '${betweenColumns[1]}',
         );
+      } else if (type == 'integerInRaw') {
+        final column = where['column'];
+        final values = where['values'] as List<int>;
+        final not = where['not'] as bool;
+        if (values.isEmpty) {
+          parts.add('$boolean${not ? '1 = 1' : '1 = 0'}');
+        } else {
+          parts.add(
+            '$boolean$column ${not ? 'not in' : 'in'} (${values.join(', ')})',
+          );
+        }
+      } else if (type == 'rowValues') {
+        final columns = (where['columns'] as List<String>).join(', ');
+        final operator = where['operator'];
+        final values = where['values'] as List<Object?>;
+        final placeholders = <String>[];
+        for (final value in values) {
+          if (value is Expression) {
+            placeholders.add(value.sql);
+          } else {
+            placeholders.add('\$${bindings.length + 1}');
+            bindings.add(value);
+          }
+        }
+        parts.add('$boolean($columns) $operator (${placeholders.join(', ')})');
+      } else if (type == 'valueBetween') {
+        final columns = where['columns'] as List<String>;
+        final not = where['not'] as bool;
+        final keyword = not ? 'not between' : 'between';
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add(
+            '$boolean${value.sql} $keyword ${columns[0]} and ${columns[1]}',
+          );
+        } else {
+          parts.add(
+            '$boolean\$${bindings.length + 1} $keyword '
+            '${columns[0]} and ${columns[1]}',
+          );
+          bindings.add(value);
+        }
+      } else if (type == 'nullSafeEquals') {
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add(
+            '$boolean${where['column']} is not distinct from ${value.sql}',
+          );
+        } else {
+          parts.add(
+            '$boolean${where['column']} is not distinct from '
+            '\$${bindings.length + 1}',
+          );
+          bindings.add(value);
+        }
       } else if (type == 'all') {
         // WHERE (col1 = $1 AND col2 = $2 AND col3 = $3)
         final columns = where['columns'] as List<String>;
@@ -628,7 +685,8 @@ class PostgresqlGrammar extends SqlGrammar {
         parts.add('${boolean}not (${conditions.join(' or ')})');
       } else if (type == 'nested') {
         final nested = _compileWheres(where['conditions'], bindings);
-        parts.add('$boolean($nested)');
+        final not = where['not'] as bool? ?? false;
+        parts.add('$boolean${not ? 'not ' : ''}($nested)');
       } else if (type == 'raw') {
         final convertedSql = _compileRawSql(
           where['sql'],
@@ -737,6 +795,21 @@ class PostgresqlGrammar extends SqlGrammar {
           bindings,
         );
         parts.add('$boolean($convertedSql)');
+      } else if (having['type'] == 'nested') {
+        final nested = _compileHavings(having['conditions'], bindings);
+        parts.add('$boolean($nested)');
+      } else if (having['type'] == 'null') {
+        final not = having['not'] as bool;
+        parts.add(
+          '$boolean${having['column']} ${not ? 'is not null' : 'is null'}',
+        );
+      } else if (having['type'] == 'between') {
+        final not = having['not'] as bool;
+        parts.add(
+          '$boolean${having['column']} ${not ? 'not between' : 'between'} '
+          '\$${bindings.length + 1} and \$${bindings.length + 2}',
+        );
+        bindings.addAll(having['values'] as List<Object?>);
       } else {
         final value = having['value'];
         if (value is Expression) {

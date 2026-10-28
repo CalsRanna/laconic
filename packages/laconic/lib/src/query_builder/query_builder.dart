@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:laconic/src/exception.dart';
+import 'package:laconic/src/expression.dart';
 import 'package:laconic/src/laconic.dart';
 import 'package:laconic/src/operator.dart';
 import 'package:laconic/src/grammar/grammar.dart';
@@ -385,6 +388,53 @@ class QueryBuilder {
     return this;
   }
 
+  /// Adds an INNER JOIN whose ON condition compares a column with a value.
+  QueryBuilder joinWhere(
+    String targetTable,
+    String first,
+    String comparator,
+    Object? second,
+  ) {
+    return _joinWithValue('inner', targetTable, first, comparator, second);
+  }
+
+  /// Adds a LEFT JOIN whose ON condition compares a column with a value.
+  QueryBuilder leftJoinWhere(
+    String targetTable,
+    String first,
+    String comparator,
+    Object? second,
+  ) {
+    return _joinWithValue('left', targetTable, first, comparator, second);
+  }
+
+  /// Adds a RIGHT JOIN whose ON condition compares a column with a value.
+  QueryBuilder rightJoinWhere(
+    String targetTable,
+    String first,
+    String comparator,
+    Object? second,
+  ) {
+    return _joinWithValue('right', targetTable, first, comparator, second);
+  }
+
+  QueryBuilder _joinWithValue(
+    String type,
+    String targetTable,
+    String first,
+    String comparator,
+    Object? value,
+  ) {
+    final joinClause = JoinClause(_laconic);
+    joinClause.where(first, value, comparator: comparator);
+    _joins.add({
+      'type': type,
+      'table': targetTable,
+      'conditions': joinClause.conditions,
+    });
+    return this;
+  }
+
   /// Sets the table for this query (useful for subqueries and EXISTS clauses).
   QueryBuilder from(String table) {
     _table = table;
@@ -403,11 +453,44 @@ class QueryBuilder {
     return this;
   }
 
+  /// Updates the row matching [attributes], or inserts a new row when none
+  /// exists. [values] are applied on update and merged into the inserted row.
+  Future<bool> updateOrInsert(
+    Map<String, Object?> attributes, [
+    Map<String, Object?> values = const {},
+  ]) async {
+    if (attributes.isEmpty) {
+      throw LaconicException('updateOrInsert requires non-empty attributes');
+    }
+
+    final matches = clone();
+    for (final entry in attributes.entries) {
+      matches.where(entry.key, entry.value);
+    }
+
+    if (await matches.exists()) {
+      if (values.isNotEmpty) {
+        await matches.update(values);
+      }
+    } else {
+      await insert([
+        {...attributes, ...values},
+      ]);
+    }
+    return true;
+  }
+
   /// Adds a `FOR UPDATE` lock to the query.
   QueryBuilder lockForUpdate() {
     _locks.add({'type': 'for_update'});
     return this;
   }
+
+  /// Returns the current LIMIT value, if any.
+  int? getLimit() => _limit;
+
+  /// Returns the current OFFSET value, if any.
+  int? getOffset() => _offset;
 
   /// Adds a `FOR SHARE` (PG) / `LOCK IN SHARE MODE` (MySQL) lock.
   QueryBuilder sharedLock() {
@@ -537,8 +620,21 @@ class QueryBuilder {
     return this;
   }
 
-  /// Adds an OR WHERE NOT EQUAL condition.
-  QueryBuilder orWhereNot(String column, Object? value) {
+  /// Adds an OR WHERE NOT EQUAL condition, or negates a nested group when
+  /// passed a `void Function(QueryBuilder)` callback.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.orWhereNot((q) => q.where('a', 1).orWhere('b', 2));
+  /// // SQL: OR NOT (a = ? OR b = ?)
+  /// ```
+  QueryBuilder orWhereNot(Object column, [Object? value]) {
+    if (column is void Function(QueryBuilder)) {
+      return _nestedWhere(column, 'or', not: true);
+    }
+    if (column is! String) {
+      throw LaconicException('whereNot expects a column name or a callback');
+    }
     return orWhere(column, value, comparator: '!=');
   }
 
@@ -610,14 +706,19 @@ class QueryBuilder {
 
   QueryBuilder _nestedWhere(
     void Function(QueryBuilder) callback,
-    String boolean,
-  ) {
+    String boolean, {
+    bool not = false,
+  }) {
     final nested = QueryBuilder(laconic: _laconic, table: _table);
     callback(nested);
+    if (nested._wheres.isEmpty) {
+      return this;
+    }
     _wheres.add({
       'type': 'nested',
       'conditions': nested._wheres,
       'boolean': boolean,
+      'not': not,
     });
     return this;
   }
@@ -937,6 +1038,14 @@ class QueryBuilder {
     return results.first;
   }
 
+  /// Returns a single column value from the only matching row.
+  ///
+  /// Throws [LaconicException] when no row or more than one row matches.
+  Future<Object?> soleValue(String column) async {
+    final row = await sole();
+    return row[column];
+  }
+
   /// Updates records matching the query.
   ///
   /// [data] is a map of column-value pairs to update. Must be non-empty.
@@ -979,8 +1088,21 @@ class QueryBuilder {
     return this;
   }
 
-  /// Adds a WHERE NOT EQUAL condition (shorthand).
-  QueryBuilder whereNot(String column, Object? value) {
+  /// Adds a WHERE NOT EQUAL condition (shorthand), or negates a nested group
+  /// when passed a `void Function(QueryBuilder)` callback.
+  ///
+  /// Example:
+  /// ```dart
+  /// query.whereNot((q) => q.where('a', 1).orWhere('b', 2));
+  /// // SQL: NOT (a = ? OR b = ?)
+  /// ```
+  QueryBuilder whereNot(Object column, [Object? value]) {
+    if (column is void Function(QueryBuilder)) {
+      return _nestedWhere(column, 'and', not: true);
+    }
+    if (column is! String) {
+      throw LaconicException('whereNot expects a column name or a callback');
+    }
     return where(column, value, comparator: '!=');
   }
 
@@ -1091,6 +1213,22 @@ class QueryBuilder {
       'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'and',
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE clause where no column should match the given value.
+  QueryBuilder orWhereNone(
+    List<String> columns,
+    Object? value, {
+    String comparator = '=',
+  }) {
+    _wheres.add({
+      'type': 'none',
+      'columns': columns,
+      'comparator': validateOperator(comparator),
+      'value': value,
+      'boolean': 'or',
     });
     return this;
   }
@@ -1332,6 +1470,162 @@ class QueryBuilder {
       'values': values,
       'boolean': 'or',
       'not': true,
+    });
+    return this;
+  }
+
+  /// Adds a WHERE IN condition whose integer values are interpolated directly
+  /// instead of being bound, mirroring Laravel's `whereIntegerInRaw`.
+  QueryBuilder whereIntegerInRaw(String column, List<int> values) {
+    _wheres.add({
+      'type': 'integerInRaw',
+      'column': column,
+      'values': values,
+      'boolean': 'and',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE IN condition with interpolated integer values.
+  QueryBuilder orWhereIntegerInRaw(String column, List<int> values) {
+    _wheres.add({
+      'type': 'integerInRaw',
+      'column': column,
+      'values': values,
+      'boolean': 'or',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds a WHERE NOT IN condition with interpolated integer values.
+  QueryBuilder whereIntegerNotInRaw(String column, List<int> values) {
+    _wheres.add({
+      'type': 'integerInRaw',
+      'column': column,
+      'values': values,
+      'boolean': 'and',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds an OR WHERE NOT IN condition with interpolated integer values.
+  QueryBuilder orWhereIntegerNotInRaw(String column, List<int> values) {
+    _wheres.add({
+      'type': 'integerInRaw',
+      'column': column,
+      'values': values,
+      'boolean': 'or',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds a row-value comparison such as `(a, b) = (?, ?)`.
+  QueryBuilder whereRowValues(
+    List<String> columns,
+    String operator,
+    List<Object?> values,
+  ) {
+    if (columns.isEmpty || columns.length != values.length) {
+      throw LaconicException(
+        'The number of columns must match the number of values',
+      );
+    }
+    _wheres.add({
+      'type': 'rowValues',
+      'columns': columns,
+      'operator': validateOperator(operator),
+      'values': values,
+      'boolean': 'and',
+    });
+    return this;
+  }
+
+  /// Adds an OR row-value comparison such as `(a, b) = (?, ?)`.
+  QueryBuilder orWhereRowValues(
+    List<String> columns,
+    String operator,
+    List<Object?> values,
+  ) {
+    if (columns.isEmpty || columns.length != values.length) {
+      throw LaconicException(
+        'The number of columns must match the number of values',
+      );
+    }
+    _wheres.add({
+      'type': 'rowValues',
+      'columns': columns,
+      'operator': validateOperator(operator),
+      'values': values,
+      'boolean': 'or',
+    });
+    return this;
+  }
+
+  /// Adds `? BETWEEN column1 AND column2`, comparing a bound value against
+  /// two columns.
+  QueryBuilder whereValueBetween(Object? value, List<String> columns) {
+    return _addValueBetween(value, columns, 'and', false);
+  }
+
+  /// Adds an OR `? BETWEEN column1 AND column2` condition.
+  QueryBuilder orWhereValueBetween(Object? value, List<String> columns) {
+    return _addValueBetween(value, columns, 'or', false);
+  }
+
+  /// Adds `? NOT BETWEEN column1 AND column2`.
+  QueryBuilder whereValueNotBetween(Object? value, List<String> columns) {
+    return _addValueBetween(value, columns, 'and', true);
+  }
+
+  /// Adds an OR `? NOT BETWEEN column1 AND column2` condition.
+  QueryBuilder orWhereValueNotBetween(Object? value, List<String> columns) {
+    return _addValueBetween(value, columns, 'or', true);
+  }
+
+  QueryBuilder _addValueBetween(
+    Object? value,
+    List<String> columns,
+    String boolean,
+    bool not,
+  ) {
+    if (columns.length != 2) {
+      throw LaconicException('whereValueBetween requires exactly two columns');
+    }
+    _wheres.add({
+      'type': 'valueBetween',
+      'value': value,
+      'columns': columns,
+      'boolean': boolean,
+      'not': not,
+    });
+    return this;
+  }
+
+  /// Adds a null-safe equality comparison.
+  ///
+  /// Compiles to `IS NOT DISTINCT FROM` on PostgreSQL, `<=>` on MySQL and
+  /// `IS` on SQLite, so `NULL` matches `NULL`.
+  QueryBuilder whereNullSafeEquals(String column, Object? value) {
+    _wheres.add({
+      'type': 'nullSafeEquals',
+      'column': column,
+      'value': value,
+      'boolean': 'and',
+    });
+    return this;
+  }
+
+  /// Adds an OR null-safe equality comparison.
+  QueryBuilder orWhereNullSafeEquals(String column, Object? value) {
+    _wheres.add({
+      'type': 'nullSafeEquals',
+      'column': column,
+      'value': value,
+      'boolean': 'or',
     });
     return this;
   }
@@ -1763,6 +2057,141 @@ class QueryBuilder {
     return this;
   }
 
+  /// Adds a HAVING ... BETWEEN condition.
+  QueryBuilder havingBetween(
+    String column, {
+    required Object? min,
+    required Object? max,
+  }) {
+    _havings.add({
+      'type': 'between',
+      'column': column,
+      'values': [min, max],
+      'boolean': 'and',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds a HAVING ... NOT BETWEEN condition.
+  QueryBuilder havingNotBetween(
+    String column, {
+    required Object? min,
+    required Object? max,
+  }) {
+    _havings.add({
+      'type': 'between',
+      'column': column,
+      'values': [min, max],
+      'boolean': 'and',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds an OR HAVING ... BETWEEN condition.
+  QueryBuilder orHavingBetween(
+    String column, {
+    required Object? min,
+    required Object? max,
+  }) {
+    _havings.add({
+      'type': 'between',
+      'column': column,
+      'values': [min, max],
+      'boolean': 'or',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds an OR HAVING ... NOT BETWEEN condition.
+  QueryBuilder orHavingNotBetween(
+    String column, {
+    required Object? min,
+    required Object? max,
+  }) {
+    _havings.add({
+      'type': 'between',
+      'column': column,
+      'values': [min, max],
+      'boolean': 'or',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds a HAVING ... IS NULL condition.
+  QueryBuilder havingNull(String column) {
+    _havings.add({
+      'type': 'null',
+      'column': column,
+      'boolean': 'and',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds an OR HAVING ... IS NULL condition.
+  QueryBuilder orHavingNull(String column) {
+    _havings.add({
+      'type': 'null',
+      'column': column,
+      'boolean': 'or',
+      'not': false,
+    });
+    return this;
+  }
+
+  /// Adds a HAVING ... IS NOT NULL condition.
+  QueryBuilder havingNotNull(String column) {
+    _havings.add({
+      'type': 'null',
+      'column': column,
+      'boolean': 'and',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds an OR HAVING ... IS NOT NULL condition.
+  QueryBuilder orHavingNotNull(String column) {
+    _havings.add({
+      'type': 'null',
+      'column': column,
+      'boolean': 'or',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds a parenthesized nested HAVING group.
+  QueryBuilder havingNested(void Function(QueryBuilder) callback) {
+    return _nestedHaving(callback, 'and');
+  }
+
+  /// Adds an OR parenthesized nested HAVING group.
+  QueryBuilder orHavingNested(void Function(QueryBuilder) callback) {
+    return _nestedHaving(callback, 'or');
+  }
+
+  QueryBuilder _nestedHaving(
+    void Function(QueryBuilder) callback,
+    String boolean,
+  ) {
+    final nested = QueryBuilder(laconic: _laconic, table: _table);
+    callback(nested);
+    if (nested._havings.isEmpty) {
+      return this;
+    }
+    _havings.add({
+      'type': 'nested',
+      'conditions': nested._havings,
+      'boolean': boolean,
+    });
+    return this;
+  }
+
   /// Adds a raw HAVING condition.
   ///
   /// Example:
@@ -1933,6 +2362,16 @@ class QueryBuilder {
     return !(await exists());
   }
 
+  /// Returns `true` when rows exist, otherwise [fallback].
+  Future<bool> existsOr(bool fallback) async {
+    return (await exists()) || fallback;
+  }
+
+  /// Returns `true` when no rows exist, otherwise [fallback].
+  Future<bool> doesntExistOr(bool fallback) async {
+    return (await doesntExist()) || fallback;
+  }
+
   /// Retrieves a single column's values from the query results.
   ///
   /// If [key] is provided, returns a Map with [key] column as keys and [column] as values.
@@ -1964,6 +2403,12 @@ class QueryBuilder {
       // Return as List
       return results.map((row) => row[column]).toList();
     }
+  }
+
+  /// Joins the values of [column] with [glue].
+  Future<String> implode(String column, [String glue = '']) async {
+    final values = await pluck(column) as List<Object?>;
+    return values.map((value) => value == null ? '' : '$value').join(glue);
   }
 
   /// Retrieves a single column's value from the first result.
@@ -2060,6 +2505,48 @@ class QueryBuilder {
     return _laconic.affectingStatement(compiled.sql, compiled.bindings);
   }
 
+  /// Increments multiple columns in one UPDATE statement.
+  Future<int> incrementEach(
+    Map<String, num> columns, {
+    Map<String, Object?>? extra,
+    bool allowWithoutWhere = false,
+  }) {
+    return _adjustEach('+', columns, extra, allowWithoutWhere);
+  }
+
+  /// Decrements multiple columns in one UPDATE statement.
+  Future<int> decrementEach(
+    Map<String, num> columns, {
+    Map<String, Object?>? extra,
+    bool allowWithoutWhere = false,
+  }) {
+    return _adjustEach('-', columns, extra, allowWithoutWhere);
+  }
+
+  Future<int> _adjustEach(
+    String operator,
+    Map<String, num> columns,
+    Map<String, Object?>? extra,
+    bool allowWithoutWhere,
+  ) async {
+    if (_wheres.isEmpty && !allowWithoutWhere) {
+      throw LaconicException(
+        'Calling ${operator == '+' ? 'incrementEach' : 'decrementEach'}() '
+        'without WHERE clause will update all records. '
+        'Use allowWithoutWhere: true if this is intentional.',
+      );
+    }
+    if (columns.isEmpty && (extra == null || extra.isEmpty)) {
+      throw LaconicException('Cannot adjust an empty set of columns');
+    }
+
+    return update({
+      for (final entry in columns.entries)
+        entry.key: raw('${entry.key} $operator ${entry.value}'),
+      ...?extra,
+    });
+  }
+
   /// Returns the compiled SQL for the current query without executing it.
   String toSql() {
     return _compileForDebug().sql;
@@ -2068,6 +2555,17 @@ class QueryBuilder {
   /// Returns the parameter bindings for the current query without executing it.
   List<Object?> getBindings() {
     return _compileForDebug().bindings;
+  }
+
+  /// Returns the compiled SQL with bindings substituted inline.
+  ///
+  /// Intended for debugging and logging only; the result is not a safe way to
+  /// execute a query. Use [toSql] and [getBindings] for execution.
+  String toRawSql() {
+    final compiled = _compileForDebug();
+    return _grammar.numberedPlaceholders
+        ? _interpolateNumberedBindings(compiled.sql, compiled.bindings)
+        : _interpolateQuestionBindings(compiled.sql, compiled.bindings);
   }
 
   /// Dumps the compiled SQL and bindings to the console and returns [this]
@@ -2086,6 +2584,104 @@ class QueryBuilder {
   Never dd() {
     dump();
     throw LaconicException('QueryBuilder.dd() called — execution halted');
+  }
+
+  /// Prints the raw SQL with bindings substituted and returns [this].
+  QueryBuilder dumpRawSql() {
+    // ignore: avoid_print
+    print('SQL: ${toRawSql()}');
+    return this;
+  }
+
+  /// Prints the raw SQL with bindings substituted and halts execution.
+  Never ddRawSql() {
+    dumpRawSql();
+    throw LaconicException('QueryBuilder.ddRawSql() called — execution halted');
+  }
+
+  static final RegExp _numberedPlaceholder = RegExp(r'\$(\d+)');
+
+  String _interpolateNumberedBindings(String sql, List<Object?> bindings) {
+    return sql.replaceAllMapped(_numberedPlaceholder, (match) {
+      final index = int.parse(match[1]!) - 1;
+      if (index < 0 || index >= bindings.length) {
+        return match[0]!;
+      }
+      return _literal(bindings[index]);
+    });
+  }
+
+  String _interpolateQuestionBindings(String sql, List<Object?> bindings) {
+    final output = StringBuffer();
+    var bindingIndex = 0;
+    var i = 0;
+
+    while (i < sql.length) {
+      final code = sql.codeUnitAt(i);
+      if (sql.startsWith('--', i)) {
+        final end = sql.indexOf('\n', i + 2);
+        final next = end == -1 ? sql.length : end;
+        output.write(sql.substring(i, next));
+        i = next;
+        continue;
+      }
+      if (sql.startsWith('/*', i)) {
+        final end = sql.indexOf('*/', i + 2);
+        final next = end == -1 ? sql.length : end + 2;
+        output.write(sql.substring(i, next));
+        i = next;
+        continue;
+      }
+      if (code == 39 || code == 34 || code == 96) {
+        final quote = code;
+        output.writeCharCode(quote);
+        i++;
+        while (i < sql.length) {
+          final current = sql.codeUnitAt(i);
+          output.writeCharCode(current);
+          i++;
+          if (current == quote) {
+            if (i < sql.length && sql.codeUnitAt(i) == quote) {
+              output.writeCharCode(quote);
+              i++;
+            } else {
+              break;
+            }
+          }
+        }
+        continue;
+      }
+      if (code == 63) {
+        if (bindingIndex < bindings.length) {
+          output.write(_literal(bindings[bindingIndex++]));
+        } else {
+          output.write('?');
+        }
+        i++;
+        continue;
+      }
+      output.writeCharCode(code);
+      i++;
+    }
+
+    return output.toString();
+  }
+
+  static String _literal(Object? value) {
+    if (value == null) return 'NULL';
+    if (value is Expression) return value.sql;
+    if (value is bool) return value ? '1' : '0';
+    if (value is num || value is BigInt) return value.toString();
+    if (value is DateTime) {
+      final iso = value.toIso8601String();
+      return "'${iso.substring(0, 19).replaceFirst('T', ' ')}'";
+    }
+    if (value is Uint8List) {
+      final hex =
+          value.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+      return "x'$hex'";
+    }
+    return "'${value.toString().replaceAll("'", "''")}'";
   }
 
   /// Compiles the current query state into a [CompiledQuery] for

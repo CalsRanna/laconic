@@ -39,6 +39,9 @@ abstract class SqlGrammar {
   /// The dialect's random-ordering function used by `inRandomOrder()`.
   String get randomOrderExpression => 'random()';
 
+  /// Whether compiled SQL uses `$1, $2, ...` placeholders.
+  bool get numberedPlaceholders => false;
+
   /// Compiles complete SELECT branches with final UNION ordering and pagination.
   ///
   /// [all] contains one flag for each branch after the first. Each branch is

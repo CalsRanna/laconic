@@ -554,6 +554,17 @@ void main() {
       expect(driver.executedParams.first, ['x', 1]);
     });
 
+    test('toRawSql escapes string bindings', () {
+      final sql = laconic.table('users').where('name', "O'Reilly").toRawSql();
+      expect(sql, "select * from users where name = 'O''Reilly'");
+    });
+
+    test('limit and offset getters expose current values', () {
+      final query = laconic.table('users').limit(3).offset(2);
+      expect(query.getLimit(), 3);
+      expect(query.getOffset(), 2);
+    });
+
     test('join compiles correctly', () async {
       await laconic
           .table('users u')
