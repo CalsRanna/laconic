@@ -33,28 +33,24 @@ void main() {
       await laconic.close();
     });
 
-    test(
-      'connection pool returns slots after query errors',
-      () async {
-        // Intentionally fail more times than the pool size.
-        for (var i = 0; i < maxConnections + 3; i++) {
-          try {
-            await laconic.table('__definitely_missing__').limit(1).get();
-            fail('Expected query against missing table to throw');
-          } on LaconicException {
-            // expected
-          }
+    test('connection pool returns slots after query errors', () async {
+      // Intentionally fail more times than the pool size.
+      for (var i = 0; i < maxConnections + 3; i++) {
+        try {
+          await laconic.table('__definitely_missing__').limit(1).get();
+          fail('Expected query against missing table to throw');
+        } on LaconicException {
+          // expected
         }
+      }
 
-        // Must succeed without hanging if slots were released correctly.
-        final rows = await laconic
-            .select('SELECT 1 AS ok')
-            .timeout(const Duration(seconds: 10));
-        expect(rows, isNotEmpty);
-        expect(rows.first['ok'], 1);
-      },
-      timeout: const Timeout(Duration(seconds: 30)),
-    );
+      // Must succeed without hanging if slots were released correctly.
+      final rows = await laconic
+          .select('SELECT 1 AS ok')
+          .timeout(const Duration(seconds: 10));
+      expect(rows, isNotEmpty);
+      expect(rows.first['ok'], 1);
+    }, timeout: const Timeout(Duration(seconds: 30)));
 
     test(
       'connection pool returns slots after parameterized query errors',
@@ -80,27 +76,23 @@ void main() {
       timeout: const Timeout(Duration(seconds: 30)),
     );
 
-    test(
-      'connection pool returns slots after failed transactions',
-      () async {
-        for (var i = 0; i < maxConnections + 3; i++) {
-          try {
-            await laconic.transaction(() async {
-              await laconic.table('__definitely_missing__').limit(1).get();
-            });
-            fail('Expected transaction to throw');
-          } on LaconicException {
-            // expected
-          }
+    test('connection pool returns slots after failed transactions', () async {
+      for (var i = 0; i < maxConnections + 3; i++) {
+        try {
+          await laconic.transaction(() async {
+            await laconic.table('__definitely_missing__').limit(1).get();
+          });
+          fail('Expected transaction to throw');
+        } on LaconicException {
+          // expected
         }
+      }
 
-        final rows = await laconic
-            .select('SELECT 1 AS ok')
-            .timeout(const Duration(seconds: 10));
-        expect(rows, isNotEmpty);
-        expect(rows.first['ok'], 1);
-      },
-      timeout: const Timeout(Duration(seconds: 30)),
-    );
+      final rows = await laconic
+          .select('SELECT 1 AS ok')
+          .timeout(const Duration(seconds: 10));
+      expect(rows, isNotEmpty);
+      expect(rows.first['ok'], 1);
+    }, timeout: const Timeout(Duration(seconds: 30)));
   });
 }

@@ -225,7 +225,12 @@ void queryRegressions(Laconic Function() createDatabase) {
     try {
       expect(ids(await query().where('label', null).get()), [90]);
       expect(
-        ids(await query().where('label', null, comparator: '!=').orderBy('id').get()),
+        ids(
+          await query()
+              .where('label', null, comparator: '!=')
+              .orderBy('id')
+              .get(),
+        ),
         [1, 2, 3, 4, 5],
       );
       expect(ids(await query().where('id', 0).orWhere('label', null).get()), [

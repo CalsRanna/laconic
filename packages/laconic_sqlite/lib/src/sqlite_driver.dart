@@ -142,10 +142,13 @@ class SqliteDriver implements DatabaseDriver {
       // SQLite creates sqlite_sequence only after the first AUTOINCREMENT
       // table exists. Truncate skips the sequence reset when it is absent.
       if (sql.startsWith('delete from sqlite_sequence ')) {
-        final hasSequence = _db.select(
-          "select 1 from sqlite_master "
-          "where type = 'table' and name = 'sqlite_sequence' limit 1",
-        ).isNotEmpty;
+        final hasSequence =
+            _db
+                .select(
+                  "select 1 from sqlite_master "
+                  "where type = 'table' and name = 'sqlite_sequence' limit 1",
+                )
+                .isNotEmpty;
         if (!hasSequence) return;
       }
 

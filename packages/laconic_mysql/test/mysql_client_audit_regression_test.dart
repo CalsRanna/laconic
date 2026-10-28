@@ -353,36 +353,32 @@ void main() {
     expect(notMatching, isEmpty);
   });
 
-  test(
-    'packets larger than 16 MiB are fragmented and reassembled',
-    () async {
-      final laconic = Laconic(
-        MysqlDriver(_config(commandTimeout: const Duration(seconds: 60))),
-      );
-      addTearDown(laconic.close);
+  test('packets larger than 16 MiB are fragmented and reassembled', () async {
+    final laconic = Laconic(
+      MysqlDriver(_config(commandTimeout: const Duration(seconds: 60))),
+    );
+    addTearDown(laconic.close);
 
-      await laconic.statement('DROP TABLE IF EXISTS $_table');
-      addTearDown(() => laconic.statement('DROP TABLE IF EXISTS $_table'));
-      await laconic.statement('''
+    await laconic.statement('DROP TABLE IF EXISTS $_table');
+    addTearDown(() => laconic.statement('DROP TABLE IF EXISTS $_table'));
+    await laconic.statement('''
         CREATE TABLE $_table (
           id INT PRIMARY KEY AUTO_INCREMENT,
           payload LONGBLOB NOT NULL
         )
       ''');
 
-      final payload = Uint8List(0x00ffffff + 1024);
-      payload[0] = 17;
-      payload[payload.length - 1] = 29;
-      final id = await laconic.table(_table).insertGetId({'payload': payload});
-      final row = await laconic.table(_table).where('id', id).first();
-      final returned = row['payload'] as Uint8List;
+    final payload = Uint8List(0x00ffffff + 1024);
+    payload[0] = 17;
+    payload[payload.length - 1] = 29;
+    final id = await laconic.table(_table).insertGetId({'payload': payload});
+    final row = await laconic.table(_table).where('id', id).first();
+    final returned = row['payload'] as Uint8List;
 
-      expect(returned.lengthInBytes, payload.lengthInBytes);
-      expect(returned.first, 17);
-      expect(returned.last, 29);
-    },
-    timeout: const Timeout(Duration(seconds: 90)),
-  );
+    expect(returned.lengthInBytes, payload.lengthInBytes);
+    expect(returned.first, 17);
+    expect(returned.last, 29);
+  }, timeout: const Timeout(Duration(seconds: 90)));
 
   test(
     'prepared statement LRU deallocates evicted server statements',

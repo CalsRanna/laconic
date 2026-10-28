@@ -10,9 +10,24 @@ const String commentTable = 'comments';
 
 /// Test users data - same across all databases
 final List<Map<String, Object?>> testUsers = [
-  {'name': 'John', 'age': 25, 'gender': 'male', 'created_at': '2024-06-15 10:30:00'},
-  {'name': 'Jane', 'age': 30, 'gender': 'female', 'created_at': '2024-07-20 14:00:00'},
-  {'name': 'Jack', 'age': 35, 'gender': 'male', 'created_at': '2023-06-15 10:30:00'},
+  {
+    'name': 'John',
+    'age': 25,
+    'gender': 'male',
+    'created_at': '2024-06-15 10:30:00',
+  },
+  {
+    'name': 'Jane',
+    'age': 30,
+    'gender': 'female',
+    'created_at': '2024-07-20 14:00:00',
+  },
+  {
+    'name': 'Jack',
+    'age': 35,
+    'gender': 'male',
+    'created_at': '2023-06-15 10:30:00',
+  },
 ];
 
 /// Test posts data - same across all databases
