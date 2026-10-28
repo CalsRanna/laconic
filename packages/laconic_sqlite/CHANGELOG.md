@@ -1,3 +1,27 @@
+## 4.0.0
+
+### Breaking changes and migration
+
+- Requires `laconic: ^6.0.0`.
+- Implements the new `DatabaseDriver.selectStream` contract with a native
+  SQLite cursor.
+- Uses the core 6.0 pagination, subquery and JSON contracts.
+
+### Features
+
+- Native streaming through `cursor()`; chunked streaming via `lazy` /
+  `lazyById` / `eachById`.
+- JSON contains/key/length/overlaps conditions and `->` path syntax.
+- FTS5 full-text search through `whereFullText` (`<table> match ?`).
+- `groupLimit` through the core window-function implementation.
+- Subquery embedding in SELECT/FROM/JOIN/WHERE and `insertUsing`.
+
+### Fixes
+
+- `truncate()` resets the `sqlite_sequence` row when present.
+- Row-lock clauses are ignored rather than emitting invalid SQL.
+- `inRandomOrder()` uses `random()`.
+
 ## 3.0.1
 
 - Republish with a plain semantic version without build metadata.

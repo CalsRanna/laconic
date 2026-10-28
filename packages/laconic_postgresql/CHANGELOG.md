@@ -1,3 +1,23 @@
+## 4.0.0
+
+### Breaking changes and migration
+
+- Requires `laconic: ^6.0.0`.
+- Implements the new `DatabaseDriver.selectStream` contract with a native
+  PostgreSQL result stream.
+- Uses the core 6.0 pagination, subquery and dialect contracts.
+
+### Features
+
+- Native streaming through `cursor()`; chunked streaming via `lazy` /
+  `lazyById` / `eachById`.
+- JSONB contains/key/length/overlaps with `->` paths.
+- Full-text search with plain/phrase/websearch/raw modes and configurable
+  language.
+- LATERAL joins (`joinLateral`, `leftJoinLateral`).
+- `updateFrom` (UPDATE ... FROM) and `groupLimit`.
+- Subquery embedding with correct `$N` rebasing in SELECT/FROM/JOIN/WHERE.
+
 ## 3.0.1
 
 - Republish with a plain semantic version without build metadata.

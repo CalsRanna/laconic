@@ -877,9 +877,7 @@ void main() {
     test('full text search works with FTS5', () async {
       const probe = 'laconic_fts_probe';
       await laconic.statement('drop table if exists $probe');
-      await laconic.statement(
-        'create virtual table $probe using fts5(body)',
-      );
+      await laconic.statement('create virtual table $probe using fts5(body)');
       try {
         await laconic.table(probe).insert([
           {'body': 'the quick brown fox'},

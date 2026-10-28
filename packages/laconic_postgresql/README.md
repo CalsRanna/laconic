@@ -12,8 +12,8 @@ Dart 3.10 for its SQLite dependency.
 
 ```yaml
 dependencies:
-  laconic: ^5.0.1
-  laconic_postgresql: ^3.0.1
+  laconic: ^6.0.0
+  laconic_postgresql: ^4.0.0
 ```
 
 ## Usage
@@ -134,9 +134,12 @@ preserved; `??` explicitly escapes a bare question-mark operator in raw SQL.
 Placeholder conversion uses a single scan, and row values share column metadata
 without intermediate map conversion.
 
-## Upgrading from 2.x to 3.0
+## Upgrading from 3.x to 4.0
 
-- Install with `laconic: ^5.0.1` and adopt the core 5.0 UNION and cursor-pagination contracts.
+- Requires `laconic: ^6.0.0`.
+- `selectStream` uses a native PostgreSQL result stream; `cursor()`, `lazy()` and `lazyById()` are available through the core builder.
+- New dialect methods: JSONB contains/key/length/overlaps with `->` paths, full-text search, LATERAL joins, `updateFrom` and `groupLimit`.
+- Subquery embedding rebases `$N` placeholders in SELECT/FROM/JOIN/WHERE.
 - Raw SQL parameters follow the numbering and count validation above; question marks in quoted strings are retained.
 - Same-instance nested transactions fail explicitly; calls through other driver instances retain their own connection and transaction context.
 - See the [CHANGELOG](CHANGELOG.md) for the complete release notes.

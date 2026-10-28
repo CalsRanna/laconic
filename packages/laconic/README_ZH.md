@@ -12,11 +12,15 @@
 
 ## 特性
 
-- **Laravel 风格 API** - 熟悉的查询构建器语法，80+ 个方法
+- **Laravel 风格 API** - 熟悉的查询构建器语法，130+ 个方法
+- **子查询** - SELECT/FROM/JOIN 子查询、IN 子查询、insert-using 和 UNION
+- **分页与流式** - `paginate`、`simplePaginate`、`cursorPaginate`、`cursor`、`lazy`、`lazyById`
+- **JSON 与全文** - JSON 条件与 `->` 路径；MySQL/PostgreSQL 全文；SQLite FTS5
+- **方言特性** - MySQL binary/索引提示/straight join，PostgreSQL `updateFrom`/LATERAL，`groupLimit`
 - **流畅接口** - 链式方法优雅构建查询
 - **参数化查询** - 查询值使用参数绑定；原始 SQL 和标识符须来自可信来源
 - **事务支持** - 完整的事务管理
-- **查询监听器** - 内置调试和日志功能
+- **查询钩子** - `beforeQuery` / `afterQuery` 计时回调
 - **驱动抽象** - 查询构建器与数据库实现清晰分离
 
 ## 安装
@@ -26,8 +30,8 @@
 
 ```yaml
 dependencies:
-  laconic: ^5.0.1
-  laconic_sqlite: ^3.0.1  # 或其他驱动
+  laconic: ^6.0.0
+  laconic_sqlite: ^4.0.0  # 或其他驱动
 ```
 
 ## 快速开始
@@ -240,6 +244,70 @@ final results = await laconic.table('users').select(['id', 'name'])
     .orderBy('id').limit(20).get();
 ```
 
+### 子查询
+
+```dart
+final users = await laconic.table('users u')
+    .select(['u.id'])
+    .selectSub(
+      (q) => q.from('posts p')
+          .selectRaw('count(*)')
+          .whereColumn('p.user_id', 'u.id'),
+      'posts_count',
+    )
+    .get();
+
+final active = await laconic.table('users')
+    .fromSub((q) => q.from('users').where('active', 1), 'u')
+    .get();
+
+final authors = await laconic.table('users')
+    .whereIn('id', (q) => q.from('posts').select(['user_id']))
+    .get();
+
+await laconic.table('users_archive')
+    .insertUsing(['id', 'name'], laconic.table('users').select(['id', 'name']));
+```
+
+### 分页与流式
+
+```dart
+final page = await laconic.table('users').orderBy('id').paginate(2, perPage: 20);
+page.data;
+page.total;
+page.lastPage;
+page.hasMorePages;
+
+await for (final row in laconic.table('users').orderBy('id').cursor()) {
+  print(row['name']);
+}
+await for (final row in laconic.table('users').orderBy('id').lazy(500)) {
+  print(row['name']);
+}
+```
+
+### JSON、全文与方言方法
+
+```dart
+await laconic.table('users').whereJsonContains('tags', 'admin').get();
+await laconic.table('users').whereJsonContains('profile->roles', 'admin').get();
+await laconic.table('users').whereJsonLength('tags', 2).get();
+await laconic.table('posts').whereFullText(['title', 'body'], 'dart').get();
+```
+
+具体可用性以各驱动 README 和 CHANGELOG 为准。
+
+### 查询钩子
+
+```dart
+final laconic = Laconic(
+  SqliteDriver(SqliteConfig('app.db')),
+  beforeQuery: (query) => print('→ ${query.sql}'),
+  afterQuery: (query, elapsed) =>
+      print('← ${query.sql}（${elapsed.inMilliseconds} ms）'),
+);
+```
+
 ### 大数据集分块处理
 
 `chunkById` 按唯一、非 null 的游标列升序读取，默认列为 `id`。它会替换已有排序，
@@ -329,12 +397,15 @@ class MyDriver implements DatabaseDriver {
 }
 ```
 
-## 升级到 5.0
+## 升级到 6.0
 
-- 安装本页所列的新版本核心包与驱动。SQLite/PostgreSQL 驱动使用 3.0 系列，MySQL 驱动使用 4.0 系列。
-- 使用 `extends SqlGrammar` 的自定义语法继承默认 `compileUnion`；使用 `implements SqlGrammar` 的类必须实现新增方法。
-- `chunkById` 采用上述升序游标及首批 offset 约定；UNION 的父级排序和分页作用于完整结果。
-- 官方驱动按实例隔离事务，并明确拒绝同实例嵌套事务。
+- 安装本页所列的新版本核心包与驱动。SQLite/PostgreSQL 驱动使用 4.0 系列，MySQL 驱动使用 5.0 系列。
+- `sum()`、`max()`、`min()` 返回 `num?`；`avg()` 仍为 `double?`。
+- `insert()` 返回 `Future<bool>`。
+- `where('column', null)` 编译为 `IS NULL`。
+- `SqlGrammar.compileSelect` 新增可选参数，自定义覆盖必须补上。
+- 自定义 `DatabaseDriver` 实现必须补上 `selectStream`。
+- `first()` / `find()` 仍然抛异常；可空结果请用 `firstOrNull()` / `findOrNull()`。
 
 完整发布记录见 [CHANGELOG](CHANGELOG.md)。
 

@@ -8,17 +8,18 @@ A Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and Postgr
 
 ## Features
 
-- **Laravel-style API** - Familiar query builder syntax with 80+ methods for filtering, joins, aggregates and batch processing
+- **Laravel-style API** - 130+ chainable methods for filtering, joins, aggregates, subqueries, pagination and writes
 - **Multi-database Support** - MySQL, SQLite, and PostgreSQL via separate driver packages
-- **Driver Abstraction** - Clean separation between core query builder and database-specific implementations
-- **Complete JOIN Support** - INNER, LEFT, RIGHT, CROSS JOIN with EXISTS subqueries and 30+ condition methods
-- **Subqueries** - WHERE EXISTS, UNION, nested WHERE groups
-- **Row Locking** - `FOR UPDATE` and shared locks for MySQL/PostgreSQL
-- **Upsert** - Insert or update using each database's native syntax
-- **Date WHERE** - `whereDate`, `whereTime`, `whereDay`, `whereMonth`, `whereYear`
-- **Chunking** - Process large result sets in batches with `chunk`, `chunkById`, `each`
-- **Debugging** - `toSql()`, `getBindings()`, `dump()`, `dd()` for query inspection
-- **Chainable Methods** - Fluent query building experience
+- **Subqueries** - SELECT/FROM/JOIN subqueries, WHERE EXISTS, IN subqueries, insert-using and UNION
+- **Pagination and Streaming** - `paginate`, `simplePaginate`, `cursorPaginate`, native `cursor()`, `lazy()`, `lazyById()`
+- **JSON and Full Text** - JSON contains/key/length/overlaps with `->` paths; MySQL/PostgreSQL full text; SQLite FTS5
+- **Dialect Features** - MySQL binary comparisons/index hints/straight joins, PostgreSQL `updateFrom`/LATERAL, `groupLimit`
+- **Complete JOIN Support** - INNER, LEFT, RIGHT, CROSS, subquery joins, LATERAL joins and 30+ condition methods
+- **Row Locking** - `FOR UPDATE` / shared locks plus portable raw lock clauses
+- **Upsert and Bulk Writes** - `insertGetId`, `upsert`, `insertUsing`, `insertOrIgnoreUsing`, `updateOrInsert`, `incrementEach`
+- **Date WHERE** - `whereDate`, `whereTime`, `whereDay`, `whereMonth`, `whereYear` with comparators
+- **Chunking** - `chunk`, `chunkById`, `each`, `cursor`, `lazy`, `lazyById`, `eachById`
+- **Debugging** - `toSql()`, `getBindings()`, `toRawSql()`, `dump()`, `dd()` and query hooks
 - **Parameterized Queries** - Bound values for query parameters; raw SQL and identifiers must be trusted
 - **Transaction Support** - Complete transaction management
 - **Query Listener** - Built-in debugging and logging
@@ -27,10 +28,10 @@ A Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and Postgr
 
 | Package | Description | Version |
 |---------|-------------|---------|
-| [laconic](https://pub.dev/packages/laconic) | Core query builder | 5.0.1 |
-| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite driver | 3.0.1 |
-| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL driver | 4.0.1 |
-| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL driver | 3.0.1 |
+| [laconic](https://pub.dev/packages/laconic) | Core query builder | 6.0.0 |
+| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite driver | 4.0.0 |
+| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL driver | 5.0.0 |
+| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL driver | 4.0.0 |
 
 ## Installation
 
@@ -42,10 +43,10 @@ Add the core package and the driver you need:
 
 ```yaml
 dependencies:
-  laconic: ^5.0.1
-  laconic_sqlite: ^3.0.1    # For SQLite
-  # laconic_mysql: ^4.0.1   # For MySQL
-  # laconic_postgresql: ^3.0.1  # For PostgreSQL
+  laconic: ^6.0.0
+  laconic_sqlite: ^4.0.0    # For SQLite
+  # laconic_mysql: ^5.0.0   # For MySQL
+  # laconic_postgresql: ^4.0.0  # For PostgreSQL
 ```
 
 Then run:
@@ -372,6 +373,129 @@ final results = await laconic.table('users')
     .get();
 ```
 
+### Subqueries
+
+```dart
+// SELECT subquery
+final users = await laconic.table('users u')
+    .select(['u.id'])
+    .selectSub(
+      (q) => q.from('posts p')
+          .selectRaw('count(*)')
+          .whereColumn('p.user_id', 'u.id'),
+      'posts_count',
+    )
+    .get();
+
+// FROM subquery / raw FROM
+final active = await laconic.table('users')
+    .fromSub((q) => q.from('users').where('active', 1), 'u')
+    .get();
+
+// IN subquery, with a callback or an existing builder
+final authors = await laconic.table('users')
+    .whereIn('id', (q) => q.from('posts').select(['user_id']))
+    .get();
+
+// JOIN subquery
+final rows = await laconic.table('posts p')
+    .select(['p.id', 'x.views'])
+    .joinSub(
+      (q) => q.from('post_stats').select(['post_id', 'views']),
+      'x',
+      'p.id',
+      '=',
+      'x.post_id',
+    )
+    .get();
+
+// INSERT ... SELECT
+await laconic.table('users_archive')
+    .insertUsing(['id', 'name'], laconic.table('users').select(['id', 'name']));
+```
+
+### Pagination
+
+```dart
+final page = await laconic.table('users').orderBy('id').paginate(2, perPage: 20);
+page.data;          // List<LaconicResult>
+page.total;         // total rows
+page.lastPage;
+page.hasMorePages;
+
+final simple = await laconic.table('users').orderBy('id').simplePaginate(2, perPage: 20);
+simple.hasMorePages;
+
+final cursor = await laconic.table('users').cursorPaginate(20);
+final next = await laconic.table('users').cursorPaginate(
+  20,
+  cursor: cursor.nextCursor,
+);
+```
+
+### Streaming
+
+```dart
+// Native database cursor
+await for (final row in laconic.table('users').orderBy('id').cursor()) {
+  print(row['name']);
+}
+
+// Offset or keyset chunked streams
+await for (final row in laconic.table('users').orderBy('id').lazy(500)) {
+  print(row['name']);
+}
+await for (final row in laconic.table('users').lazyById(500)) {
+  print(row['name']);
+}
+
+await laconic.table('users').eachById((row) async {
+  await sendWelcomeEmail(row['email']);
+});
+```
+
+### JSON and Full Text
+
+```dart
+await laconic.table('users').whereJsonContains('tags', 'admin').get();
+await laconic.table('users').whereJsonContains('profile->roles', 'admin').get();
+await laconic.table('users').whereJsonContainsKey('profile->email').get();
+await laconic.table('users').whereJsonLength('tags', 2).get();
+await laconic.table('users').whereJsonOverlaps('tags', ['admin', 'member']).get();
+
+await laconic.table('posts').whereFullText(['title', 'body'], 'dart').get();
+await laconic.table('posts')
+    .whereFullText(['body'], 'quick & fox', mode: 'raw', language: 'english')
+    .get();
+```
+
+JSON paths and full-text availability differ per dialect; see the driver
+READMEs and CHANGELOGs for details. SQLite full-text requires an FTS5 table.
+
+### Dialect Features
+
+| Feature | Method | MySQL | PostgreSQL | SQLite |
+|---|---|---|---|---|
+| Case-sensitive comparison | `whereBinary` | yes | - | - |
+| Straight join | `straightJoin` | yes | falls back to JOIN | falls back to JOIN |
+| Index hints | `useIndex` / `forceIndex` / `ignoreIndex` | yes | ignored | ignored |
+| UPDATE ... FROM | `updateFrom` | - | yes | - |
+| LATERAL join | `joinLateral` / `leftJoinLateral` | yes | yes | - |
+| Per-group limit | `groupLimit` | yes | yes | yes |
+| JSON overlaps | `whereJsonOverlaps` | yes | arrays/keys | arrays |
+| Full text | `whereFullText` | yes | yes | FTS5 |
+
+### Query Hooks
+
+```dart
+final laconic = Laconic(
+  SqliteDriver(SqliteConfig('app.db')),
+  beforeQuery: (query) => print('→ ${query.sql}'),
+  afterQuery: (query, elapsed) =>
+      print('← ${query.sql} (${elapsed.inMilliseconds} ms)'),
+);
+```
+
 ### Chunking Large Results
 
 `chunkById` reads in ascending order of a unique, non-null cursor column
@@ -465,6 +589,12 @@ class MyDriver implements DatabaseDriver {
     // Implementation
   }
 
+  @override
+  Stream<LaconicResult> selectStream(String sql, [List<Object?> params = const []]) async* {
+    // Optional: use a native cursor. The default buffers select().
+    yield* Stream.fromIterable(await select(sql, params));
+  }
+
   // Implement other methods...
 }
 ```
@@ -494,17 +624,16 @@ statement disposal.
 
 ## Upgrading to the current release
 
-- The core is `5.0.1`, MySQL is `4.0.1`, and SQLite/PostgreSQL are `3.0.1`. Update the core and your chosen drivers together.
-- Custom grammars using `implements SqlGrammar` must implement `compileUnion`; those using `extends SqlGrammar` inherit its default implementation.
-- `chunkById` reads in ascending cursor order and applies an existing offset only to the first batch. Parent UNION ordering and pagination apply to the complete result.
-- Official drivers isolate transactions by instance and explicitly reject same-instance nested transactions.
-- Results share column indexes while retaining mutable `columns` and `values`. Requesting a row's mutable column list switches that row to linear lookup so edits remain visible.
+- The core is `6.0.0`, SQLite is `4.0.0`, MySQL is `5.0.0`, and PostgreSQL is `4.0.0`. Update the core and your chosen drivers together.
+- `sum()`, `max()` and `min()` now return `num?`; `avg()` remains `double?`.
+- `insert()` returns `Future<bool>`.
+- `where('column', null)` now compiles to `IS NULL` instead of `= NULL`.
+- Custom grammars overriding `SqlGrammar.compileSelect` must add the new optional parameters (`selectBindings`, `groupBindings`, `distinctColumns`, `fromSubquery`, `fromAlias`, `indexHints`).
+- Custom drivers using `implements DatabaseDriver` must implement `selectStream`; the default implementation buffers `select()`.
+- New APIs include pagination/streaming, subqueries, JSON/full text, `groupLimit`, query hooks and the dialect methods listed above.
+- Existing `first()` / `find()` behavior is unchanged (they throw); use `firstOrNull()` / `findOrNull()` for nullable results.
 
-Performance changes include linear MySQL packet reassembly, PostgreSQL statement
-reuse and disposal per physical connection, shared result column metadata, and
-single-pass raw SQL parameter conversion.
-
-Release notes: [core](packages/laconic/CHANGELOG.md), [SQLite](packages/laconic_sqlite/CHANGELOG.md), [MySQL](packages/laconic_mysql/CHANGELOG.md), [PostgreSQL](packages/laconic_postgresql/CHANGELOG.md).
+Release notes: [core](packages/laconic/CHANGELOG.md), [SQLite](packages/laconic_sqlite/CHANGELOG.md), [MySQL](packages/laconic_mysql/CHANGELOG.md), [PostgreSQL](packages/laconic_postgresql/CHANGELOG.md). Publish steps: [RELEASE.md](RELEASE.md).
 
 ## Migration from 1.x
 

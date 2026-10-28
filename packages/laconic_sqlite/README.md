@@ -11,8 +11,8 @@ Use Dart 3.10 or a later 3.x SDK with the workspace's currently resolved
 
 ```yaml
 dependencies:
-  laconic: ^5.0.1
-  laconic_sqlite: ^3.0.1
+  laconic: ^6.0.0
+  laconic_sqlite: ^4.0.0
 ```
 
 ## Usage
@@ -107,11 +107,14 @@ calling isolate. Applications must schedule long queries on a worker isolate
 when needed. SQLite does not support `FOR UPDATE` or `FOR SHARE` row-lock clauses.
 Call `close()` to release cached statements and the database connection.
 
-## Upgrading from 2.x to 3.0
+## Upgrading from 3.x to 4.0
 
-- Install with `laconic: ^5.0.1` and adopt the core 5.0 UNION and cursor-pagination contracts.
+- Requires `laconic: ^6.0.0`.
+- `selectStream` now uses a native SQLite cursor; `cursor()`, `lazy()` and `lazyById()` are available through the core builder.
+- JSON contains/key/length/overlaps and `->` paths are supported.
+- `whereFullText` works with FTS5 virtual tables (`<table> match ?`).
+- `truncate()` resets the `sqlite_sequence` row when present.
 - Same-instance nested transactions fail explicitly; overlapping transactions and unrelated queries wait in a queue instead of joining the current transaction.
-- Result `columns` and `values` remain mutable.
 - See the [CHANGELOG](CHANGELOG.md) for the complete release notes.
 
 ## License

@@ -11,8 +11,8 @@ also requires Dart 3.10 for its SQLite dependency.
 
 ```yaml
 dependencies:
-  laconic: ^5.0.1
-  laconic_mysql: ^4.0.1
+  laconic: ^6.0.0
+  laconic_mysql: ^5.0.0
 ```
 
 ## Usage
@@ -122,9 +122,11 @@ For a trusted local or private network where key pinning is not required,
 automatically. This protects the password from passive observation, but it
 does not authenticate the server. Prefer TLS whenever possible.
 
-## Upgrading from 3.x to 4.0
+## Upgrading from 4.x to 5.0
 
-- Install with `laconic: ^5.0.1` and adopt the core 5.0 UNION and cursor-pagination contracts.
+- Requires `laconic: ^6.0.0`.
+- `selectStream` uses the client's streaming result set; `cursor()`, `lazy()` and `lazyById()` are available through the core builder.
+- New dialect methods: JSON contains/key/length/overlaps with `->` paths, full-text search, `whereBinary`, `straightJoin`, index hints, LATERAL joins, `insertOrIgnoreUsing` and `groupLimit`.
 - Commands complete in order on each connection; transaction queries also serialize preparation, cache access and command execution.
 - Same-instance nested transactions now fail explicitly. Separate driver instances retain their own database and transaction context.
 - See the [CHANGELOG](CHANGELOG.md) for the complete release notes.

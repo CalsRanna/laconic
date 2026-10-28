@@ -12,11 +12,15 @@ This is the core package that provides the query builder API and abstract driver
 
 ## Features
 
-- **Laravel-style API** - Familiar query builder syntax with 80+ methods
+- **Laravel-style API** - Familiar query builder syntax with 130+ methods
+- **Subqueries** - SELECT/FROM/JOIN subqueries, IN subqueries, insert-using and UNION
+- **Pagination and Streaming** - `paginate`, `simplePaginate`, `cursorPaginate`, `cursor`, `lazy`, `lazyById`
+- **JSON and Full Text** - JSON conditions with `->` paths; MySQL/PostgreSQL full text; SQLite FTS5
+- **Dialect Features** - MySQL binary/index hints/straight joins, PostgreSQL `updateFrom`/LATERAL, `groupLimit`
 - **Fluent Interface** - Chainable methods for elegant query building
 - **Parameterized Queries** - Bound values for query parameters; raw SQL and identifiers must be trusted
 - **Transaction Support** - Complete transaction management
-- **Query Listener** - Built-in debugging and logging
+- **Query Hooks** - `beforeQuery` / `afterQuery` timing callbacks
 - **Driver Abstraction** - Clean separation between query builder and database implementations
 
 ## Installation
@@ -27,8 +31,8 @@ resolved `sqlite3 3.3.4` dependency.
 
 ```yaml
 dependencies:
-  laconic: ^5.0.1
-  laconic_sqlite: ^3.0.1  # Or your preferred driver
+  laconic: ^6.0.0
+  laconic_sqlite: ^4.0.0  # Or your preferred driver
 ```
 
 ## Quick Start
@@ -137,10 +141,17 @@ print(sql); // SELECT * FROM users WHERE active = ?
 // Get by primary key (shorthand)
 final user = await laconic.table('users').find(1);
 
+// Nullable retrieval
+final maybeUser = await laconic.table('users').findOrNull(1);
+final maybeFirst = await laconic.table('users').firstOrNull();
+final fallback = await laconic.table('users').firstOr(
+  () => LaconicResult.fromMap({'id': 0, 'name': 'guest'}),
+);
+
 // Get first matching record (shorthand)
 final admin = await laconic.table('users').firstWhere('role', 'admin');
 
-// Get first record (throws if none found)
+// Get first record (throws if none found; firstOrFail() is an alias)
 final user = await laconic.table('users').first();
 
 // Get sole record (throws if none or multiple found)
@@ -303,6 +314,100 @@ final results = await laconic.table('users').select(['id', 'name'])
     .orderBy('id').limit(20).get();
 ```
 
+### Subqueries
+
+```dart
+final users = await laconic.table('users u')
+    .select(['u.id'])
+    .selectSub(
+      (q) => q.from('posts p')
+          .selectRaw('count(*)')
+          .whereColumn('p.user_id', 'u.id'),
+      'posts_count',
+    )
+    .get();
+
+final active = await laconic.table('users')
+    .fromSub((q) => q.from('users').where('active', 1), 'u')
+    .get();
+
+final authors = await laconic.table('users')
+    .whereIn('id', (q) => q.from('posts').select(['user_id']))
+    .get();
+
+final rows = await laconic.table('posts p')
+    .select(['p.id', 'x.views'])
+    .joinSub(
+      (q) => q.from('post_stats').select(['post_id', 'views']),
+      'x',
+      'p.id',
+      '=',
+      'x.post_id',
+    )
+    .get();
+
+await laconic.table('users_archive')
+    .insertUsing(['id', 'name'], laconic.table('users').select(['id', 'name']));
+```
+
+### Pagination and Streaming
+
+```dart
+final page = await laconic.table('users').orderBy('id').paginate(2, perPage: 20);
+page.data;
+page.total;
+page.lastPage;
+page.hasMorePages;
+
+final simple = await laconic.table('users').simplePaginate(2, perPage: 20);
+final cursor = await laconic.table('users').cursorPaginate(20);
+final next = await laconic.table('users').cursorPaginate(
+  20,
+  cursor: cursor.nextCursor,
+);
+
+await for (final row in laconic.table('users').orderBy('id').cursor()) {
+  print(row['name']);
+}
+await for (final row in laconic.table('users').orderBy('id').lazy(500)) {
+  print(row['name']);
+}
+await for (final row in laconic.table('users').lazyById(500)) {
+  print(row['name']);
+}
+```
+
+### JSON, Full Text and Dialect Methods
+
+```dart
+await laconic.table('users').whereJsonContains('tags', 'admin').get();
+await laconic.table('users').whereJsonContains('profile->roles', 'admin').get();
+await laconic.table('users').whereJsonContainsKey('profile->email').get();
+await laconic.table('users').whereJsonLength('tags', 2).get();
+await laconic.table('users').whereJsonOverlaps('tags', ['admin']).get();
+
+await laconic.table('posts').whereFullText(['title', 'body'], 'dart').get();
+
+await laconic.table('users').whereBinary('name', 'John').get(); // MySQL
+await laconic.table('users').useIndex('idx_name').get();       // MySQL
+await laconic.table('accounts').updateFrom('balances', {       // PostgreSQL
+  'amount': raw('balances.amount'),
+});
+```
+
+Driver READMEs document availability and dialect-specific behavior.
+
+### Query Hooks
+
+```dart
+final laconic = Laconic(
+  SqliteDriver(SqliteConfig('app.db')),
+  beforeQuery: (query) => print('→ ${query.sql}'),
+  afterQuery: (query, elapsed) =>
+      print('← ${query.sql} (${elapsed.inMilliseconds} ms)'),
+);
+```
+
 ### Chunking Large Results
 
 `chunkById` reads in ascending order of a unique, non-null cursor column
@@ -381,6 +486,12 @@ class MyDriver implements DatabaseDriver {
   }
 
   @override
+  Stream<LaconicResult> selectStream(String sql, [List<Object?> params = const []]) async* {
+    // Optional: use a native cursor. The default buffers select().
+    yield* Stream.fromIterable(await select(sql, params));
+  }
+
+  @override
   Future<void> statement(String sql, [List<Object?> params = const []]) async {
     // Implementation
   }
@@ -410,12 +521,15 @@ class MyDriver implements DatabaseDriver {
 }
 ```
 
-## Upgrading to 5.0
+## Upgrading to 6.0
 
-- Install the core and driver versions shown above: SQLite/PostgreSQL drivers use the 3.0 series and MySQL uses the 4.0 series.
-- Custom grammars extending `SqlGrammar` inherit `compileUnion`; classes implementing `SqlGrammar` must implement the added method.
-- `chunkById` uses ascending cursor order and a first-batch offset. Parent UNION ordering and pagination apply to the complete result.
-- Official drivers isolate transactions by instance and explicitly reject same-instance nested transactions.
+- Install the core and driver versions shown above: SQLite/PostgreSQL use the 4.0 series and MySQL uses the 5.0 series.
+- `sum()`, `max()` and `min()` return `num?`; `avg()` remains `double?`.
+- `insert()` returns `Future<bool>`.
+- `where('column', null)` compiles to `IS NULL`.
+- `SqlGrammar.compileSelect` has new optional parameters; custom overrides must add them.
+- Custom `DatabaseDriver` implementations must implement `selectStream`.
+- `first()` / `find()` still throw; use `firstOrNull()` / `findOrNull()` for nullable results.
 
 See the [CHANGELOG](CHANGELOG.md) for the full release notes.
 

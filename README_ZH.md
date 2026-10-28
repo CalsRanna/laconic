@@ -8,17 +8,18 @@
 
 ## 特性
 
-- **Laravel 风格 API** - 熟悉的查询构建器语法，80+ 个方法支持过滤、联表、聚合和批量处理
+- **Laravel 风格 API** - 130+ 个链式方法，覆盖过滤、联表、聚合、子查询、分页和写入
 - **多数据库支持** - 通过独立驱动包支持 MySQL、SQLite 和 PostgreSQL
-- **驱动抽象** - 核心查询构建器与数据库实现清晰分离
-- **完整 JOIN 支持** - INNER、LEFT、RIGHT、CROSS JOIN，支持 EXISTS 子查询和 30+ 条件方法
-- **子查询** - WHERE EXISTS、UNION、嵌套 WHERE 分组
-- **行锁** - MySQL/PostgreSQL 的 `FOR UPDATE` 和共享锁
-- **Upsert** - 使用各数据库原生语法插入或更新
-- **日期 WHERE** - `whereDate`、`whereTime`、`whereDay`、`whereMonth`、`whereYear`
-- **分块处理** - `chunk`、`chunkById`、`each` 处理大数据集
-- **调试工具** - `toSql()`、`getBindings()`、`dump()`、`dd()` 查询检查
-- **链式方法** - 流畅的查询构建体验
+- **子查询** - SELECT/FROM/JOIN 子查询、WHERE EXISTS、IN 子查询、insert-using 和 UNION
+- **分页与流式** - `paginate`、`simplePaginate`、`cursorPaginate`、原生 `cursor()`、`lazy()`、`lazyById()`
+- **JSON 与全文** - JSON contains/key/length/overlaps 与 `->` 路径；MySQL/PostgreSQL 全文；SQLite FTS5
+- **方言特性** - MySQL binary/索引提示/straight join，PostgreSQL `updateFrom`/LATERAL，`groupLimit`
+- **完整 JOIN 支持** - INNER、LEFT、RIGHT、CROSS、子查询 JOIN、LATERAL JOIN 和 30+ 条件方法
+- **行锁** - `FOR UPDATE`、共享锁以及可移植的原始锁子句
+- **Upsert 与批量写入** - `insertGetId`、`upsert`、`insertUsing`、`insertOrIgnoreUsing`、`updateOrInsert`、`incrementEach`
+- **日期 WHERE** - `whereDate`、`whereTime`、`whereDay`、`whereMonth`、`whereYear`，支持比较符
+- **分块处理** - `chunk`、`chunkById`、`each`、`cursor`、`lazy`、`lazyById`、`eachById`
+- **调试工具** - `toSql()`、`getBindings()`、`toRawSql()`、`dump()`、`dd()` 和查询钩子
 - **参数化查询** - 查询值使用参数绑定；原始 SQL 和标识符须来自可信来源
 - **事务支持** - 完整的事务管理
 - **查询监听器** - 内置调试和日志功能
@@ -27,10 +28,10 @@
 
 | 包 | 描述 | 版本 |
 |---|------|------|
-| [laconic](https://pub.dev/packages/laconic) | 核心查询构建器 | 5.0.1 |
-| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite 驱动 | 3.0.1 |
-| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 4.0.1 |
-| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 3.0.1 |
+| [laconic](https://pub.dev/packages/laconic) | 核心查询构建器 | 6.0.0 |
+| [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite 驱动 | 4.0.0 |
+| [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 5.0.0 |
+| [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 4.0.0 |
 
 ## 安装
 
@@ -41,10 +42,10 @@
 
 ```yaml
 dependencies:
-  laconic: ^5.0.1
-  laconic_sqlite: ^3.0.1    # SQLite
-  # laconic_mysql: ^4.0.1   # MySQL
-  # laconic_postgresql: ^3.0.1  # PostgreSQL
+  laconic: ^6.0.0
+  laconic_sqlite: ^4.0.0    # SQLite
+  # laconic_mysql: ^5.0.0   # MySQL
+  # laconic_postgresql: ^4.0.0  # PostgreSQL
 ```
 
 然后运行：
@@ -367,6 +368,105 @@ final results = await laconic.table('users')
     .get();
 ```
 
+### 子查询
+
+```dart
+// SELECT 子查询
+final users = await laconic.table('users u')
+    .select(['u.id'])
+    .selectSub(
+      (q) => q.from('posts p')
+          .selectRaw('count(*)')
+          .whereColumn('p.user_id', 'u.id'),
+      'posts_count',
+    )
+    .get();
+
+// FROM 子查询
+final active = await laconic.table('users')
+    .fromSub((q) => q.from('users').where('active', 1), 'u')
+    .get();
+
+// IN 子查询（回调或现成的 QueryBuilder）
+final authors = await laconic.table('users')
+    .whereIn('id', (q) => q.from('posts').select(['user_id']))
+    .get();
+
+// JOIN 子查询
+final rows = await laconic.table('posts p')
+    .select(['p.id', 'x.views'])
+    .joinSub(
+      (q) => q.from('post_stats').select(['post_id', 'views']),
+      'x',
+      'p.id',
+      '=',
+      'x.post_id',
+    )
+    .get();
+
+// INSERT ... SELECT
+await laconic.table('users_archive')
+    .insertUsing(['id', 'name'], laconic.table('users').select(['id', 'name']));
+```
+
+### 分页与流式
+
+```dart
+final page = await laconic.table('users').orderBy('id').paginate(2, perPage: 20);
+page.data;
+page.total;
+page.lastPage;
+page.hasMorePages;
+
+final simple = await laconic.table('users').simplePaginate(2, perPage: 20);
+final cursor = await laconic.table('users').cursorPaginate(20);
+final next = await laconic.table('users').cursorPaginate(
+  20,
+  cursor: cursor.nextCursor,
+);
+
+await for (final row in laconic.table('users').orderBy('id').cursor()) {
+  print(row['name']);
+}
+await for (final row in laconic.table('users').orderBy('id').lazy(500)) {
+  print(row['name']);
+}
+await for (final row in laconic.table('users').lazyById(500)) {
+  print(row['name']);
+}
+```
+
+### JSON、全文与方言方法
+
+```dart
+await laconic.table('users').whereJsonContains('tags', 'admin').get();
+await laconic.table('users').whereJsonContains('profile->roles', 'admin').get();
+await laconic.table('users').whereJsonContainsKey('profile->email').get();
+await laconic.table('users').whereJsonLength('tags', 2).get();
+await laconic.table('users').whereJsonOverlaps('tags', ['admin']).get();
+
+await laconic.table('posts').whereFullText(['title', 'body'], 'dart').get();
+
+await laconic.table('users').whereBinary('name', 'John').get(); // MySQL
+await laconic.table('users').useIndex('idx_name').get();       // MySQL
+await laconic.table('accounts').updateFrom('balances', {       // PostgreSQL
+  'amount': raw('balances.amount'),
+});
+```
+
+具体可用性以各驱动 README 和 CHANGELOG 为准。
+
+### 查询钩子
+
+```dart
+final laconic = Laconic(
+  SqliteDriver(SqliteConfig('app.db')),
+  beforeQuery: (query) => print('→ ${query.sql}'),
+  afterQuery: (query, elapsed) =>
+      print('← ${query.sql}（${elapsed.inMilliseconds} ms）'),
+);
+```
+
 ### 大数据集分块处理
 
 `chunkById` 按唯一、非 null 的游标列升序读取，默认列为 `id`。它会替换已有排序，
@@ -482,16 +582,16 @@ docker compose down
 
 ## 升级到当前版本
 
-- 核心包为 `5.0.1`，MySQL 驱动为 `4.0.1`，SQLite/PostgreSQL 驱动为 `3.0.1`；请一起更新核心包和所用驱动。
-- 自定义语法若使用 `implements SqlGrammar`，需要实现 `compileUnion`；使用 `extends SqlGrammar` 可以继承默认实现。
-- `chunkById` 按游标升序读取，已有 offset 仅应用于首批；UNION 父构造器的排序和分页作用于完整结果。
-- 官方驱动隔离不同实例的事务，并明确拒绝同实例嵌套事务。
-- 结果共享列名索引并保留可修改的 `columns`/`values`；获取某行的可修改列名列表后，该行改用兼容修改的线性查找。
+- 核心包为 `6.0.0`，MySQL 驱动为 `5.0.0`，SQLite/PostgreSQL 驱动为 `4.0.0`；请一起更新核心包和所用驱动。
+- `sum()`、`max()`、`min()` 返回 `num?`；`avg()` 仍为 `double?`。
+- `insert()` 返回 `Future<bool>`。
+- `where('column', null)` 现在编译为 `IS NULL`，而不是 `= NULL`。
+- 自定义语法若覆盖 `SqlGrammar.compileSelect`，必须补上新增的可选参数（`selectBindings`、`groupBindings`、`distinctColumns`、`fromSubquery`、`fromAlias`、`indexHints`）。
+- 自定义驱动若使用 `implements DatabaseDriver`，必须实现 `selectStream`；默认实现会缓冲 `select()`。
+- 新增分页/流式、子查询、JSON/全文、`groupLimit`、查询钩子及上表列出的方言方法。
+- `first()` / `find()` 语义不变（空结果抛异常）；需要可空结果请用 `firstOrNull()` / `findOrNull()`。
 
-本次性能改进包括 MySQL 分片数据线性重组、PostgreSQL 按物理连接复用并释放预编译语句、
-共享结果列元数据，以及单次扫描原始 SQL 参数。
-
-发布记录：[核心包](packages/laconic/CHANGELOG.md)、[SQLite](packages/laconic_sqlite/CHANGELOG.md)、[MySQL](packages/laconic_mysql/CHANGELOG.md)、[PostgreSQL](packages/laconic_postgresql/CHANGELOG.md)。
+发布记录：[核心包](packages/laconic/CHANGELOG.md)、[SQLite](packages/laconic_sqlite/CHANGELOG.md)、[MySQL](packages/laconic_mysql/CHANGELOG.md)、[PostgreSQL](packages/laconic_postgresql/CHANGELOG.md)。发布步骤见 [RELEASE.md](RELEASE.md)。
 
 ## 从 1.x 迁移
 

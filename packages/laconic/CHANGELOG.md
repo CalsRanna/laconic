@@ -1,3 +1,62 @@
+## 6.0.0
+
+### Breaking changes and migration
+
+- `sum()`, `max()` and `min()` now return `num?` and preserve integer results.
+  `avg()` remains `double?`.
+- `insert()` returns `Future<bool>`.
+- `where('column', null)` and `where('column', null, comparator: '!=' / '<>')`
+  now compile to `IS NULL` / `IS NOT NULL`.
+- `SqlGrammar.compileSelect` accepts new optional named parameters:
+  `selectBindings`, `groupBindings`, `distinctColumns`, `fromSubquery`,
+  `fromAlias` and `indexHints`. Grammars that override it must add them.
+- `DatabaseDriver` adds `selectStream`. Drivers using `implements DatabaseDriver`
+  must implement it; the default implementation buffers `select`.
+- `SqlGrammar` adds `randomOrderExpression`, `numberedPlaceholders`,
+  `inlineSubquery`, `compileTruncateAll`, `compileInsertOrIgnoreUsing` and
+  `compileUpdateFrom`. They have default implementations.
+- `whereIn` / `whereNotIn` and their OR variants accept `Object` (a List or a
+  subquery); `whereNot` / `orWhereNot` accept a column or a callback;
+  `union` / `unionAll` accept a callback or a `QueryBuilder`.
+- Use this release with `laconic_sqlite: ^4.0.0`, `laconic_mysql: ^5.0.0` or
+  `laconic_postgresql: ^4.0.0`.
+
+### Query builder features
+
+- Nullable retrieval: `firstOrNull`, `findOrNull`, `firstWhereOrNull`,
+  `firstOr`, `findOr`, `firstOrFail`, `findOrFail`, `soleValue`, `existsOr`,
+  `doesntExistOr`.
+- WHERE / HAVING: `orWhereNone`, negated nested groups, `whereIntegerInRaw`
+  family, `whereRowValues`, `whereValueBetween`, `whereNullSafeEquals`,
+  `havingBetween` / `havingNull` / `havingNotNull` / `havingNested` and OR
+  variants, `whereLike(caseSensitive:)`, `whereMap`.
+- Writes: operator validation, `Expression` values in INSERT/UPDATE/increment,
+  `updateOrInsert`, `incrementEach`, `decrementEach`, `insertUsing`,
+  `insertOrIgnoreUsing`.
+- Subqueries: `selectSub`, `fromSub`, `fromRaw`, `joinSub`, `leftJoinSub`,
+  `rightJoinSub`, `crossJoinSub`, `joinLateral`, `leftJoinLateral`, subqueries
+  in `whereIn`, subquery values in `where`, and `insertUsing`.
+- Sorting and pagination: `reorder(column, direction)`, `reorderDesc`,
+  `inOrderOf`, `forPageAfterId`, `forPageBeforeId`, `paginate`,
+  `simplePaginate`, `cursorPaginate`, `getCountForPagination`, plus
+  `LaconicPage`, `LaconicSimplePage` and `LaconicCursorPage`.
+- Streaming: `cursor`, `lazy`, `lazyById`, `eachById`, and native
+  `selectStream` in all official drivers.
+- Debugging: `toRawSql`, `dumpRawSql`, `ddRawSql`, `getLimit`, `getOffset`.
+- Dialect features: JSON contains/key/length/overlaps with `->` paths, full
+  text search (MySQL/PostgreSQL and SQLite FTS5), MySQL binary comparison,
+  `straightJoin` and index hints, PostgreSQL `updateFrom`, `groupLimit`,
+  `distinct(columns)` and `count(column)`.
+- Query hooks: `Laconic(beforeQuery:, afterQuery:)`.
+- `selectRaw` and `groupByRaw` accept bindings; date filters accept comparators.
+
+### Fixes
+
+- SQLite ignores row-lock clauses instead of emitting invalid SQL or throwing.
+- `inRandomOrder()` uses `rand()` on MySQL and `random()` elsewhere.
+- SQLite `truncate()` resets AUTOINCREMENT when `sqlite_sequence` exists.
+- Corrected native-expression examples and the SQLite RIGHT JOIN note.
+
 ## 5.0.1
 
 - Republish with a plain semantic version without build metadata.

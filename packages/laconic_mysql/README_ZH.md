@@ -11,8 +11,8 @@
 
 ```yaml
 dependencies:
-  laconic: ^5.0.1
-  laconic_mysql: ^4.0.1
+  laconic: ^6.0.0
+  laconic_mysql: ^5.0.0
 ```
 
 ## 使用
@@ -119,9 +119,11 @@ final config = MysqlConfig(
 `MysqlConfig(..., useSsl: false)` 自动获取服务端公钥。这样能够防止密码被被动
 监听，但无法验证服务端身份，因此条件允许时仍应优先使用 TLS。
 
-## 从 3.x 升级到 4.0
+## 从 4.x 升级到 5.0
 
-- 与 `laconic: ^5.0.1` 一起安装，应用采用核心包 5.0 的 UNION 和游标分页约定。
+- 需要 `laconic: ^6.0.0`。
+- `selectStream` 使用客户端的流式结果集；核心构建器提供 `cursor()`、`lazy()`、`lazyById()`。
+- 新增 JSON contains/key/length/overlaps 及 `->` 路径、全文检索、`whereBinary`、`straightJoin`、索引提示、LATERAL JOIN、`insertOrIgnoreUsing`、`groupLimit`。
 - 同一连接上的命令按顺序完成；事务内多个查询也会串行执行准备、缓存访问和命令收发。
 - 同实例嵌套事务会明确报错；使用多个驱动实例时，各自保留数据库与事务归属。
 - 完整发布记录见 [CHANGELOG](CHANGELOG.md)。

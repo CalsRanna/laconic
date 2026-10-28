@@ -11,8 +11,8 @@
 
 ```yaml
 dependencies:
-  laconic: ^5.0.1
-  laconic_postgresql: ^3.0.1
+  laconic: ^6.0.0
+  laconic_postgresql: ^4.0.0
 ```
 
 ## 使用
@@ -127,9 +127,12 @@ await laconic.select('SELECT ?::jsonb ? ? AS found', ['{"key":1}', 'key']);
 
 占位符转换采用单次扫描，结果行直接构建值列表并共享列元数据。
 
-## 从 2.x 升级到 3.0
+## 从 3.x 升级到 4.0
 
-- 与 `laconic: ^5.0.1` 一起安装，应用采用核心包 5.0 的 UNION 和游标分页约定。
+- 需要 `laconic: ^6.0.0`。
+- `selectStream` 使用原生 PostgreSQL 结果流；核心构建器提供 `cursor()`、`lazy()`、`lazyById()`。
+- 新增 JSONB contains/key/length/overlaps 及 `->` 路径、全文检索、LATERAL JOIN、`updateFrom`、`groupLimit`。
+- 子查询嵌入会在 SELECT/FROM/JOIN/WHERE 中重新编号 `$N` 占位符。
 - 原始 SQL 参数严格按上述规则编号并验证数量；引用字符串内的问号不会被替换。
 - 同实例嵌套事务会明确报错，跨实例调用保留各自的连接和事务归属。
 - 完整发布记录见 [CHANGELOG](CHANGELOG.md)。

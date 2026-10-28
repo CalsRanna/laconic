@@ -11,8 +11,8 @@
 
 ```yaml
 dependencies:
-  laconic: ^5.0.1
-  laconic_sqlite: ^3.0.1
+  laconic: ^6.0.0
+  laconic_sqlite: ^4.0.0
 ```
 
 ## 使用
@@ -101,11 +101,14 @@ last-insert-ID getter，结果转换直接构建值列表并共享列元数据�
 自行安排到工作 isolate。SQLite 不支持 `FOR UPDATE` 或 `FOR SHARE` 行锁子句。
 应用结束时调用 `close()` 释放语句和数据库连接。
 
-## 从 2.x 升级到 3.0
+## 从 3.x 升级到 4.0
 
-- 与 `laconic: ^5.0.1` 一起安装，应用采用核心包 5.0 的 UNION 和游标分页约定。
+- 需要 `laconic: ^6.0.0`。
+- `selectStream` 使用原生 SQLite 游标；核心构建器提供 `cursor()`、`lazy()`、`lazyById()`。
+- 支持 JSON contains/key/length/overlaps 及 `->` 路径。
+- `whereFullText` 可用于 FTS5 虚拟表（`<table> match ?`）。
+- `truncate()` 在存在 `sqlite_sequence` 时重置自增序列。
 - 同实例嵌套事务会明确报错；重叠事务及无关查询会排队，避免混入当前事务。
-- 结果的 `columns` 和 `values` 仍可修改。
 - 完整发布记录见 [CHANGELOG](CHANGELOG.md)。
 
 ## 许可证
