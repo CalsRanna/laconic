@@ -874,6 +874,17 @@ void main() {
       );
     });
 
+    test('full text and JSON overlaps are unsupported on SQLite', () {
+      expect(
+        () => laconic.table(userTable).whereFullText(['name'], 'john').toSql(),
+        throwsA(isA<LaconicException>()),
+      );
+      expect(
+        () => laconic.table(userTable).whereJsonOverlaps('x', ['a']).toSql(),
+        throwsA(isA<LaconicException>()),
+      );
+    });
+
     test('inRandomOrder uses the SQLite random function', () async {
       final sql =
           laconic.table(userTable).inRandomOrder().toSql().toLowerCase();

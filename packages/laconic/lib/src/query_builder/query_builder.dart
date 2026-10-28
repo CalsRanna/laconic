@@ -66,6 +66,9 @@ class QueryBuilder {
   /// Lock clauses (FOR UPDATE / FOR SHARE).
   final List<Map<String, dynamic>> _locks = [];
 
+  /// MySQL index hints.
+  final List<Map<String, String>> _indexHints = [];
+
   /// Creates a new query builder instance.
   QueryBuilder({required Laconic laconic, required String table})
     : _laconic = laconic,
@@ -125,6 +128,7 @@ class QueryBuilder {
       distinct: false,
       fromSubquery: _fromSubquery,
       fromAlias: _fromAlias,
+      indexHints: _indexHints,
       limit: null,
       offset: null,
       locks: const [],
@@ -286,6 +290,23 @@ class QueryBuilder {
     }
     final compiled = _compileSubquery(query);
     final sql = 'insert into $_table (${columns.join(', ')}) ${compiled.sql}';
+    await _laconic.statement(sql, compiled.bindings);
+    return true;
+  }
+
+  /// Inserts rows produced by a subquery, ignoring duplicate-key errors.
+  Future<bool> insertOrIgnoreUsing(List<String> columns, Object query) async {
+    if (columns.isEmpty) {
+      throw LaconicException(
+        'insertOrIgnoreUsing requires at least one column',
+      );
+    }
+    final compiled = _compileSubquery(query);
+    final sql = _grammar.compileInsertOrIgnoreUsing(
+      table: _table,
+      columns: columns,
+      sql: compiled.sql,
+    );
     await _laconic.statement(sql, compiled.bindings);
     return true;
   }
@@ -585,6 +606,7 @@ class QueryBuilder {
     _table = table;
     _fromSubquery = null;
     _fromAlias = null;
+    _indexHints.clear();
     return this;
   }
 
@@ -592,6 +614,7 @@ class QueryBuilder {
   QueryBuilder fromSub(Object query, String as) {
     _fromSubquery = _compileSubquery(query);
     _fromAlias = as;
+    _indexHints.clear();
     return this;
   }
 
@@ -599,6 +622,28 @@ class QueryBuilder {
   QueryBuilder fromRaw(String sql, [List<Object?> bindings = const []]) {
     _fromSubquery = CompiledQuery(sql: sql, bindings: bindings);
     _fromAlias = null;
+    _indexHints.clear();
+    return this;
+  }
+
+  static final RegExp _indexNamePattern = RegExp(r'^[A-Za-z0-9_$]+$');
+
+  /// Adds a MySQL `USE INDEX` hint.
+  QueryBuilder useIndex(String index) => _addIndexHint('use', index);
+
+  /// Adds a MySQL `FORCE INDEX` hint.
+  QueryBuilder forceIndex(String index) => _addIndexHint('force', index);
+
+  /// Adds a MySQL `IGNORE INDEX` hint.
+  QueryBuilder ignoreIndex(String index) => _addIndexHint('ignore', index);
+
+  QueryBuilder _addIndexHint(String type, String index) {
+    final names = index.split(',').map((name) => name.trim()).toList();
+    if (names.isEmpty ||
+        names.any((name) => !_indexNamePattern.hasMatch(name))) {
+      throw LaconicException('Invalid index name: "$index"');
+    }
+    _indexHints.add({'type': type, 'index': names.join(', ')});
     return this;
   }
 
@@ -1341,6 +1386,9 @@ class QueryBuilder {
           .._groupBindings.addAll(_groupBindings)
           .._fromSubquery = _fromSubquery
           .._fromAlias = _fromAlias
+          .._indexHints.addAll(
+            _indexHints.map((hint) => Map<String, String>.from(hint)),
+          )
           .._wheres.addAll(_wheres.map(_deepCopyWhere))
           .._joins.addAll(_joins.map(_deepCopyJoin))
           .._orders.addAll(_orders.map((o) => Map<String, dynamic>.from(o)))
@@ -2162,6 +2210,232 @@ class QueryBuilder {
     return this;
   }
 
+  /// Adds a JSON containment condition.
+  ///
+  /// MySQL and PostgreSQL compare the encoded [value] against the JSON column;
+  /// SQLite checks array elements through `json_each`.
+  QueryBuilder whereJsonContains(String column, Object? value) {
+    return _addJsonContains(column, value, 'and', false);
+  }
+
+  /// Adds a JSON non-containment condition.
+  QueryBuilder whereJsonDoesntContain(String column, Object? value) {
+    return _addJsonContains(column, value, 'and', true);
+  }
+
+  /// Adds an OR JSON containment condition.
+  QueryBuilder orWhereJsonContains(String column, Object? value) {
+    return _addJsonContains(column, value, 'or', false);
+  }
+
+  /// Adds an OR JSON non-containment condition.
+  QueryBuilder orWhereJsonDoesntContain(String column, Object? value) {
+    return _addJsonContains(column, value, 'or', true);
+  }
+
+  QueryBuilder _addJsonContains(
+    String column,
+    Object? value,
+    String boolean,
+    bool not,
+  ) {
+    _wheres.add({
+      'type': 'jsonContains',
+      'column': column,
+      'value': value,
+      'boolean': boolean,
+      'not': not,
+    });
+    return this;
+  }
+
+  /// Adds a JSON key-existence condition using a path such as `$.name`.
+  QueryBuilder whereJsonContainsKey(String column, String path) {
+    return _addJsonContainsKey(column, path, 'and', false);
+  }
+
+  /// Adds a JSON key-absence condition using a path such as `$.name`.
+  QueryBuilder whereJsonDoesntContainKey(String column, String path) {
+    return _addJsonContainsKey(column, path, 'and', true);
+  }
+
+  /// Adds an OR JSON key-existence condition.
+  QueryBuilder orWhereJsonContainsKey(String column, String path) {
+    return _addJsonContainsKey(column, path, 'or', false);
+  }
+
+  /// Adds an OR JSON key-absence condition.
+  QueryBuilder orWhereJsonDoesntContainKey(String column, String path) {
+    return _addJsonContainsKey(column, path, 'or', true);
+  }
+
+  QueryBuilder _addJsonContainsKey(
+    String column,
+    String path,
+    String boolean,
+    bool not,
+  ) {
+    if (path.trim().isEmpty) {
+      throw LaconicException('JSON path cannot be empty');
+    }
+    _wheres.add({
+      'type': 'jsonContainsKey',
+      'column': column,
+      'path': _normalizeJsonPath(path),
+      'boolean': boolean,
+      'not': not,
+    });
+    return this;
+  }
+
+  /// Adds a JSON length condition.
+  QueryBuilder whereJsonLength(
+    String column,
+    int value, {
+    String comparator = '=',
+    String? path,
+  }) {
+    return _addJsonLength(column, value, 'and', comparator, path);
+  }
+
+  /// Adds an OR JSON length condition.
+  QueryBuilder orWhereJsonLength(
+    String column,
+    int value, {
+    String comparator = '=',
+    String? path,
+  }) {
+    return _addJsonLength(column, value, 'or', comparator, path);
+  }
+
+  QueryBuilder _addJsonLength(
+    String column,
+    int value,
+    String boolean,
+    String comparator,
+    String? path,
+  ) {
+    _wheres.add({
+      'type': 'jsonLength',
+      'column': column,
+      'path': path == null ? null : _normalizeJsonPath(path),
+      'comparator': validateOperator(comparator),
+      'value': value,
+      'boolean': boolean,
+    });
+    return this;
+  }
+
+  /// Adds a JSON overlap condition. Currently supported on MySQL only.
+  QueryBuilder whereJsonOverlaps(String column, Object? value) {
+    return _addJsonOverlaps(column, value, 'and', false);
+  }
+
+  /// Adds a JSON non-overlap condition. Currently supported on MySQL only.
+  QueryBuilder whereJsonDoesntOverlap(String column, Object? value) {
+    return _addJsonOverlaps(column, value, 'and', true);
+  }
+
+  /// Adds an OR JSON overlap condition.
+  QueryBuilder orWhereJsonOverlaps(String column, Object? value) {
+    return _addJsonOverlaps(column, value, 'or', false);
+  }
+
+  /// Adds an OR JSON non-overlap condition.
+  QueryBuilder orWhereJsonDoesntOverlap(String column, Object? value) {
+    return _addJsonOverlaps(column, value, 'or', true);
+  }
+
+  QueryBuilder _addJsonOverlaps(
+    String column,
+    Object? value,
+    String boolean,
+    bool not,
+  ) {
+    _wheres.add({
+      'type': 'jsonOverlaps',
+      'column': column,
+      'value': value,
+      'boolean': boolean,
+      'not': not,
+    });
+    return this;
+  }
+
+  /// Adds a full-text search condition.
+  ///
+  /// MySQL modes: `boolean` or `natural language` (default).
+  /// PostgreSQL modes: `plain` (default), `phrase`, `websearch` or `raw`.
+  /// SQLite does not support full-text search through this method.
+  QueryBuilder whereFullText(
+    List<String> columns,
+    String value, {
+    String? mode,
+    String? language,
+    bool expanded = false,
+  }) {
+    return _addFullText(
+      columns,
+      value,
+      'and',
+      mode: mode,
+      language: language,
+      expanded: expanded,
+    );
+  }
+
+  /// Adds an OR full-text search condition.
+  QueryBuilder orWhereFullText(
+    List<String> columns,
+    String value, {
+    String? mode,
+    String? language,
+    bool expanded = false,
+  }) {
+    return _addFullText(
+      columns,
+      value,
+      'or',
+      mode: mode,
+      language: language,
+      expanded: expanded,
+    );
+  }
+
+  QueryBuilder _addFullText(
+    List<String> columns,
+    String value,
+    String boolean, {
+    String? mode,
+    String? language,
+    bool expanded = false,
+  }) {
+    if (columns.isEmpty) {
+      throw LaconicException('whereFullText requires at least one column');
+    }
+    _wheres.add({
+      'type': 'fullText',
+      'columns': List<String>.from(columns),
+      'value': value,
+      'boolean': boolean,
+      'options': {
+        if (mode != null) 'mode': mode,
+        if (language != null) 'language': language,
+        'expanded': expanded,
+      },
+    });
+    return this;
+  }
+
+  static String _normalizeJsonPath(String path) {
+    final trimmed = path.trim();
+    if (trimmed.startsWith(r'$')) {
+      return trimmed;
+    }
+    final prefix = trimmed.startsWith('.') ? r'$' : r'$.';
+    return '$prefix$trimmed';
+  }
+
   /// Adds an OR WHERE NULL condition to the query.
   ///
   /// [column] is the column name to check for NULL.
@@ -2854,6 +3128,7 @@ class QueryBuilder {
       distinct: _distinct,
       fromSubquery: _fromSubquery,
       fromAlias: _fromAlias,
+      indexHints: _indexHints,
       limit: _groups.isEmpty ? null : 1,
       offset: null,
       locks: const [],
@@ -3257,6 +3532,7 @@ class QueryBuilder {
           hasUnion ? null : (_distinctOn ? (columns ?? _columns) : null),
       fromSubquery: _fromSubquery,
       fromAlias: _fromAlias,
+      indexHints: _indexHints,
       limit: hasUnion ? null : limitOverride ?? _limit,
       offset: hasUnion ? null : _offset,
       locks: hasUnion ? [] : _locks,

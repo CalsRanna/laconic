@@ -691,6 +691,80 @@ void main() {
       );
     });
 
+    test('full text search works', () async {
+      const probe = 'laconic_ft_probe';
+      await laconic.statement('drop table if exists $probe');
+      await laconic.statement(
+        'create table $probe (id int primary key, body text, '
+        'fulltext key ft_body (body))',
+      );
+      try {
+        await laconic.table(probe).insert([
+          {'id': 1, 'body': 'the quick brown fox'},
+          {'id': 2, 'body': 'lazy dog sleeps'},
+          {'id': 3, 'body': 'a cat naps'},
+        ]);
+        expect(
+          await laconic.table(probe).whereFullText(['body'], 'fox').count(),
+          1,
+        );
+        expect(
+          await laconic
+              .table(probe)
+              .whereFullText(['body'], 'fox', mode: 'boolean')
+              .count(),
+          1,
+        );
+      } finally {
+        await laconic.statement('drop table if exists $probe');
+      }
+    });
+
+    test('JSON overlaps works on MySQL', () async {
+      const probe = 'laconic_json_overlap_probe';
+      await laconic.statement('drop table if exists $probe');
+      await laconic.statement(
+        'create table $probe (id int primary key, tags text)',
+      );
+      try {
+        await laconic.table(probe).insert([
+          {'id': 1, 'tags': '["a","b"]'},
+          {'id': 2, 'tags': '["c"]'},
+        ]);
+        expect(
+          await laconic.table(probe).whereJsonOverlaps('tags', ['b']).count(),
+          1,
+        );
+        expect(
+          await laconic.table(probe).whereJsonDoesntOverlap('tags', [
+            'b',
+          ]).count(),
+          1,
+        );
+      } finally {
+        await laconic.statement('drop table if exists $probe');
+      }
+    });
+
+    test('index hints compile', () {
+      expect(
+        laconic.table(userTable).useIndex('idx_name').toSql().toLowerCase(),
+        contains('use index (idx_name)'),
+      );
+      expect(
+        laconic.table(userTable).forceIndex('idx_name').toSql().toLowerCase(),
+        contains('force index (idx_name)'),
+      );
+      expect(
+        laconic.table(userTable).ignoreIndex('idx_name').toSql().toLowerCase(),
+        contains('ignore index (idx_name)'),
+      );
+      expect(
+        () => laconic.table(userTable).useIndex('bad name'),
+        throwsA(isA<LaconicException>()),
+      );
+    });
+
     test('join supports raw and nested conditions', () async {
       final rows =
           await laconic

@@ -673,6 +673,40 @@ void main() {
       );
     });
 
+    test('full text search works', () async {
+      const probe = 'laconic_ft_probe';
+      await laconic.statement('drop table if exists $probe');
+      await laconic.statement(
+        'create table $probe (id int primary key, body text)',
+      );
+      try {
+        await laconic.table(probe).insert([
+          {'id': 1, 'body': 'the quick brown fox'},
+          {'id': 2, 'body': 'lazy dog sleeps'},
+        ]);
+        expect(
+          await laconic.table(probe).whereFullText(['body'], 'fox').count(),
+          1,
+        );
+        expect(
+          await laconic
+              .table(probe)
+              .whereFullText(['body'], 'quick & fox', mode: 'raw')
+              .count(),
+          1,
+        );
+      } finally {
+        await laconic.statement('drop table if exists $probe');
+      }
+    });
+
+    test('JSON overlaps is unsupported on PostgreSQL', () {
+      expect(
+        () => laconic.table(userTable).whereJsonOverlaps('x', ['a']).toSql(),
+        throwsA(isA<LaconicException>()),
+      );
+    });
+
     test('distinct with columns compiles DISTINCT ON', () {
       expect(
         laconic.table(userTable).distinct(['gender']).toSql().toLowerCase(),

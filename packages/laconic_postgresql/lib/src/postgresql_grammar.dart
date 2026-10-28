@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:laconic/laconic.dart';
 import 'postgresql_placeholders.dart';
 
@@ -32,6 +34,7 @@ class PostgresqlGrammar extends SqlGrammar {
     List<String>? distinctColumns,
     CompiledQuery? fromSubquery,
     String? fromAlias,
+    List<Map<String, String>> indexHints = const [],
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
@@ -364,6 +367,16 @@ class PostgresqlGrammar extends SqlGrammar {
   }
 
   @override
+  String compileInsertOrIgnoreUsing({
+    required String table,
+    required List<String> columns,
+    required String sql,
+  }) {
+    return 'insert into $table (${columns.join(', ')}) $sql '
+        'on conflict do nothing';
+  }
+
+  @override
   CompiledQuery compileUpsert({
     required String table,
     required List<Map<String, Object?>> data,
@@ -606,6 +619,91 @@ class PostgresqlGrammar extends SqlGrammar {
           '$boolean${where['column']} ${where['comparator']} (${embedded.sql})',
         );
         bindings.addAll(embedded.bindings);
+      } else if (type == 'jsonContains') {
+        final not = where['not'] as bool;
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add(
+            '$boolean${not ? 'not ' : ''}'
+            '((${where['column']})::jsonb @> (${value.sql})::jsonb)',
+          );
+        } else {
+          parts.add(
+            '$boolean${not ? 'not ' : ''}'
+            '((${where['column']})::jsonb @> \$${bindings.length + 1}::jsonb)',
+          );
+          bindings.add(jsonEncode(value));
+        }
+      } else if (type == 'jsonContainsKey') {
+        final not = where['not'] as bool;
+        final segments = _jsonPathSegments(where['path'] as String);
+        final placeholders = <String>[];
+        for (final segment in segments) {
+          placeholders.add('\$${bindings.length + 1}');
+          bindings.add(segment);
+        }
+        final expression =
+            placeholders.isEmpty
+                ? '(${where['column']})::jsonb is not null'
+                : 'jsonb_extract_path((${where['column']})::jsonb, '
+                    '${placeholders.join(', ')}) is not null';
+        parts.add('$boolean${not ? 'not ' : ''}($expression)');
+      } else if (type == 'jsonLength') {
+        final path = where['path'] as String?;
+        final comparator = where['comparator'];
+        String target;
+        if (path == null || path == r'$') {
+          target = 'jsonb_array_length((${where['column']})::jsonb)';
+        } else {
+          final segments = _jsonPathSegments(path);
+          final placeholders = <String>[];
+          for (final segment in segments) {
+            placeholders.add('\$${bindings.length + 1}');
+            bindings.add(segment);
+          }
+          target =
+              'jsonb_array_length(jsonb_extract_path('
+              '(${where['column']})::jsonb, ${placeholders.join(', ')}))';
+        }
+        parts.add('$boolean$target $comparator \$${bindings.length + 1}');
+        bindings.add(where['value']);
+      } else if (type == 'jsonOverlaps') {
+        throw LaconicException(
+          'PostgreSQL does not support JSON overlaps operations',
+        );
+      } else if (type == 'fullText') {
+        final columns = where['columns'] as List<String>;
+        final options = where['options'] as Map<String, dynamic>;
+        final language = options['language'] as String? ?? 'english';
+        if (!RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(language)) {
+          throw LaconicException('Invalid full text language: "$language"');
+        }
+        final mode = options['mode'] as String? ?? 'plain';
+        final queryFunction = switch (mode) {
+          'plain' => 'plainto_tsquery',
+          'phrase' => 'phraseto_tsquery',
+          'websearch' => 'websearch_to_tsquery',
+          'raw' => 'to_tsquery',
+          _ =>
+            throw LaconicException(
+              'Invalid PostgreSQL full text mode: "$mode"',
+            ),
+        };
+        final vector = columns
+            .map((column) => "to_tsvector('$language', $column)")
+            .join(' || ');
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add(
+            "$boolean($vector) @@ $queryFunction('$language', ${value.sql})",
+          );
+        } else {
+          parts.add(
+            "$boolean($vector) @@ $queryFunction('$language', "
+            '\$${bindings.length + 1})',
+          );
+          bindings.add(value);
+        }
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
@@ -795,6 +893,20 @@ class PostgresqlGrammar extends SqlGrammar {
     }
 
     return parts.join('');
+  }
+
+  List<String> _jsonPathSegments(String path) {
+    var normalized = path.trim();
+    if (normalized.startsWith(r'$')) {
+      normalized = normalized.substring(1);
+    }
+    if (normalized.startsWith('.')) {
+      normalized = normalized.substring(1);
+    }
+    if (normalized.isEmpty) {
+      return const [];
+    }
+    return normalized.split('.');
   }
 
   /// Returns a complete SQL expression for a date-part extraction.

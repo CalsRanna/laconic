@@ -103,6 +103,7 @@ class _MockGrammar extends SqlGrammar {
     List<String>? distinctColumns,
     CompiledQuery? fromSubquery,
     String? fromAlias,
+    List<Map<String, String>> indexHints = const [],
   }) {
     final sql = StringBuffer('SELECT ');
     if (distinct) sql.write('DISTINCT ');

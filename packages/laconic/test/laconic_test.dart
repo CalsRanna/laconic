@@ -23,6 +23,7 @@ class MockGrammar extends SqlGrammar {
     List<String>? distinctColumns,
     CompiledQuery? fromSubquery,
     String? fromAlias,
+    List<Map<String, String>> indexHints = const [],
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];

@@ -43,6 +43,7 @@ abstract class SqlGrammar {
     List<String>? distinctColumns,
     CompiledQuery? fromSubquery,
     String? fromAlias,
+    List<Map<String, String>> indexHints = const [],
   });
 
   /// The dialect's random-ordering function used by `inRandomOrder()`.
@@ -197,6 +198,15 @@ abstract class SqlGrammar {
     required String table,
     required List<Map<String, Object?>> data,
   });
+
+  /// Compiles an INSERT OR IGNORE from a SELECT statement.
+  String compileInsertOrIgnoreUsing({
+    required String table,
+    required List<String> columns,
+    required String sql,
+  }) {
+    return 'insert into $table (${columns.join(', ')}) $sql';
+  }
 
   /// Compiles an UPSERT (INSERT ... ON CONFLICT / ON DUPLICATE KEY UPDATE) query.
   CompiledQuery compileUpsert({

@@ -4,6 +4,7 @@ import 'package:test/test.dart';
 // The same behavior checks run against each real database driver.
 void queryRegressions(Laconic Function() createDatabase) {
   const table = 'laconic_query_regressions';
+  const jsonTable = 'laconic_json_probe';
   late Laconic db;
   QueryBuilder query() => db.table(table);
   List<Object?> ids(List<LaconicResult> rows) => [
@@ -28,9 +29,20 @@ void queryRegressions(Laconic Function() createDatabase) {
       {'id': 4, 'active': 0, 'label': 'four'},
       {'id': 5, 'active': 1, 'label': 'five'},
     ]);
+
+    await db.statement('DROP TABLE IF EXISTS $jsonTable');
+    await db.statement(
+      'CREATE TABLE $jsonTable (id INT PRIMARY KEY, tags TEXT, payload TEXT)',
+    );
+    await db.table(jsonTable).insert([
+      {'id': 1, 'tags': '["a","b"]', 'payload': '{"name":"John","count":2}'},
+      {'id': 2, 'tags': '["b","c"]', 'payload': '{"name":"Jane","count":1}'},
+      {'id': 3, 'tags': '["d"]', 'payload': '{"name":"Jack","count":3}'},
+    ]);
   });
   tearDownAll(() async {
     try {
+      await db.statement('DROP TABLE IF EXISTS $jsonTable');
       await db.statement('DROP TABLE IF EXISTS $table');
     } finally {
       await db.close();
@@ -898,5 +910,78 @@ void queryRegressions(Laconic Function() createDatabase) {
       query().cursorPaginate(0),
       throwsA(isA<LaconicException>()),
     );
+  });
+
+  test('JSON contains, key and length conditions work', () async {
+    expect(
+      ids(
+        await db
+            .table(jsonTable)
+            .whereJsonContains('tags', 'b')
+            .orderBy('id')
+            .get(),
+      ),
+      [1, 2],
+    );
+    expect(
+      ids(await db.table(jsonTable).whereJsonDoesntContain('tags', 'b').get()),
+      [3],
+    );
+    expect(
+      await db
+          .table(jsonTable)
+          .whereJsonContainsKey('payload', r'$.name')
+          .count(),
+      3,
+    );
+    expect(
+      await db
+          .table(jsonTable)
+          .whereJsonDoesntContainKey('payload', r'$.missing')
+          .count(),
+      3,
+    );
+    expect(
+      ids(
+        await db
+            .table(jsonTable)
+            .whereJsonLength('tags', 2)
+            .orderBy('id')
+            .get(),
+      ),
+      [1, 2],
+    );
+    expect(
+      ids(
+        await db
+            .table(jsonTable)
+            .whereJsonLength('tags', 1, comparator: '>')
+            .orderBy('id')
+            .get(),
+      ),
+      [1, 2],
+    );
+  });
+
+  test('insertOrIgnoreUsing ignores duplicate rows', () async {
+    const probe = 'laconic_insert_ignore_using_probe';
+    await db.statement('drop table if exists $probe');
+    await db.statement(
+      'create table $probe (id int primary key, label varchar(20))',
+    );
+    try {
+      final queryOne = query().select(['id', 'label']).where('id', 1);
+      expect(
+        await db.table(probe).insertOrIgnoreUsing(['id', 'label'], queryOne),
+        isTrue,
+      );
+      expect(
+        await db.table(probe).insertOrIgnoreUsing(['id', 'label'], queryOne),
+        isTrue,
+      );
+      expect(await db.table(probe).count(), 1);
+    } finally {
+      await db.statement('drop table if exists $probe');
+    }
   });
 }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:laconic/laconic.dart';
 
 /// MySQL-specific SQL grammar.
@@ -25,6 +27,7 @@ class MysqlGrammar extends SqlGrammar {
     List<String>? distinctColumns,
     CompiledQuery? fromSubquery,
     String? fromAlias,
+    List<Map<String, String>> indexHints = const [],
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
@@ -44,6 +47,17 @@ class MysqlGrammar extends SqlGrammar {
       bindings.addAll(fromSubquery.bindings);
     } else {
       buffer.write(' from $table');
+    }
+
+    if (fromSubquery == null) {
+      for (final hint in indexHints) {
+        final keyword = switch (hint['type']) {
+          'use' => 'use',
+          'force' => 'force',
+          _ => 'ignore',
+        };
+        buffer.write(' $keyword index (${hint['index']})');
+      }
     }
 
     if (joins.isNotEmpty) {
@@ -276,6 +290,15 @@ class MysqlGrammar extends SqlGrammar {
   }
 
   @override
+  String compileInsertOrIgnoreUsing({
+    required String table,
+    required List<String> columns,
+    required String sql,
+  }) {
+    return 'insert ignore into $table (${columns.join(', ')}) $sql';
+  }
+
+  @override
   CompiledQuery compileUpsert({
     required String table,
     required List<Map<String, Object?>> data,
@@ -474,6 +497,77 @@ class MysqlGrammar extends SqlGrammar {
           '$boolean${where['column']} ${where['comparator']} (${where['sql']})',
         );
         bindings.addAll(where['bindings'] as List<Object?>);
+      } else if (type == 'jsonContains') {
+        final not = where['not'] as bool;
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add(
+            '$boolean${not ? 'not ' : ''}'
+            'json_contains(${where['column']}, ${value.sql})',
+          );
+        } else {
+          parts.add(
+            '$boolean${not ? 'not ' : ''}'
+            'json_contains(${where['column']}, ?)',
+          );
+          bindings.add(jsonEncode(value));
+        }
+      } else if (type == 'jsonContainsKey') {
+        final not = where['not'] as bool;
+        parts.add(
+          '$boolean${not ? 'not ' : ''}'
+          "ifnull(json_contains_path(${where['column']}, 'one', ?), 0)",
+        );
+        bindings.add(where['path']);
+      } else if (type == 'jsonLength') {
+        final path = where['path'] as String?;
+        final comparator = where['comparator'];
+        if (path != null) {
+          parts.add('${boolean}json_length(${where['column']}, ?) $comparator ?');
+          bindings.add(path);
+        } else {
+          parts.add('${boolean}json_length(${where['column']}) $comparator ?');
+        }
+        bindings.add(where['value']);
+      } else if (type == 'jsonOverlaps') {
+        final not = where['not'] as bool;
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add(
+            '$boolean${not ? 'not ' : ''}'
+            'json_overlaps(${where['column']}, ${value.sql})',
+          );
+        } else {
+          parts.add(
+            '$boolean${not ? 'not ' : ''}'
+            'json_overlaps(${where['column']}, ?)',
+          );
+          bindings.add(jsonEncode(value));
+        }
+      } else if (type == 'fullText') {
+        final columns = (where['columns'] as List<String>).join(', ');
+        final options = where['options'] as Map<String, dynamic>;
+        final mode = options['mode'] as String?;
+        if (mode != null && mode != 'boolean' && mode != 'natural language') {
+          throw LaconicException('Invalid MySQL full text mode: "$mode"');
+        }
+        final expanded = options['expanded'] as bool? ?? false;
+        final modeSql =
+            mode == 'boolean'
+                ? ' in boolean mode'
+                : ' in natural language mode';
+        final expandedSql =
+            expanded && mode != 'boolean' ? ' with query expansion' : '';
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add(
+            '${boolean}match ($columns) against ('
+            '${value.sql}$modeSql$expandedSql)',
+          );
+        } else {
+          parts.add('${boolean}match ($columns) against (?$modeSql$expandedSql)');
+          bindings.add(value);
+        }
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(

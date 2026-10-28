@@ -22,6 +22,7 @@ class SqliteGrammar extends SqlGrammar {
     List<String>? distinctColumns,
     CompiledQuery? fromSubquery,
     String? fromAlias,
+    List<Map<String, String>> indexHints = const [],
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
@@ -277,6 +278,15 @@ class SqliteGrammar extends SqlGrammar {
   }
 
   @override
+  String compileInsertOrIgnoreUsing({
+    required String table,
+    required List<String> columns,
+    required String sql,
+  }) {
+    return 'insert or ignore into $table (${columns.join(', ')}) $sql';
+  }
+
+  @override
   CompiledQuery compileUpsert({
     required String table,
     required List<Map<String, Object?>> data,
@@ -481,6 +491,49 @@ class SqliteGrammar extends SqlGrammar {
           '$boolean${where['column']} ${where['comparator']} (${where['sql']})',
         );
         bindings.addAll(where['bindings'] as List<Object?>);
+      } else if (type == 'jsonContains') {
+        final not = where['not'] as bool;
+        final value = where['value'];
+        final condition =
+            value is Expression
+                ? 'json_each.value is ${value.sql}'
+                : 'json_each.value is ?';
+        if (value is! Expression) {
+          bindings.add(value);
+        }
+        parts.add(
+          '$boolean${not ? 'not ' : ''}exists '
+          '(select 1 from json_each(${where['column']}) where $condition)',
+        );
+      } else if (type == 'jsonContainsKey') {
+        final not = where['not'] as bool;
+        parts.add(
+          '$boolean${not ? 'not ' : ''}'
+          'json_type(${where['column']}, ?) is not null',
+        );
+        bindings.add(where['path']);
+      } else if (type == 'jsonLength') {
+        final path = where['path'] as String?;
+        final comparator = where['comparator'];
+        if (path != null) {
+          parts.add(
+            '${boolean}json_array_length(${where['column']}, ?) $comparator ?',
+          );
+          bindings.add(path);
+        } else {
+          parts.add(
+            '${boolean}json_array_length(${where['column']}) $comparator ?',
+          );
+        }
+        bindings.add(where['value']);
+      } else if (type == 'jsonOverlaps') {
+        throw LaconicException(
+          'SQLite does not support JSON overlaps operations',
+        );
+      } else if (type == 'fullText') {
+        throw LaconicException(
+          'SQLite does not support whereFullText; use an FTS5 table',
+        );
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
