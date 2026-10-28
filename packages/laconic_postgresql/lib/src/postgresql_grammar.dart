@@ -11,6 +11,10 @@ class PostgresqlGrammar extends SqlGrammar {
   bool get numberedPlaceholders => true;
 
   @override
+  String inlineSubquery(CompiledQuery query) =>
+      PostgresqlPlaceholders.toQuestionPlaceholders(query.sql);
+
+  @override
   CompiledQuery compileSelect({
     required String table,
     required List<String> columns,
@@ -26,6 +30,8 @@ class PostgresqlGrammar extends SqlGrammar {
     List<Object?> selectBindings = const [],
     List<Object?> groupBindings = const [],
     List<String>? distinctColumns,
+    CompiledQuery? fromSubquery,
+    String? fromAlias,
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
@@ -45,7 +51,21 @@ class PostgresqlGrammar extends SqlGrammar {
     );
     buffer.write(compiledColumns.sql);
     bindings.addAll(compiledColumns.bindings);
-    buffer.write(' from $table');
+    if (fromSubquery != null) {
+      final embedded = PostgresqlPlaceholders.compile(
+        fromSubquery.sql,
+        fromSubquery.bindings,
+        offset: bindings.length,
+      );
+      if (fromAlias != null) {
+        buffer.write(' from (${embedded.sql}) as $fromAlias');
+      } else {
+        buffer.write(' from ${embedded.sql}');
+      }
+      bindings.addAll(embedded.bindings);
+    } else {
+      buffer.write(' from $table');
+    }
 
     if (joins.isNotEmpty) {
       buffer.write(_compileJoins(joins, bindings));
@@ -387,17 +407,28 @@ class PostgresqlGrammar extends SqlGrammar {
       final type = join['type'] as String? ?? 'inner';
       final table = join['table'] as String;
       final conditions = join['conditions'] as List<Map<String, dynamic>>;
+      final tableBindings = join['tableBindings'] as List<Object?>?;
+      var tableSql = table;
+      if (tableBindings != null) {
+        final embedded = PostgresqlPlaceholders.compile(
+          tableSql,
+          tableBindings,
+          offset: bindings.length,
+        );
+        tableSql = embedded.sql;
+        bindings.addAll(embedded.bindings);
+      }
 
       switch (type) {
         case 'left':
-          buffer.write(' left join $table');
+          buffer.write(' left join $tableSql');
         case 'right':
-          buffer.write(' right join $table');
+          buffer.write(' right join $tableSql');
         case 'cross':
-          buffer.write(' cross join $table');
+          buffer.write(' cross join $tableSql');
         case 'inner':
         default:
-          buffer.write(' join $table');
+          buffer.write(' join $tableSql');
       }
 
       if (conditions.isNotEmpty) {
@@ -563,6 +594,18 @@ class PostgresqlGrammar extends SqlGrammar {
           );
           bindings.add(value);
         }
+      } else if (type == 'subquery') {
+        final subSql = where['sql'] as String;
+        final subBindings = where['bindings'] as List<Object?>;
+        final embedded = PostgresqlPlaceholders.compile(
+          subSql,
+          subBindings,
+          offset: bindings.length,
+        );
+        parts.add(
+          '$boolean${where['column']} ${where['comparator']} (${embedded.sql})',
+        );
+        bindings.addAll(embedded.bindings);
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
@@ -588,6 +631,19 @@ class PostgresqlGrammar extends SqlGrammar {
           parts.add('$boolean$column $inKeyword ($placeholders)');
           bindings.addAll(values);
         }
+      } else if (type == 'inSubquery') {
+        final not = where['not'] as bool;
+        final subSql = where['sql'] as String;
+        final subBindings = where['bindings'] as List<Object?>;
+        final embedded = PostgresqlPlaceholders.compile(
+          subSql,
+          subBindings,
+          offset: bindings.length,
+        );
+        parts.add(
+          '$boolean${where['column']} ${not ? 'not in' : 'in'} (${embedded.sql})',
+        );
+        bindings.addAll(embedded.bindings);
       } else if (type == 'null') {
         // WHERE column IS NULL or WHERE column IS NOT NULL
         final column = where['column'];

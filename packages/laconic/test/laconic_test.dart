@@ -19,6 +19,8 @@ class MockGrammar extends SqlGrammar {
     List<Object?> selectBindings = const [],
     List<Object?> groupBindings = const [],
     List<String>? distinctColumns,
+    CompiledQuery? fromSubquery,
+    String? fromAlias,
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];

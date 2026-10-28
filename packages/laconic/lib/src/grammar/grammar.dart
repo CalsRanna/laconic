@@ -21,6 +21,11 @@ abstract class SqlGrammar {
   /// - [selectBindings]: Bindings for raw SELECT expressions, in column order
   /// - [groupBindings]: Bindings for raw GROUP BY expressions, in group order
   /// - [distinctColumns]: Columns for PostgreSQL's `DISTINCT ON`
+  /// - [fromSubquery]: A compiled subquery used as the FROM source
+  /// - [fromAlias]: The alias for [fromSubquery]; `null` means raw FROM SQL
+  ///
+  /// [inlineSubquery] converts a compiled subquery into a form that can be
+  /// embedded in a larger statement while keeping placeholder order intact.
   CompiledQuery compileSelect({
     required String table,
     required List<String> columns,
@@ -36,6 +41,8 @@ abstract class SqlGrammar {
     List<Object?> selectBindings = const [],
     List<Object?> groupBindings = const [],
     List<String>? distinctColumns,
+    CompiledQuery? fromSubquery,
+    String? fromAlias,
   });
 
   /// The dialect's random-ordering function used by `inRandomOrder()`.
@@ -43,6 +50,13 @@ abstract class SqlGrammar {
 
   /// Whether compiled SQL uses `$1, $2, ...` placeholders.
   bool get numberedPlaceholders => false;
+
+  /// Returns a compiled subquery in a form that can be embedded into a
+  /// larger statement.
+  ///
+  /// Dialects with numbered placeholders override this to normalize them
+  /// before the surrounding compiler assigns final indexes.
+  String inlineSubquery(CompiledQuery query) => query.sql;
 
   /// Compiles complete SELECT branches with final UNION ordering and pagination.
   ///

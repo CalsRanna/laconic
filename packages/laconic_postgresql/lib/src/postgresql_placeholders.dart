@@ -196,6 +196,103 @@ class PostgresqlPlaceholders {
     return CompiledQuery(sql: output.toString(), bindings: bindings);
   }
 
+  /// Converts native `$N` placeholders back to `?` so a compiled subquery
+  /// can be embedded into a larger statement and renumbered in order.
+  static String toQuestionPlaceholders(String sql) {
+    final output = StringBuffer();
+    var i = 0;
+
+    while (i < sql.length) {
+      if (sql.startsWith('--', i)) {
+        final end = sql.indexOf('\n', i + 2);
+        final next = end == -1 ? sql.length : end + 1;
+        output.write(sql.substring(i, next));
+        i = next;
+        continue;
+      }
+      if (sql.startsWith('/*', i)) {
+        var depth = 1;
+        var j = i + 2;
+        while (j < sql.length && depth > 0) {
+          if (sql.startsWith('/*', j)) {
+            depth++;
+            j += 2;
+          } else if (sql.startsWith('*/', j)) {
+            depth--;
+            j += 2;
+          } else {
+            j++;
+          }
+        }
+        output.write(sql.substring(i, j));
+        i = j;
+        continue;
+      }
+
+      final code = sql.codeUnitAt(i);
+      if (code == 39 || code == 34) {
+        final escaped =
+            code == 39 &&
+            i > 0 &&
+            (sql[i - 1] == 'e' || sql[i - 1] == 'E') &&
+            (i == 1 || !_identifierPart(sql.codeUnitAt(i - 2)));
+        output.writeCharCode(code);
+        var j = i + 1;
+        while (j < sql.length) {
+          if (escaped && sql.codeUnitAt(j) == 92) {
+            final next = (j + 2).clamp(0, sql.length);
+            output.write(sql.substring(j, next));
+            j = next;
+          } else if (sql.codeUnitAt(j) == code) {
+            output.writeCharCode(code);
+            j++;
+            if (j < sql.length && sql.codeUnitAt(j) == code) {
+              output.writeCharCode(code);
+              j++;
+            } else {
+              break;
+            }
+          } else {
+            output.writeCharCode(sql.codeUnitAt(j));
+            j++;
+          }
+        }
+        i = j;
+        continue;
+      }
+
+      if (code == 36) {
+        final tag = _dollarTag.matchAsPrefix(sql, i);
+        if (tag != null) {
+          final end = sql.indexOf(tag[0]!, tag.end);
+          final next = end == -1 ? sql.length : end + tag[0]!.length;
+          output.write(sql.substring(i, next));
+          i = next;
+          continue;
+        }
+        if (i > 0 && _identifierPart(sql.codeUnitAt(i - 1))) {
+          output.write(sql[i]);
+          i++;
+          continue;
+        }
+        var end = i + 1;
+        while (end < sql.length && _digit(sql.codeUnitAt(end))) {
+          end++;
+        }
+        if (end > i + 1) {
+          output.write('?');
+          i = end;
+          continue;
+        }
+      }
+
+      output.writeCharCode(code);
+      i++;
+    }
+
+    return output.toString();
+  }
+
   static bool _digit(int c) => c >= 48 && c <= 57;
   static bool _identifierStart(int c) =>
       c == 95 || c >= 128 || (c >= 65 && c <= 90) || (c >= 97 && c <= 122);

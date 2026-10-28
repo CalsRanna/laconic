@@ -91,6 +91,8 @@ class _MockGrammar extends SqlGrammar {
     List<Object?> selectBindings = const [],
     List<Object?> groupBindings = const [],
     List<String>? distinctColumns,
+    CompiledQuery? fromSubquery,
+    String? fromAlias,
   }) {
     final sql = StringBuffer('SELECT ');
     if (distinct) sql.write('DISTINCT ');

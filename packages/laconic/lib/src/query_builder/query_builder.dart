@@ -17,6 +17,12 @@ class QueryBuilder {
   /// The table name for the query.
   String _table;
 
+  /// A compiled subquery used as the FROM source.
+  CompiledQuery? _fromSubquery;
+
+  /// Alias for [_fromSubquery]; `null` means raw FROM SQL.
+  String? _fromAlias;
+
   /// The columns to select.
   List<String> _columns = ['*'];
 
@@ -116,6 +122,8 @@ class QueryBuilder {
       groupBindings: _groupBindings,
       havings: _havings,
       distinct: false,
+      fromSubquery: _fromSubquery,
+      fromAlias: _fromAlias,
       limit: null,
       offset: null,
       locks: const [],
@@ -266,6 +274,18 @@ class QueryBuilder {
     final compiled = _grammar.compileInsert(table: _table, data: data);
 
     await _laconic.statement(compiled.sql, compiled.bindings);
+    return true;
+  }
+
+  /// Inserts rows produced by a subquery:
+  /// `insert into table (columns) <subquery>`.
+  Future<bool> insertUsing(List<String> columns, Object query) async {
+    if (columns.isEmpty) {
+      throw LaconicException('insertUsing requires at least one column');
+    }
+    final compiled = _compileSubquery(query);
+    final sql = 'insert into $_table (${columns.join(', ')}) ${compiled.sql}';
+    await _laconic.statement(sql, compiled.bindings);
     return true;
   }
 
@@ -475,9 +495,109 @@ class QueryBuilder {
     return this;
   }
 
+  /// Adds a JOIN against a derived table.
+  ///
+  /// [second] is a column name unless [where] is true, in which case it is a
+  /// bound value.
+  QueryBuilder joinSub(
+    Object query,
+    String as,
+    String first,
+    String comparator,
+    Object? second, {
+    String type = 'inner',
+    bool where = false,
+  }) {
+    final compiled = _compileSubquery(query);
+    final joinClause = JoinClause(_laconic);
+    if (where) {
+      joinClause.where(first, second, comparator: comparator);
+    } else {
+      if (second is! String) {
+        throw LaconicException('joinSub expects a column name as second');
+      }
+      joinClause.on(first, second, comparator: comparator);
+    }
+    _joins.add({
+      'type': type,
+      'table': '(${compiled.sql}) as $as',
+      'tableBindings': compiled.bindings,
+      'conditions': joinClause.conditions,
+    });
+    return this;
+  }
+
+  /// Adds a LEFT JOIN against a derived table.
+  QueryBuilder leftJoinSub(
+    Object query,
+    String as,
+    String first,
+    String comparator,
+    Object? second, {
+    bool where = false,
+  }) {
+    return joinSub(
+      query,
+      as,
+      first,
+      comparator,
+      second,
+      type: 'left',
+      where: where,
+    );
+  }
+
+  /// Adds a RIGHT JOIN against a derived table.
+  QueryBuilder rightJoinSub(
+    Object query,
+    String as,
+    String first,
+    String comparator,
+    Object? second, {
+    bool where = false,
+  }) {
+    return joinSub(
+      query,
+      as,
+      first,
+      comparator,
+      second,
+      type: 'right',
+      where: where,
+    );
+  }
+
+  /// Adds a CROSS JOIN against a derived table.
+  QueryBuilder crossJoinSub(Object query, String as) {
+    final compiled = _compileSubquery(query);
+    _joins.add({
+      'type': 'cross',
+      'table': '(${compiled.sql}) as $as',
+      'tableBindings': compiled.bindings,
+      'conditions': <Map<String, dynamic>>[],
+    });
+    return this;
+  }
+
   /// Sets the table for this query (useful for subqueries and EXISTS clauses).
   QueryBuilder from(String table) {
     _table = table;
+    _fromSubquery = null;
+    _fromAlias = null;
+    return this;
+  }
+
+  /// Sets a derived table as the FROM source.
+  QueryBuilder fromSub(Object query, String as) {
+    _fromSubquery = _compileSubquery(query);
+    _fromAlias = as;
+    return this;
+  }
+
+  /// Sets a raw FROM expression with optional bindings.
+  QueryBuilder fromRaw(String sql, [List<Object?> bindings = const []]) {
+    _fromSubquery = CompiledQuery(sql: sql, bindings: bindings);
+    _fromAlias = null;
     return this;
   }
 
@@ -567,16 +687,10 @@ class QueryBuilder {
   /// [QueryBuilder]. Ordering, limit and offset on this builder apply to the
   /// complete union; clauses inside a callback apply only to that branch.
   QueryBuilder union(Object query, {bool all = false}) {
-    final CompiledQuery compiled;
-    if (query is void Function(QueryBuilder)) {
-      final uq = QueryBuilder(laconic: _laconic, table: '');
-      query(uq);
-      compiled = uq._compileSelect();
-    } else if (query is QueryBuilder) {
-      compiled = query._compileSelect();
-    } else {
+    if (query is! void Function(QueryBuilder) && query is! QueryBuilder) {
       throw LaconicException('union expects a callback or a QueryBuilder');
     }
+    final compiled = _compileSubquery(query);
     _unions.add({
       'sql': compiled.sql,
       'bindings': compiled.bindings,
@@ -588,6 +702,18 @@ class QueryBuilder {
   /// Adds a UNION ALL clause.
   QueryBuilder unionAll(Object query) {
     return union(query, all: true);
+  }
+
+  CompiledQuery _compileSubquery(Object query) {
+    if (query is void Function(QueryBuilder)) {
+      final sub = QueryBuilder(laconic: _laconic, table: '');
+      query(sub);
+      return sub._compileSelect();
+    }
+    if (query is QueryBuilder) {
+      return query._compileSelect();
+    }
+    throw LaconicException('Expected a callback or QueryBuilder');
   }
 
   /// Adds an ORDER BY clause to the query.
@@ -736,6 +862,19 @@ class QueryBuilder {
     if (value == null &&
         (operator == '=' || operator == '!=' || operator == '<>')) {
       return operator == '=' ? orWhereNull(column) : orWhereNotNull(column);
+    }
+
+    if (value is void Function(QueryBuilder) || value is QueryBuilder) {
+      final compiled = _compileSubquery(value as Object);
+      _wheres.add({
+        'type': 'subquery',
+        'column': column,
+        'comparator': operator,
+        'sql': compiled.sql,
+        'bindings': compiled.bindings,
+        'boolean': 'or',
+      });
+      return this;
     }
 
     _wheres.add({
@@ -1042,6 +1181,8 @@ class QueryBuilder {
           .._columns = List<String>.from(_columns)
           .._selectBindings.addAll(_selectBindings)
           .._groupBindings.addAll(_groupBindings)
+          .._fromSubquery = _fromSubquery
+          .._fromAlias = _fromAlias
           .._wheres.addAll(_wheres.map(_deepCopyWhere))
           .._joins.addAll(_joins.map(_deepCopyJoin))
           .._orders.addAll(_orders.map((o) => Map<String, dynamic>.from(o)))
@@ -1075,6 +1216,10 @@ class QueryBuilder {
     if (conditions != null) {
       copy['conditions'] =
           conditions.map((c) => Map<String, dynamic>.from(c)).toList();
+    }
+    final tableBindings = copy['tableBindings'];
+    if (tableBindings is List) {
+      copy['tableBindings'] = List<Object?>.from(tableBindings);
     }
     return copy;
   }
@@ -1128,6 +1273,20 @@ class QueryBuilder {
       _columns.add(sql);
     }
     _selectBindings.addAll(bindings);
+    return this;
+  }
+
+  /// Adds a subquery to the SELECT clause as `(subquery) as as`.
+  QueryBuilder selectSub(Object query, String as) {
+    final compiled = _compileSubquery(query);
+    final sql = '(${_grammar.inlineSubquery(compiled)}) as $as';
+    if (_columns.length == 1 && _columns[0] == '*') {
+      _columns = [sql];
+      _selectBindings.clear();
+    } else {
+      _columns.add(sql);
+    }
+    _selectBindings.addAll(compiled.bindings);
     return this;
   }
 
@@ -1237,6 +1396,19 @@ class QueryBuilder {
     if (value == null &&
         (operator == '=' || operator == '!=' || operator == '<>')) {
       return operator == '=' ? whereNull(column) : whereNotNull(column);
+    }
+
+    if (value is void Function(QueryBuilder) || value is QueryBuilder) {
+      final compiled = _compileSubquery(value as Object);
+      _wheres.add({
+        'type': 'subquery',
+        'column': column,
+        'comparator': operator,
+        'sql': compiled.sql,
+        'bindings': compiled.bindings,
+        'boolean': 'and',
+      });
+      return this;
     }
 
     _wheres.add({
@@ -1448,15 +1620,8 @@ class QueryBuilder {
   /// ```dart
   /// query.whereIn('id', [1, 2, 3])
   /// ```
-  QueryBuilder whereIn(String column, List<Object?> values) {
-    _wheres.add({
-      'type': 'in',
-      'column': column,
-      'values': values,
-      'boolean': 'and',
-      'not': false,
-    });
-    return this;
+  QueryBuilder whereIn(String column, Object values) {
+    return _addIn(column, values, 'and', false);
   }
 
   /// Adds a WHERE NOT IN condition to the query.
@@ -1468,15 +1633,8 @@ class QueryBuilder {
   /// ```dart
   /// query.whereNotIn('id', [1, 2, 3])
   /// ```
-  QueryBuilder whereNotIn(String column, List<Object?> values) {
-    _wheres.add({
-      'type': 'in',
-      'column': column,
-      'values': values,
-      'boolean': 'and',
-      'not': true,
-    });
-    return this;
+  QueryBuilder whereNotIn(String column, Object values) {
+    return _addIn(column, values, 'and', true);
   }
 
   /// Adds a WHERE NULL condition to the query.
@@ -1649,15 +1807,8 @@ class QueryBuilder {
   /// ```dart
   /// query.where('status', 'active').orWhereIn('id', [1, 2, 3])
   /// ```
-  QueryBuilder orWhereIn(String column, List<Object?> values) {
-    _wheres.add({
-      'type': 'in',
-      'column': column,
-      'values': values,
-      'boolean': 'or',
-      'not': false,
-    });
-    return this;
+  QueryBuilder orWhereIn(String column, Object values) {
+    return _addIn(column, values, 'or', false);
   }
 
   /// Adds an OR WHERE NOT IN condition to the query.
@@ -1669,13 +1820,30 @@ class QueryBuilder {
   /// ```dart
   /// query.where('status', 'active').orWhereNotIn('id', [1, 2, 3])
   /// ```
-  QueryBuilder orWhereNotIn(String column, List<Object?> values) {
+  QueryBuilder orWhereNotIn(String column, Object values) {
+    return _addIn(column, values, 'or', true);
+  }
+
+  QueryBuilder _addIn(String column, Object values, String boolean, bool not) {
+    if (values is List) {
+      _wheres.add({
+        'type': 'in',
+        'column': column,
+        'values': List<Object?>.from(values),
+        'boolean': boolean,
+        'not': not,
+      });
+      return this;
+    }
+
+    final compiled = _compileSubquery(values);
     _wheres.add({
-      'type': 'in',
+      'type': 'inSubquery',
       'column': column,
-      'values': values,
-      'boolean': 'or',
-      'not': true,
+      'sql': compiled.sql,
+      'bindings': compiled.bindings,
+      'boolean': boolean,
+      'not': not,
     });
     return this;
   }
@@ -2526,6 +2694,8 @@ class QueryBuilder {
       groupBindings: _groupBindings,
       havings: _havings,
       distinct: _distinct,
+      fromSubquery: _fromSubquery,
+      fromAlias: _fromAlias,
       limit: _groups.isEmpty ? null : 1,
       offset: null,
       locks: const [],
@@ -2927,6 +3097,8 @@ class QueryBuilder {
       distinct: _distinct,
       distinctColumns:
           hasUnion ? null : (_distinctOn ? (columns ?? _columns) : null),
+      fromSubquery: _fromSubquery,
+      fromAlias: _fromAlias,
       limit: hasUnion ? null : limitOverride ?? _limit,
       offset: hasUnion ? null : _offset,
       locks: hasUnion ? [] : _locks,

@@ -20,6 +20,8 @@ class SqliteGrammar extends SqlGrammar {
     List<Object?> selectBindings = const [],
     List<Object?> groupBindings = const [],
     List<String>? distinctColumns,
+    CompiledQuery? fromSubquery,
+    String? fromAlias,
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
@@ -30,7 +32,16 @@ class SqliteGrammar extends SqlGrammar {
     }
     buffer.write(_compileColumns(columns));
     bindings.addAll(selectBindings);
-    buffer.write(' from $table');
+    if (fromSubquery != null) {
+      if (fromAlias != null) {
+        buffer.write(' from (${fromSubquery.sql}) as $fromAlias');
+      } else {
+        buffer.write(' from ${fromSubquery.sql}');
+      }
+      bindings.addAll(fromSubquery.bindings);
+    } else {
+      buffer.write(' from $table');
+    }
 
     if (joins.isNotEmpty) {
       buffer.write(_compileJoins(joins, bindings));
@@ -310,6 +321,10 @@ class SqliteGrammar extends SqlGrammar {
       final type = join['type'] as String? ?? 'inner';
       final table = join['table'] as String;
       final conditions = join['conditions'] as List<Map<String, dynamic>>;
+      final tableBindings = join['tableBindings'] as List<Object?>?;
+      if (tableBindings != null) {
+        bindings.addAll(tableBindings);
+      }
 
       switch (type) {
         case 'left':
@@ -461,6 +476,11 @@ class SqliteGrammar extends SqlGrammar {
           parts.add('${boolean}lower(${where['column']}) $keyword lower(?)');
           bindings.add(value);
         }
+      } else if (type == 'subquery') {
+        parts.add(
+          '$boolean${where['column']} ${where['comparator']} (${where['sql']})',
+        );
+        bindings.addAll(where['bindings'] as List<Object?>);
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
@@ -481,6 +501,12 @@ class SqliteGrammar extends SqlGrammar {
           parts.add('$boolean$column $inKeyword ($placeholders)');
           bindings.addAll(values);
         }
+      } else if (type == 'inSubquery') {
+        final not = where['not'] as bool;
+        parts.add(
+          '$boolean${where['column']} ${not ? 'not in' : 'in'} (${where['sql']})',
+        );
+        bindings.addAll(where['bindings'] as List<Object?>);
       } else if (type == 'null') {
         // WHERE column IS NULL or WHERE column IS NOT NULL
         final column = where['column'];

@@ -616,4 +616,182 @@ void queryRegressions(Laconic Function() createDatabase) {
       await query().where('id', 98).delete();
     }
   });
+
+  test('selectSub embeds a correlated subquery', () async {
+    final rows =
+        await db
+            .table('$table u')
+            .select(['u.id'])
+            .selectSub(
+              (q) => q
+                  .from('$table p')
+                  .selectRaw('count(*)')
+                  .whereColumn('p.id', 'u.id')
+                  .where('p.active', 1),
+              'matches',
+            )
+            .orderBy('u.id')
+            .get();
+    expect(rows.map((r) => '${r['matches']}').toList(), [
+      '1',
+      '0',
+      '1',
+      '0',
+      '1',
+    ]);
+  });
+
+  test('selectSub handles multiple subqueries with bindings', () async {
+    final rows =
+        await db
+            .table(table)
+            .select(['id'])
+            .selectSub(
+              (q) => q.from(table).selectRaw('count(*)').where('active', 1),
+              'active_count',
+            )
+            .selectSub(
+              (q) => q.from(table).selectRaw('count(*)').where('active', 0),
+              'inactive_count',
+            )
+            .where('id', 1)
+            .get();
+    expect('${rows.first['active_count']}', '3');
+    expect('${rows.first['inactive_count']}', '2');
+  });
+
+  test('fromSub and fromRaw accept bindings', () async {
+    final fromSubRows =
+        await db
+            .table(table)
+            .select(['id'])
+            .selectRaw('? as marker', [7])
+            .fromSub(
+              (q) => q.from(table).select(['id', 'label']).where('active', 1),
+              't',
+            )
+            .where('t.id', 3)
+            .get();
+    expect(ids(fromSubRows), [3]);
+    expect('${fromSubRows.first['marker']}', '7');
+
+    final fromSubQuery = db
+        .table(table)
+        .fromSub(
+          (q) => q.from(table).select(['id', 'label']).where('active', 1),
+          't',
+        );
+    expect(await fromSubQuery.clone().count(), 3);
+    expect(await fromSubQuery.clone().max('t.id'), 5);
+
+    final fromRawRows =
+        await db
+            .table(table)
+            .fromRaw('(select id, label from $table where active = ?) as t', [
+              1,
+            ])
+            .where('t.id', 5)
+            .get();
+    expect(ids(fromRawRows), [5]);
+  });
+
+  test('joinSub joins a derived table', () async {
+    final rows =
+        await db
+            .table('$table u')
+            .select(['u.id'])
+            .selectRaw('? as marker', [7])
+            .joinSub(
+              (q) => q.from(table).select(['id']).where('active', 1),
+              'p',
+              'p.id',
+              '=',
+              'u.id',
+            )
+            .orderBy('u.id')
+            .get();
+    expect(ids(rows), [1, 3, 5]);
+    expect(rows.every((r) => '${r['marker']}' == '7'), isTrue);
+
+    final crossCount =
+        await db
+            .table(table)
+            .crossJoinSub(
+              (q) => q.from(table).select(['id']).where('active', 1),
+              'p',
+            )
+            .count();
+    expect(crossCount, 15);
+
+    final whereJoin =
+        await db
+            .table('$table u')
+            .select(['u.id'])
+            .joinSub(
+              (q) => q.from(table).select(['id']).where('id', 1),
+              'p',
+              'u.active',
+              '>=',
+              0,
+              where: true,
+            )
+            .count();
+    expect(whereJoin, 5);
+  });
+
+  test('whereIn and whereNotIn accept subqueries', () async {
+    final selected = query().whereIn(
+      'id',
+      (q) => q.from(table).select(['id']).where('active', 1),
+    );
+    expect(ids(await selected.orderBy('id').get()), [1, 3, 5]);
+
+    expect(
+      ids(
+        await query()
+            .whereNotIn('id', query().select(['id']).where('active', 1))
+            .orderBy('id')
+            .get(),
+      ),
+      [2, 4],
+    );
+
+    final withPriorBinding = query()
+        .where('active', 1)
+        .whereIn(
+          'id',
+          (q) => q.from(table).select(['id']).where('label', 'three'),
+        );
+    expect(ids(await withPriorBinding.get()), [3]);
+  });
+
+  test('where accepts a subquery as a value', () async {
+    final q = query()
+        .where('id', 0, comparator: '>')
+        .where(
+          'id',
+          (q) => q.from(table).selectRaw('max(id)').where('active', 0),
+          comparator: '>',
+        );
+    expect(ids(await q.get()), [5]);
+  });
+
+  test('insertUsing inserts rows from a subquery', () async {
+    const probe = 'laconic_insert_using_probe';
+    await db.statement('drop table if exists $probe');
+    await db.statement(
+      'create table $probe (id int primary key, label varchar(20))',
+    );
+    try {
+      final inserted = await db.table(probe).insertUsing([
+        'id',
+        'label',
+      ], query().select(['id', 'label']).where('id', 1));
+      expect(inserted, isTrue);
+      expect(await db.table(probe).count(), 1);
+      expect(await db.table(probe).value('label'), '?');
+    } finally {
+      await db.statement('drop table if exists $probe');
+    }
+  });
 }
