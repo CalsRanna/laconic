@@ -134,6 +134,49 @@ class SqliteDriver implements DatabaseDriver {
   });
 
   @override
+  Stream<LaconicResult> selectStream(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async* {
+    final transaction = Zone.current[_transactionKey] as _SqliteTransaction?;
+    if (transaction != null) {
+      if (!transaction.active) {
+        throw LaconicException('Transaction has already finished');
+      }
+      yield* _streamRows(sql, params);
+      return;
+    }
+
+    final previous = _tail;
+    final done = Completer<void>();
+    _tail = done.future;
+    await previous;
+    try {
+      yield* _streamRows(sql, params);
+    } finally {
+      done.complete();
+    }
+  }
+
+  Stream<LaconicResult> _streamRows(String sql, List<Object?> params) async* {
+    try {
+      final stmt = _prepare(sql);
+      final rows = stmt.select(params);
+      final columns = rows.columnNames;
+      for (final row in rows) {
+        yield LaconicResult.fromRows(columns, [row.values.toList()]).single;
+      }
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(
+        e.toString(),
+        driver: driverName,
+        code: _errorCode(e),
+      );
+    }
+  }
+
+  @override
   Future<void> statement(
     String sql, [
     List<Object?> params = const [],

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:laconic/src/grammar/grammar.dart';
 import 'package:laconic/src/result.dart';
 
@@ -26,6 +28,17 @@ abstract class DatabaseDriver {
     String sql, [
     List<Object?> params = const [],
   ]);
+
+  /// Executes a SELECT query and streams its rows.
+  ///
+  /// The default implementation buffers [select]; drivers may override this
+  /// to use a native cursor and avoid loading all rows into memory.
+  Stream<LaconicResult> selectStream(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async* {
+    yield* Stream.fromIterable(await select(sql, params));
+  }
 
   /// Executes a non-query statement (INSERT/UPDATE/DELETE/DDL).
   ///

@@ -76,6 +76,24 @@ class Laconic {
     return _executeQuery(query, () => _driver.select(sql, params));
   }
 
+  /// Runs a SELECT statement and streams its rows.
+  Stream<LaconicResult> selectStream(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async* {
+    final query = LaconicQuery(bindings: params, sql: sql);
+    beforeQuery?.call(query);
+    listen?.call(query);
+
+    final stopwatch = Stopwatch()..start();
+    try {
+      yield* _driver.selectStream(sql, params);
+    } finally {
+      stopwatch.stop();
+      afterQuery?.call(query, stopwatch.elapsed);
+    }
+  }
+
   /// Executes an SQL statement (INSERT/UPDATE/DELETE/DDL).
   ///
   /// [sql] is the SQL statement string using `?` as placeholders.

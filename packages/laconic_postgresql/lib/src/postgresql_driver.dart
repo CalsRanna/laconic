@@ -42,6 +42,15 @@ class PostgresqlDriver implements DatabaseDriver {
   static String? _errorCode(Object error) =>
       error is ServerException ? error.code : null;
 
+  LaconicException _asLaconic(Object error) {
+    if (error is LaconicException) return error;
+    return LaconicException(
+      error.toString(),
+      driver: driverName,
+      code: _errorCode(error),
+    );
+  }
+
   Pool get _connectionPool {
     return _pool ??= Pool.withEndpoints(
       [
@@ -113,6 +122,123 @@ class PostgresqlDriver implements DatabaseDriver {
         code: _errorCode(e),
       );
     }
+  }
+
+  @override
+  Stream<LaconicResult> selectStream(
+    String sql, [
+    List<Object?> params = const [],
+  ]) {
+    final convertedSql = PostgresqlPlaceholders.compile(sql, params).sql;
+    final controller = StreamController<LaconicResult>();
+    final done = Completer<void>();
+    var cancelled = false;
+    ResultStreamSubscription? subscription;
+
+    controller.onCancel = () {
+      cancelled = true;
+      unawaited(subscription?.cancel());
+      if (!done.isCompleted) done.complete();
+    };
+    controller.onPause = () => subscription?.pause();
+    controller.onResume = () => subscription?.resume();
+
+    Future<void> run(Session session) async {
+      if (cancelled) return;
+
+      Statement? statement;
+      try {
+        statement = await session.prepare(Sql(convertedSql));
+        final stream = statement.bind(params);
+
+        List<int>? indexes;
+        List<String>? columns;
+
+        subscription = stream.listen(
+          (row) {
+            if (cancelled || controller.isClosed) return;
+            controller.add(
+              LaconicResult.fromRows(columns!, [
+                [for (final i in indexes!) row[i]],
+              ]).single,
+            );
+          },
+          onError: (Object e, StackTrace st) {
+            if (!cancelled && !controller.isClosed) {
+              controller.addError(_asLaconic(e), st);
+              unawaited(controller.close());
+            }
+            if (!done.isCompleted) done.complete();
+          },
+          onDone: () {
+            if (!cancelled && !controller.isClosed) {
+              unawaited(controller.close());
+            }
+            if (!done.isCompleted) done.complete();
+          },
+          cancelOnError: true,
+        );
+
+        subscription!.pause();
+        final schema = await Future.any<ResultSchema?>([
+          subscription!.schema,
+          done.future.then((_) => null),
+        ]);
+        if (schema == null) return;
+        indexes = [
+          for (var i = 0; i < schema.columns.length; i++)
+            if (schema.columns[i].columnName != null) i,
+        ];
+        columns = [for (final i in indexes) schema.columns[i].columnName!];
+        subscription!.resume();
+
+        await done.future;
+      } catch (e, st) {
+        if (!cancelled && !controller.isClosed) {
+          controller.addError(_asLaconic(e), st);
+          await controller.close();
+        }
+        if (!done.isCompleted) done.complete();
+      } finally {
+        await subscription?.cancel();
+        try {
+          await statement?.dispose();
+        } catch (_) {
+          // Keep the original error if the connection has failed.
+        }
+      }
+    }
+
+    final transaction = _transactionContext;
+    if (transaction != null) {
+      if (!transaction.active) {
+        return Stream.error(
+          LaconicException('Transaction has already finished'),
+        );
+      }
+      unawaited(
+        run(transaction.cache.session).catchError((Object e, StackTrace st) {
+          if (!cancelled && !controller.isClosed) {
+            controller.addError(_asLaconic(e), st);
+            unawaited(controller.close());
+          }
+        }),
+      );
+    } else {
+      unawaited(
+        _connectionPool.withConnection(run).catchError((
+          Object e,
+          StackTrace st,
+        ) {
+          if (!cancelled && !controller.isClosed) {
+            controller.addError(_asLaconic(e), st);
+            unawaited(controller.close());
+          }
+        }),
+      );
+    }
+
+    return controller.stream;
   }
 
   @override

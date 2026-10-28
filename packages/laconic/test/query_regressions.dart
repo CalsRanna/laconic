@@ -794,4 +794,109 @@ void queryRegressions(Laconic Function() createDatabase) {
       await db.statement('drop table if exists $probe');
     }
   });
+
+  test('paginate returns totals and pages', () async {
+    final first = await query().orderBy('id').paginate(1, perPage: 2);
+    expect(ids(first.data), [1, 2]);
+    expect(first.total, 5);
+    expect(first.lastPage, 3);
+    expect(first.currentPage, 1);
+    expect(first.hasMorePages, isTrue);
+    expect(first.from, 1);
+    expect(first.to, 2);
+
+    final last = await query().orderBy('id').paginate(3, perPage: 2);
+    expect(ids(last.data), [5]);
+    expect(last.hasMorePages, isFalse);
+    expect(last.from, 5);
+    expect(last.to, 5);
+    expect(await query().getCountForPagination(), 5);
+  });
+
+  test('simplePaginate reports whether more pages exist', () async {
+    final first = await query().orderBy('id').simplePaginate(1, perPage: 2);
+    expect(ids(first.data), [1, 2]);
+    expect(first.hasMorePages, isTrue);
+
+    final last = await query().orderBy('id').simplePaginate(3, perPage: 2);
+    expect(ids(last.data), [5]);
+    expect(last.hasMorePages, isFalse);
+  });
+
+  test('cursorPaginate returns a next cursor', () async {
+    final first = await query().cursorPaginate(2);
+    expect(ids(first.data), [1, 2]);
+    expect(first.nextCursor, 2);
+    expect(first.hasMorePages, isTrue);
+
+    final second = await query().cursorPaginate(2, cursor: first.nextCursor);
+    expect(ids(second.data), [3, 4]);
+    expect(second.nextCursor, 4);
+    expect(second.hasMorePages, isTrue);
+
+    final third = await query().cursorPaginate(2, cursor: second.nextCursor);
+    expect(ids(third.data), [5]);
+    expect(third.nextCursor, isNull);
+    expect(third.hasMorePages, isFalse);
+  });
+
+  test('lazy and lazyById stream every row', () async {
+    final lazyIds =
+        await query().orderBy('id').lazy(2).map((row) => row['id']).toList();
+    expect(lazyIds, [1, 2, 3, 4, 5]);
+
+    final byId = await query().lazyById(2).map((row) => row['id']).toList();
+    expect(byId, [1, 2, 3, 4, 5]);
+  });
+
+  test('eachById visits every row once', () async {
+    final seen = <Object?>[];
+    await query().eachById((row) async {
+      seen.add(row['id']);
+    }, count: 2);
+    expect(seen, [1, 2, 3, 4, 5]);
+  });
+
+  test('cursor streams every row', () async {
+    final ids =
+        await query().orderBy('id').cursor().map((row) => row['id']).toList();
+    expect(ids, [1, 2, 3, 4, 5]);
+  });
+
+  test('cursor supports bindings and cancellation', () async {
+    final filtered =
+        await query()
+            .where('active', 1)
+            .orderBy('id')
+            .cursor()
+            .map((row) => row['id'])
+            .toList();
+    expect(filtered, [1, 3, 5]);
+
+    final firstTwo =
+        await query()
+            .orderBy('id')
+            .cursor()
+            .take(2)
+            .map((row) => row['id'])
+            .toList();
+    expect(firstTwo, [1, 2]);
+    expect(await query().count(), 5);
+  });
+
+  test('pagination validates page and sizes', () async {
+    await expectLater(query().paginate(0), throwsA(isA<LaconicException>()));
+    await expectLater(
+      query().paginate(1, perPage: 0),
+      throwsA(isA<LaconicException>()),
+    );
+    await expectLater(
+      query().simplePaginate(0),
+      throwsA(isA<LaconicException>()),
+    );
+    await expectLater(
+      query().cursorPaginate(0),
+      throwsA(isA<LaconicException>()),
+    );
+  });
 }

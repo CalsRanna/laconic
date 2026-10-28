@@ -47,6 +47,15 @@ class MysqlDriver implements DatabaseDriver {
   static String? _errorCode(Object error) =>
       error is MysqlServerException ? '${error.errorCode}' : null;
 
+  LaconicException _asLaconic(Object error) {
+    if (error is LaconicException) return error;
+    return LaconicException(
+      error.toString(),
+      driver: driverName,
+      code: _errorCode(error),
+    );
+  }
+
   MysqlConnectionPool get _connectionPool {
     return _pool ??= MysqlConnectionPool(
       databaseName: config.database,
@@ -156,6 +165,84 @@ class MysqlDriver implements DatabaseDriver {
         code: _errorCode(e),
       );
     }
+  }
+
+  @override
+  Stream<LaconicResult> selectStream(
+    String sql, [
+    List<Object?> params = const [],
+  ]) {
+    final controller = StreamController<LaconicResult>();
+    var cancelled = false;
+
+    Future<void> run(MysqlConnection conn) async {
+      if (cancelled) return;
+
+      MysqlResultSet? result;
+      MysqlPreparedStatement? statement;
+      try {
+        if (params.isEmpty) {
+          result = await conn.execute(sql, null, true);
+        } else {
+          statement = await conn.prepare(sql, true);
+          result = await statement.execute(params);
+        }
+
+        final columns = result.columns.map((column) => column.name).toList();
+        await controller.addStream(
+          result.rowStream.map(
+            (row) =>
+                LaconicResult.fromRows(columns, [row.toTypedValues()]).single,
+          ),
+        );
+      } catch (e, st) {
+        if (!cancelled && !controller.isClosed) {
+          controller.addError(_asLaconic(e), st);
+        }
+      } finally {
+        try {
+          await statement?.deallocate();
+        } catch (_) {
+          // Ignore deallocation failures after a cancelled stream.
+        }
+        if (!cancelled && !controller.isClosed) {
+          await controller.close();
+        }
+      }
+    }
+
+    controller.onCancel = () {
+      cancelled = true;
+    };
+
+    final transaction = _transactionContext;
+    if (transaction != null) {
+      unawaited(
+        transaction.run(() => run(transaction.connection)).catchError((
+          Object e,
+          StackTrace st,
+        ) {
+          if (!cancelled && !controller.isClosed) {
+            controller.addError(_asLaconic(e), st);
+            unawaited(controller.close());
+          }
+        }),
+      );
+    } else {
+      unawaited(
+        _connectionPool.withConnection(run).catchError((
+          Object e,
+          StackTrace st,
+        ) {
+          if (!cancelled && !controller.isClosed) {
+            controller.addError(_asLaconic(e), st);
+            unawaited(controller.close());
+          }
+        }),
+      );
+    }
+
+    return controller.stream;
   }
 
   @override

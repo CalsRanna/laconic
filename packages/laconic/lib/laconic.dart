@@ -47,6 +47,7 @@ library;
 export 'src/database_driver.dart';
 export 'src/exception.dart';
 export 'src/laconic.dart';
+export 'src/pagination.dart';
 export 'src/query.dart';
 export 'src/grammar/compiled_query.dart';
 export 'src/grammar/grammar.dart';

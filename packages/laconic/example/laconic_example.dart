@@ -6,6 +6,8 @@
 /// - laconic_postgresql
 library;
 
+import 'dart:async';
+
 import 'package:laconic/laconic.dart';
 
 /// A simple in-memory driver for demonstration purposes.
@@ -25,6 +27,14 @@ class MockDriver implements DatabaseDriver {
     print('SELECT: $sql');
     print('Params: $params');
     return _data.map((row) => LaconicResult.fromMap(row)).toList();
+  }
+
+  @override
+  Stream<LaconicResult> selectStream(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async* {
+    yield* Stream.fromIterable(await select(sql, params));
   }
 
   @override

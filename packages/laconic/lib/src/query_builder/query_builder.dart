@@ -4,6 +4,7 @@ import 'package:laconic/src/exception.dart';
 import 'package:laconic/src/expression.dart';
 import 'package:laconic/src/laconic.dart';
 import 'package:laconic/src/operator.dart';
+import 'package:laconic/src/pagination.dart';
 import 'package:laconic/src/grammar/grammar.dart';
 import 'package:laconic/src/grammar/compiled_query.dart';
 import 'package:laconic/src/query_builder/join_clause.dart';
@@ -847,6 +848,91 @@ class QueryBuilder {
     return orderByDesc(column).limit(perPage);
   }
 
+  /// Returns a page of results together with the total row count.
+  Future<LaconicPage> paginate(int page, {int perPage = 15}) async {
+    _validatePage(page, perPage);
+    final total = await clone().count();
+    final lastPage = total == 0 ? 1 : (total + perPage - 1) ~/ perPage;
+    final data = await clone().forPage(page, perPage: perPage).get();
+    return LaconicPage(
+      data: data,
+      total: total,
+      perPage: perPage,
+      currentPage: page,
+      lastPage: lastPage,
+    );
+  }
+
+  /// Returns a page of results and whether more pages exist, without a total.
+  Future<LaconicSimplePage> simplePaginate(int page, {int perPage = 15}) async {
+    _validatePage(page, perPage);
+    final rows =
+        await clone().limit(perPage + 1).offset((page - 1) * perPage).get();
+    final hasMorePages = rows.length > perPage;
+    final data = hasMorePages ? rows.sublist(0, perPage) : rows;
+    return LaconicSimplePage(
+      data: data,
+      perPage: perPage,
+      currentPage: page,
+      hasMorePages: hasMorePages,
+    );
+  }
+
+  /// Returns a keyset-paginated page ordered by [column].
+  ///
+  /// [cursor] is the last value from the previous page. The cursor column must
+  /// be part of the selected columns.
+  Future<LaconicCursorPage> cursorPaginate(
+    int perPage, {
+    String column = 'id',
+    Object? cursor,
+  }) async {
+    if (perPage < 1) {
+      throw LaconicException('perPage must be greater than zero');
+    }
+    final q = clone()..reorder();
+    q._offset = null;
+    if (cursor != null) {
+      q.where(column, cursor, comparator: '>');
+    }
+    final rows = await q.orderBy(column).limit(perPage + 1).get();
+    final hasMorePages = rows.length > perPage;
+    final data = hasMorePages ? rows.sublist(0, perPage) : rows;
+
+    Object? nextCursor;
+    if (hasMorePages && data.isNotEmpty) {
+      try {
+        nextCursor = data.last[column];
+      } on ArgumentError {
+        throw LaconicException(
+          'cursorPaginate requires selecting the cursor column "$column"',
+        );
+      }
+      if (nextCursor == null) {
+        throw LaconicException('Cursor column must be non-null and advance');
+      }
+    }
+
+    return LaconicCursorPage(
+      data: data,
+      perPage: perPage,
+      nextCursor: nextCursor,
+      hasMorePages: hasMorePages,
+    );
+  }
+
+  /// Number of rows used by pagination.
+  Future<int> getCountForPagination() => count();
+
+  void _validatePage(int page, int perPage) {
+    if (page < 1) {
+      throw LaconicException('Page must be greater than zero');
+    }
+    if (perPage < 1) {
+      throw LaconicException('perPage must be greater than zero');
+    }
+  }
+
   /// Adds an OR WHERE condition to the query.
   ///
   /// [column] is the column name.
@@ -1091,32 +1177,56 @@ class QueryBuilder {
   }
 
   /// Processes query results in chunks to avoid memory issues.
-  Future<void> chunk(
-    int count,
-    Future<void> Function(List<LaconicResult>) callback,
-  ) async {
+  Stream<List<LaconicResult>> _chunkStream(int count) async* {
     if (count <= 0) throw LaconicException('Chunk size must be positive');
     var page = 1;
     while (true) {
       final results = await clone().forPage(page, perPage: count).get();
       if (results.isEmpty) break;
       final received = results.length;
-      await callback(results);
+      yield results;
       if (received < count) break;
       page++;
     }
+  }
+
+  /// Processes query results in chunks to avoid memory issues.
+  Future<void> chunk(
+    int count,
+    Future<void> Function(List<LaconicResult>) callback,
+  ) async {
+    await for (final results in _chunkStream(count)) {
+      await callback(results);
+    }
+  }
+
+  /// Streams results one row at a time using offset-based chunking.
+  ///
+  /// Add an ordering clause for stable pagination; otherwise the database may
+  /// return rows in a different order between chunks.
+  Stream<LaconicResult> lazy([int count = 1000]) async* {
+    await for (final results in _chunkStream(count)) {
+      for (final row in results) {
+        yield row;
+      }
+    }
+  }
+
+  /// Streams rows using the driver's native cursor when available.
+  Stream<LaconicResult> cursor() {
+    final compiled = _compileSelect();
+    return _laconic.selectStream(compiled.sql, compiled.bindings);
   }
 
   /// Processes results in ascending order of a unique, non-null cursor column.
   ///
   /// Replaces existing ordering with [column]. An existing offset applies only
   /// to the first page. [alias] optionally qualifies the column with a table alias.
-  Future<void> chunkById(
-    int count,
-    Future<void> Function(List<LaconicResult>) callback, {
+  Stream<List<LaconicResult>> _chunkByIdStream(
+    int count, {
     String column = 'id',
     String? alias,
-  }) async {
+  }) async* {
     if (count <= 0) throw LaconicException('Chunk size must be positive');
     final col = alias != null ? '$alias.$column' : column;
     final resultColumn = column.split('.').last;
@@ -1157,8 +1267,56 @@ class QueryBuilder {
       }
       lastId = nextId;
       final received = results.length;
-      await callback(results);
+      yield results;
       if (received < count) break;
+    }
+  }
+
+  /// Processes results in ascending order of a unique, non-null cursor column.
+  ///
+  /// Replaces existing ordering with [column]. An existing offset applies only
+  /// to the first page. [alias] optionally qualifies the column with a table alias.
+  Future<void> chunkById(
+    int count,
+    Future<void> Function(List<LaconicResult>) callback, {
+    String column = 'id',
+    String? alias,
+  }) async {
+    await for (final results in _chunkByIdStream(
+      count,
+      column: column,
+      alias: alias,
+    )) {
+      await callback(results);
+    }
+  }
+
+  /// Streams rows ordered by a unique, non-null cursor column.
+  Stream<LaconicResult> lazyById([
+    int count = 1000,
+    String column = 'id',
+    String? alias,
+  ]) async* {
+    await for (final results in _chunkByIdStream(
+      count,
+      column: column,
+      alias: alias,
+    )) {
+      for (final row in results) {
+        yield row;
+      }
+    }
+  }
+
+  /// Iterates over each result using cursor-based chunking.
+  Future<void> eachById(
+    Future<void> Function(LaconicResult) callback, {
+    int count = 1000,
+    String column = 'id',
+    String? alias,
+  }) async {
+    await for (final row in lazyById(count, column, alias)) {
+      await callback(row);
     }
   }
 

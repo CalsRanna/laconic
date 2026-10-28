@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:laconic/laconic.dart';
 import 'package:test/test.dart';
 
@@ -382,6 +384,14 @@ class MockDriver implements DatabaseDriver {
     executedSql.add(sql);
     executedParams.add(params);
     return mockResults.map((r) => LaconicResult.fromMap(r)).toList();
+  }
+
+  @override
+  Stream<LaconicResult> selectStream(
+    String sql, [
+    List<Object?> params = const [],
+  ]) async* {
+    yield* Stream.fromIterable(await select(sql, params));
   }
 
   @override
