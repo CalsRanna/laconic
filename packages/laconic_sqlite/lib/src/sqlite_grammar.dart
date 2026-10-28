@@ -17,6 +17,8 @@ class SqliteGrammar extends SqlGrammar {
     int? limit,
     int? offset,
     List<Map<String, dynamic>> locks = const [],
+    List<Object?> selectBindings = const [],
+    List<Object?> groupBindings = const [],
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
@@ -26,6 +28,7 @@ class SqliteGrammar extends SqlGrammar {
       buffer.write('distinct ');
     }
     buffer.write(_compileColumns(columns));
+    bindings.addAll(selectBindings);
     buffer.write(' from $table');
 
     if (joins.isNotEmpty) {
@@ -39,6 +42,7 @@ class SqliteGrammar extends SqlGrammar {
 
     if (groups.isNotEmpty) {
       buffer.write(_compileGroups(groups));
+      bindings.addAll(groupBindings);
     }
 
     if (havings.isNotEmpty) {
@@ -60,13 +64,8 @@ class SqliteGrammar extends SqlGrammar {
       bindings.add(offset);
     }
 
-    for (final lock in locks) {
-      if (lock['type'] == 'for_update') {
-        buffer.write(' for update');
-      } else if (lock['type'] == 'for_share') {
-        throw LaconicException('SQLite does not support FOR SHARE / LOCK IN SHARE MODE');
-      }
-    }
+    // SQLite has no row-level locking clauses; locks are intentionally ignored
+    // so lockForUpdate()/sharedLock() remain portable.
 
     return CompiledQuery(sql: buffer.toString(), bindings: bindings);
   }
@@ -89,8 +88,11 @@ class SqliteGrammar extends SqlGrammar {
       buffer.write('(');
       final row = data[i];
       for (var j = 0; j < columns.length; j++) {
-        buffer.write('?');
-        bindings.add(row[columns[j]]);
+        final value = row[columns[j]];
+        buffer.write(value is Expression ? value.sql : '?');
+        if (value is! Expression) {
+          bindings.add(value);
+        }
         if (j < columns.length - 1) {
           buffer.write(', ');
         }
@@ -117,8 +119,13 @@ class SqliteGrammar extends SqlGrammar {
 
     final entries = data.entries.toList();
     for (var i = 0; i < entries.length; i++) {
-      buffer.write('${entries[i].key} = ?');
-      bindings.add(entries[i].value);
+      final value = entries[i].value;
+      buffer.write(
+        '${entries[i].key} = ${value is Expression ? value.sql : '?'}',
+      );
+      if (value is! Expression) {
+        bindings.add(value);
+      }
       if (i < entries.length - 1) {
         buffer.write(', ');
       }
@@ -177,8 +184,13 @@ class SqliteGrammar extends SqlGrammar {
 
     if (extra != null && extra.isNotEmpty) {
       for (final entry in extra.entries) {
-        buffer.write(', ${entry.key} = ?');
-        bindings.add(entry.value);
+        final value = entry.value;
+        buffer.write(
+          ', ${entry.key} = ${value is Expression ? value.sql : '?'}',
+        );
+        if (value is! Expression) {
+          bindings.add(value);
+        }
       }
     }
 
@@ -206,8 +218,13 @@ class SqliteGrammar extends SqlGrammar {
 
     if (extra != null && extra.isNotEmpty) {
       for (final entry in extra.entries) {
-        buffer.write(', ${entry.key} = ?');
-        bindings.add(entry.value);
+        final value = entry.value;
+        buffer.write(
+          ', ${entry.key} = ${value is Expression ? value.sql : '?'}',
+        );
+        if (value is! Expression) {
+          bindings.add(value);
+        }
       }
     }
 
@@ -222,6 +239,17 @@ class SqliteGrammar extends SqlGrammar {
   @override
   CompiledQuery compileTruncate({required String table}) {
     return CompiledQuery(sql: 'delete from $table', bindings: []);
+  }
+
+  @override
+  List<CompiledQuery> compileTruncateAll({required String table}) {
+    return [
+      CompiledQuery(
+        sql: 'delete from sqlite_sequence where name = ?',
+        bindings: [table],
+      ),
+      compileTruncate(table: table),
+    ];
   }
 
   @override
@@ -245,7 +273,8 @@ class SqliteGrammar extends SqlGrammar {
   }) {
     final compiled = compileInsert(table: table, data: data);
     final conflictCols = uniqueBy.join(', ');
-    final updateCols = update ?? data.first.keys.where((k) => !uniqueBy.contains(k)).toList();
+    final updateCols =
+        update ?? data.first.keys.where((k) => !uniqueBy.contains(k)).toList();
     if (updateCols.isEmpty) {
       // All columns are unique keys — do nothing on conflict
       return CompiledQuery(
@@ -255,7 +284,8 @@ class SqliteGrammar extends SqlGrammar {
     }
     final setClauses = updateCols.map((c) => '$c = excluded.$c').join(', ');
     return CompiledQuery(
-      sql: '${compiled.sql} on conflict($conflictCols) do update set $setClauses',
+      sql:
+          '${compiled.sql} on conflict($conflictCols) do update set $setClauses',
       bindings: compiled.bindings,
     );
   }
@@ -384,6 +414,12 @@ class SqliteGrammar extends SqlGrammar {
         final keyword = not ? 'not exists' : 'exists';
         parts.add('$boolean$keyword (${condition['sql']})');
         bindings.addAll(condition['bindings'] as List<Object?>);
+      } else if (type == 'nested') {
+        final nested = _compileJoinConditions(
+          condition['conditions'] as List<Map<String, dynamic>>,
+          bindings,
+        );
+        parts.add('$boolean($nested)');
       }
     }
 
@@ -503,8 +539,11 @@ class SqliteGrammar extends SqlGrammar {
         parts.add('$boolean$keyword (${where['sql']})');
         bindings.addAll(where['bindings'] as List<Object?>);
       } else if (type == 'date') {
-        final expr = _dateExpression(where['dateType'] as String, where['column'] as String);
-        parts.add('$boolean$expr = ?');
+        final expr = _dateExpression(
+          where['dateType'] as String,
+          where['column'] as String,
+        );
+        parts.add('$boolean$expr ${where['comparator'] ?? '='} ?');
         bindings.add(where['value']);
       }
     }
@@ -516,17 +555,26 @@ class SqliteGrammar extends SqlGrammar {
   /// The returned string already includes the column reference.
   String _dateExpression(String dateType, String column) {
     switch (dateType) {
-      case 'date': return 'date($column)';
-      case 'time': return 'time($column)';
-      case 'day': return "CAST(strftime('%d', $column) AS INTEGER)";
-      case 'month': return "CAST(strftime('%m', $column) AS INTEGER)";
-      case 'year': return "CAST(strftime('%Y', $column) AS INTEGER)";
-      default: return '$dateType($column)';
+      case 'date':
+        return 'date($column)';
+      case 'time':
+        return 'time($column)';
+      case 'day':
+        return "CAST(strftime('%d', $column) AS INTEGER)";
+      case 'month':
+        return "CAST(strftime('%m', $column) AS INTEGER)";
+      case 'year':
+        return "CAST(strftime('%Y', $column) AS INTEGER)";
+      default:
+        return '$dateType($column)';
     }
   }
 
   /// Compiles ORDER BY clauses.
-  String _compileOrders(List<Map<String, dynamic>> orders, List<Object?> bindings) {
+  String _compileOrders(
+    List<Map<String, dynamic>> orders,
+    List<Object?> bindings,
+  ) {
     final buffer = StringBuffer();
     buffer.write(' order by ');
 

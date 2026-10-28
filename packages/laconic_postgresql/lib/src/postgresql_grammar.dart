@@ -20,6 +20,8 @@ class PostgresqlGrammar extends SqlGrammar {
     int? limit,
     int? offset,
     List<Map<String, dynamic>> locks = const [],
+    List<Object?> selectBindings = const [],
+    List<Object?> groupBindings = const [],
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
@@ -28,7 +30,13 @@ class PostgresqlGrammar extends SqlGrammar {
     if (distinct) {
       buffer.write('distinct ');
     }
-    buffer.write(_compileColumns(columns));
+    final compiledColumns = PostgresqlPlaceholders.compile(
+      _compileColumns(columns),
+      selectBindings,
+      offset: bindings.length,
+    );
+    buffer.write(compiledColumns.sql);
+    bindings.addAll(compiledColumns.bindings);
     buffer.write(' from $table');
 
     if (joins.isNotEmpty) {
@@ -41,7 +49,13 @@ class PostgresqlGrammar extends SqlGrammar {
     }
 
     if (groups.isNotEmpty) {
-      buffer.write(_compileGroups(groups));
+      final compiledGroups = PostgresqlPlaceholders.compile(
+        _compileGroups(groups),
+        groupBindings,
+        offset: bindings.length,
+      );
+      buffer.write(compiledGroups.sql);
+      bindings.addAll(compiledGroups.bindings);
     }
 
     if (havings.isNotEmpty) {
@@ -142,8 +156,13 @@ class PostgresqlGrammar extends SqlGrammar {
       buffer.write('(');
       final row = data[i];
       for (var j = 0; j < columns.length; j++) {
-        buffer.write('\$${bindings.length + 1}');
-        bindings.add(row[columns[j]]);
+        final value = row[columns[j]];
+        if (value is Expression) {
+          buffer.write(value.sql);
+        } else {
+          buffer.write('\$${bindings.length + 1}');
+          bindings.add(value);
+        }
         if (j < columns.length - 1) {
           buffer.write(', ');
         }
@@ -189,8 +208,13 @@ class PostgresqlGrammar extends SqlGrammar {
 
     if (extra != null && extra.isNotEmpty) {
       for (final entry in extra.entries) {
-        buffer.write(', ${entry.key} = \$${bindings.length + 1}');
-        bindings.add(entry.value);
+        final value = entry.value;
+        if (value is Expression) {
+          buffer.write(', ${entry.key} = ${value.sql}');
+        } else {
+          buffer.write(', ${entry.key} = \$${bindings.length + 1}');
+          bindings.add(value);
+        }
       }
     }
 
@@ -220,8 +244,13 @@ class PostgresqlGrammar extends SqlGrammar {
 
     if (extra != null && extra.isNotEmpty) {
       for (final entry in extra.entries) {
-        buffer.write(', ${entry.key} = \$${bindings.length + 1}');
-        bindings.add(entry.value);
+        final value = entry.value;
+        if (value is Expression) {
+          buffer.write(', ${entry.key} = ${value.sql}');
+        } else {
+          buffer.write(', ${entry.key} = \$${bindings.length + 1}');
+          bindings.add(value);
+        }
       }
     }
 
@@ -246,8 +275,13 @@ class PostgresqlGrammar extends SqlGrammar {
 
     final entries = data.entries.toList();
     for (var i = 0; i < entries.length; i++) {
-      buffer.write('${entries[i].key} = \$${bindings.length + 1}');
-      bindings.add(entries[i].value);
+      final value = entries[i].value;
+      if (value is Expression) {
+        buffer.write('${entries[i].key} = ${value.sql}');
+      } else {
+        buffer.write('${entries[i].key} = \$${bindings.length + 1}');
+        bindings.add(value);
+      }
       if (i < entries.length - 1) {
         buffer.write(', ');
       }
@@ -469,6 +503,12 @@ class PostgresqlGrammar extends SqlGrammar {
             ).sql;
         bindings.addAll(subBindings);
         parts.add('$boolean$keyword ($offsetSql)');
+      } else if (type == 'nested') {
+        final nested = _compileJoinConditions(
+          condition['conditions'] as List<Map<String, dynamic>>,
+          bindings,
+        );
+        parts.add('$boolean($nested)');
       }
     }
 
@@ -614,7 +654,9 @@ class PostgresqlGrammar extends SqlGrammar {
           where['dateType'] as String,
           where['column'] as String,
         );
-        parts.add('$boolean$expr = \$${bindings.length + 1}');
+        parts.add(
+          '$boolean$expr ${where['comparator'] ?? '='} \$${bindings.length + 1}',
+        );
         bindings.add(where['value']);
       }
     }

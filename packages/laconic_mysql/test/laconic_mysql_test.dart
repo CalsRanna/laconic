@@ -647,6 +647,49 @@ void main() {
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
     });
 
+    test('date filters accept comparison operators', () async {
+      var after =
+          await laconic
+              .table(userTable)
+              .whereDate('created_at', '2024-07-01', comparator: '>')
+              .get();
+      expect(after.length, 1);
+      expect(after.first['name'], 'Jane');
+
+      var years =
+          await laconic
+              .table(userTable)
+              .whereYear('created_at', 2024, comparator: '>=')
+              .get();
+      expect(years.length, 2);
+    });
+
+    test('inRandomOrder uses the MySQL random function', () async {
+      expect(
+        laconic.table(userTable).inRandomOrder().toSql().toLowerCase(),
+        contains('rand()'),
+      );
+      expect(
+        await laconic.table(userTable).inRandomOrder().get(),
+        hasLength(3),
+      );
+    });
+
+    test('join supports raw and nested conditions', () async {
+      final rows =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .join('posts p', (join) {
+                join
+                    .on('u.id', 'p.user_id')
+                    .whereRaw('p.title like ?', ['%Thoughts%'])
+                    .whereNested((n) => n.where('p.id', 1).orWhere('p.id', 2));
+              })
+              .get();
+      expect(rows.length, 2);
+    });
+
     test('orWhereDate combines with where', () async {
       var results =
           await laconic
@@ -704,23 +747,25 @@ void main() {
     });
 
     group('LaconicException error codes:', () {
-      test('duplicate entry carries driver and MySQL server error code',
-          () async {
-        // Explicit id 1 collides with the seeded John row (ER_DUP_ENTRY).
-        try {
-          await laconic.table(userTable).insertGetId({
-            'id': 1,
-            'name': 'John',
-            'age': 25,
-            'gender': 'male',
-          });
-          fail('expected duplicate key error');
-        } on LaconicException catch (e) {
-          expect(e.driver, 'mysql');
-          expect(e.code, '1062');
-          expect(e.message, contains('1062'));
-        }
-      });
+      test(
+        'duplicate entry carries driver and MySQL server error code',
+        () async {
+          // Explicit id 1 collides with the seeded John row (ER_DUP_ENTRY).
+          try {
+            await laconic.table(userTable).insertGetId({
+              'id': 1,
+              'name': 'John',
+              'age': 25,
+              'gender': 'male',
+            });
+            fail('expected duplicate key error');
+          } on LaconicException catch (e) {
+            expect(e.driver, 'mysql');
+            expect(e.code, '1062');
+            expect(e.message, contains('1062'));
+          }
+        },
+      );
 
       test('unknown driver errors carry driver but no code', () async {
         try {

@@ -1,5 +1,6 @@
 import 'package:laconic/src/exception.dart';
 import 'package:laconic/src/laconic.dart';
+import 'package:laconic/src/operator.dart';
 import 'package:laconic/src/query_builder/query_builder.dart';
 
 /// Helper class for building JOIN clause conditions.
@@ -49,7 +50,7 @@ class JoinClause {
     _conditions.add({
       'type': 'on',
       'left': leftColumn,
-      'comparator': comparator,
+      'comparator': validateOperator(comparator),
       'right': rightColumn,
       'boolean': boolean,
     });
@@ -91,10 +92,17 @@ class JoinClause {
   /// })
   /// ```
   JoinClause where(String column, Object? value, {String comparator = '='}) {
+    final operator = validateOperator(comparator);
+
+    if (value == null &&
+        (operator == '=' || operator == '!=' || operator == '<>')) {
+      return operator == '=' ? whereNull(column) : whereNotNull(column);
+    }
+
     _conditions.add({
       'type': 'where',
       'column': column,
-      'comparator': comparator,
+      'comparator': operator,
       'value': value,
       'boolean': 'and',
     });
@@ -116,12 +124,65 @@ class JoinClause {
   /// })
   /// ```
   JoinClause orWhere(String column, Object? value, {String comparator = '='}) {
+    final operator = validateOperator(comparator);
+
+    if (value == null &&
+        (operator == '=' || operator == '!=' || operator == '<>')) {
+      return operator == '=' ? orWhereNull(column) : orWhereNotNull(column);
+    }
+
     _conditions.add({
       'type': 'where',
       'column': column,
-      'comparator': comparator,
+      'comparator': operator,
       'value': value,
       'boolean': 'or',
+    });
+    return this;
+  }
+
+  /// Adds a raw WHERE condition within the JOIN clause.
+  JoinClause whereRaw(String sql, [List<Object?> bindings = const []]) {
+    _conditions.add({
+      'type': 'raw',
+      'sql': sql,
+      'bindings': bindings,
+      'boolean': 'and',
+    });
+    return this;
+  }
+
+  /// Adds an OR raw WHERE condition within the JOIN clause.
+  JoinClause orWhereRaw(String sql, [List<Object?> bindings = const []]) {
+    _conditions.add({
+      'type': 'raw',
+      'sql': sql,
+      'bindings': bindings,
+      'boolean': 'or',
+    });
+    return this;
+  }
+
+  /// Adds a parenthesized nested condition group within the JOIN clause.
+  JoinClause whereNested(void Function(JoinClause) callback) {
+    return _addNested(callback, 'and');
+  }
+
+  /// Adds an OR parenthesized nested condition group within the JOIN clause.
+  JoinClause orWhereNested(void Function(JoinClause) callback) {
+    return _addNested(callback, 'or');
+  }
+
+  JoinClause _addNested(void Function(JoinClause) callback, String boolean) {
+    final nested = JoinClause(_laconic);
+    callback(nested);
+    if (nested._conditions.isEmpty) {
+      throw LaconicException('Nested join condition cannot be empty');
+    }
+    _conditions.add({
+      'type': 'nested',
+      'conditions': nested._conditions,
+      'boolean': boolean,
     });
     return this;
   }
@@ -197,11 +258,15 @@ class JoinClause {
   ///       .whereColumn('p.created_at', 'p.updated_at', comparator: '>');
   /// })
   /// ```
-  JoinClause whereColumn(String first, String second, {String comparator = '='}) {
+  JoinClause whereColumn(
+    String first,
+    String second, {
+    String comparator = '=',
+  }) {
     _conditions.add({
       'type': 'column',
       'first': first,
-      'comparator': comparator,
+      'comparator': validateOperator(comparator),
       'second': second,
       'boolean': 'and',
     });
@@ -221,7 +286,7 @@ class JoinClause {
     _conditions.add({
       'type': 'column',
       'first': first,
-      'comparator': comparator,
+      'comparator': validateOperator(comparator),
       'second': second,
       'boolean': 'or',
     });

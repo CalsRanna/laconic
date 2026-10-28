@@ -6,7 +6,7 @@
 /// Example:
 /// ```dart
 /// query.selectRaw('COUNT(*) as count');
-/// query.where('created_at', '>', raw('NOW()'));
+/// query.where('created_at', raw('NOW()'), comparator: '>');
 /// query.orderByRaw('RANDOM()');
 /// ```
 class Expression {
@@ -24,7 +24,7 @@ class Expression {
 ///
 /// Example:
 /// ```dart
-/// query.select([raw('COALESCE(name, "N/A") as name'), 'email']);
-/// query.where('created_at', '>', raw("datetime('now')"));
+/// query.selectRaw('COALESCE(name, \'N/A\') as name');
+/// query.where('created_at', raw("datetime('now')"), comparator: '>');
 /// ```
 Expression raw(String sql) => Expression(sql);

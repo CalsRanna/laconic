@@ -16,6 +16,8 @@ class MockGrammar extends SqlGrammar {
     int? limit,
     int? offset,
     List<Map<String, dynamic>> locks = const [],
+    List<Object?> selectBindings = const [],
+    List<Object?> groupBindings = const [],
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
@@ -27,6 +29,7 @@ class MockGrammar extends SqlGrammar {
           ? '*'
           : columns.join(', '),
     );
+    bindings.addAll(selectBindings);
     buffer.write(' from $table');
 
     if (joins.isNotEmpty) {
@@ -61,9 +64,7 @@ class MockGrammar extends SqlGrammar {
         if (type == 'basic') {
           final value = w['value'];
           if (value is Expression) {
-            buffer.write(
-              '${w['column']} ${w['comparator']} ${value.sql}',
-            );
+            buffer.write('${w['column']} ${w['comparator']} ${value.sql}');
           } else {
             buffer.write('${w['column']} ${w['comparator']} ?');
             bindings.add(value);
@@ -346,11 +347,13 @@ class MockGrammar extends SqlGrammar {
     List<String>? update,
   }) {
     final compiled = compileInsert(table: table, data: data);
-    final updateCols = update ?? data.first.keys.where((k) => !uniqueBy.contains(k)).toList();
+    final updateCols =
+        update ?? data.first.keys.where((k) => !uniqueBy.contains(k)).toList();
     if (updateCols.isEmpty) return compiled;
     final setClauses = updateCols.map((c) => '$c = excluded.$c').join(', ');
     return CompiledQuery(
-      sql: '${compiled.sql} on conflict(${uniqueBy.join(', ')}) do update set $setClauses',
+      sql:
+          '${compiled.sql} on conflict(${uniqueBy.join(', ')}) do update set $setClauses',
       bindings: compiled.bindings,
     );
   }
@@ -457,7 +460,9 @@ void main() {
 
     test('update query is compiled correctly', () async {
       driver.affectedRows = 1;
-      final affected = await laconic.table('users').where('id', 1).update({'name': 'Jane'});
+      final affected = await laconic.table('users').where('id', 1).update({
+        'name': 'Jane',
+      });
 
       expect(affected, 1);
       expect(
@@ -494,6 +499,59 @@ void main() {
         'select * from users where deleted_at is null',
       );
       expect(driver.executedParams.first, isEmpty);
+    });
+
+    test('where with a null value compiles to IS NULL', () async {
+      await laconic.table('users').where('deleted_at', null).get();
+
+      expect(
+        driver.executedSql.first,
+        'select * from users where deleted_at is null',
+      );
+
+      await laconic.table('users').where('id', 1, comparator: '!=').get();
+      expect(driver.executedSql.last, 'select * from users where id != ?');
+    });
+
+    test('invalid comparison operators are rejected', () {
+      expect(
+        () => laconic.table('users').where('id', 1, comparator: '= 1 or 1 ='),
+        throwsA(isA<LaconicException>()),
+      );
+    });
+
+    test('firstOrNull returns null when no rows match', () async {
+      expect(await laconic.table('users').firstOrNull(), isNull);
+      expect(await laconic.table('users').findOrNull(999), isNull);
+      expect(await laconic.table('users').firstWhereOrNull('id', 999), isNull);
+
+      await expectLater(
+        laconic.table('users').first(),
+        throwsA(isA<LaconicException>()),
+      );
+    });
+
+    test('reorder replaces the existing ordering', () async {
+      await laconic.table('users').orderBy('id').reorder('name', 'desc').get();
+
+      expect(
+        driver.executedSql.first,
+        'select * from users order by name desc',
+      );
+    });
+
+    test('selectRaw bindings precede where bindings', () async {
+      await laconic
+          .table('users')
+          .selectRaw('? as marker', ['x'])
+          .where('id', 1)
+          .get();
+
+      expect(
+        driver.executedSql.first,
+        'select ? as marker from users where id = ?',
+      );
+      expect(driver.executedParams.first, ['x', 1]);
     });
 
     test('join compiles correctly', () async {
@@ -547,21 +605,13 @@ void main() {
     });
 
     test('carries driver and code verbatim', () {
-      final error = LaconicException(
-        'boom',
-        driver: 'mysql',
-        code: '1062',
-      );
+      final error = LaconicException('boom', driver: 'mysql', code: '1062');
       expect(error.driver, 'mysql');
       expect(error.code, '1062');
     });
 
     test('toString is unaffected by driver and code', () {
-      final error = LaconicException(
-        'boom',
-        driver: 'postgres',
-        code: '23505',
-      );
+      final error = LaconicException('boom', driver: 'postgres', code: '23505');
       expect(error.toString(), 'LaconicException: boom');
     });
   });

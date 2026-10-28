@@ -83,7 +83,9 @@ void main() {
     });
 
     test('table(users).where("id", 1).update()', () async {
-      final affected = await laconic.table(userTable).where('id', 1).update({'age': 26});
+      final affected = await laconic.table(userTable).where('id', 1).update({
+        'age': 26,
+      });
       expect(affected, 1);
       var user = await laconic.table(userTable).where('id', 1).first();
       expect(user['age'], 26);
@@ -162,7 +164,10 @@ void main() {
     // ==================== Increment/Decrement ====================
 
     test('increment without amount', () async {
-      final affected = await laconic.table(userTable).where('id', 1).increment('age');
+      final affected = await laconic
+          .table(userTable)
+          .where('id', 1)
+          .increment('age');
       expect(affected, 1);
       var user = await laconic.table(userTable).where('id', 1).first();
       expect(user['age'], 26);
@@ -191,7 +196,10 @@ void main() {
     });
 
     test('decrement without amount', () async {
-      final affected = await laconic.table(userTable).where('id', 2).decrement('age');
+      final affected = await laconic
+          .table(userTable)
+          .where('id', 2)
+          .decrement('age');
       expect(affected, 1);
       var user = await laconic.table(userTable).where('id', 2).first();
       expect(user['age'], 29);
@@ -589,67 +597,62 @@ void main() {
     // ==================== Raw Expressions ====================
 
     test('selectRaw adds raw expression to select clause', () async {
-      final results = await laconic
-          .table(userTable)
-          .selectRaw('COUNT(*) as total')
-          .get();
+      final results =
+          await laconic.table(userTable).selectRaw('COUNT(*) as total').get();
       expect(results.length, 1);
       expect(results.first['total'], greaterThan(0));
     });
 
     test('selectRaw combines with regular select', () async {
-      final results = await laconic
-          .table(userTable)
-          .select(['id', 'name'])
-          .selectRaw('age + 1 as next_age')
-          .where('id', 1)
-          .get();
+      final results =
+          await laconic
+              .table(userTable)
+              .select(['id', 'name'])
+              .selectRaw('age + 1 as next_age')
+              .where('id', 1)
+              .get();
       expect(results.length, 1);
       expect(results.first['next_age'], 26); // John's age is 25
     });
 
     test('whereRaw adds raw where condition', () async {
-      final results = await laconic
-          .table(userTable)
-          .whereRaw('id = ?', [1])
-          .get();
+      final results =
+          await laconic.table(userTable).whereRaw('id = ?', [1]).get();
       expect(results.length, 1);
       expect(results.first['name'], 'John');
     });
 
     test('whereRaw without bindings', () async {
-      final results = await laconic
-          .table(userTable)
-          .whereRaw('1 = 1')
-          .get();
+      final results = await laconic.table(userTable).whereRaw('1 = 1').get();
       expect(results.length, 3);
     });
 
     test('orWhereRaw combines with regular where', () async {
-      final results = await laconic
-          .table(userTable)
-          .where('id', 1)
-          .orWhereRaw('id = ?', [2])
-          .get();
+      final results =
+          await laconic.table(userTable).where('id', 1).orWhereRaw('id = ?', [
+            2,
+          ]).get();
       expect(results.length, 2);
     });
 
     test('where accepts raw() expression as value', () async {
-      final results = await laconic
-          .table(userTable)
-          .where('age', raw('25 + 5'), comparator: '>')
-          .get();
+      final results =
+          await laconic
+              .table(userTable)
+              .where('age', raw('25 + 5'), comparator: '>')
+              .get();
       // age > 30 matches Jack (35) only
       expect(results.length, 1);
       expect(results.first['name'], 'Jack');
     });
 
     test('whereRaw combined with regular where uses AND', () async {
-      final results = await laconic
-          .table(userTable)
-          .whereRaw('id > ?', [0])
-          .where('age', 30)
-          .get();
+      final results =
+          await laconic
+              .table(userTable)
+              .whereRaw('id > ?', [0])
+              .where('age', 30)
+              .get();
       expect(results.length, 1);
       expect(results.first['name'], 'Jane');
     });
@@ -659,69 +662,69 @@ void main() {
         {'name': 'Duplicate', 'age': 30},
       ]);
 
-      final results = await laconic
-          .table(userTable)
-          .selectRaw('age, COUNT(*) as cnt')
-          .groupBy('age')
-          .havingRaw('COUNT(*) > ?', [1])
-          .get();
+      final results =
+          await laconic
+              .table(userTable)
+              .selectRaw('age, COUNT(*) as cnt')
+              .groupBy('age')
+              .havingRaw('COUNT(*) > ?', [1])
+              .get();
 
       // age 30 should have count 2 (Jane + Duplicate)
       expect(results.any((r) => r['age'] == 30 && r['cnt'] == 2), isTrue);
 
       // Cleanup
-      await laconic
-          .table(userTable)
-          .where('name', 'Duplicate')
-          .delete();
+      await laconic.table(userTable).where('name', 'Duplicate').delete();
     });
 
     test('orHavingRaw combines with having', () async {
-      final results = await laconic
-          .table(userTable)
-          .selectRaw('age, COUNT(*) as cnt')
-          .groupBy('age')
-          .having('age', 25)
-          .orHavingRaw('age = ?', [30])
-          .get();
+      final results =
+          await laconic
+              .table(userTable)
+              .selectRaw('age, COUNT(*) as cnt')
+              .groupBy('age')
+              .having('age', 25)
+              .orHavingRaw('age = ?', [30])
+              .get();
       expect(results.length, 2);
     });
 
     test('orderByRaw with RANDOM', () async {
-      final results = await laconic
-          .table(userTable)
-          .orderByRaw('RANDOM()')
-          .get();
+      final results =
+          await laconic.table(userTable).orderByRaw('RANDOM()').get();
       expect(results.length, 3);
     });
 
     test('orderByRaw with bindings', () async {
-      final results = await laconic
-          .table(userTable)
-          .orderByRaw('CASE WHEN age > ? THEN 0 ELSE 1 END', [25])
-          .get();
+      final results =
+          await laconic.table(userTable).orderByRaw(
+            'CASE WHEN age > ? THEN 0 ELSE 1 END',
+            [25],
+          ).get();
       expect(results.length, 3);
       // Jane (age 30) and Bob (age 35) > 25 should come first
       expect(results.first['age'], greaterThan(25));
     });
 
     test('groupByRaw groups by expression', () async {
-      final results = await laconic
-          .table(userTable)
-          .selectRaw('age >= 30 as is_older, COUNT(*) as cnt')
-          .groupByRaw('age >= 30')
-          .orderBy('is_older')
-          .get();
+      final results =
+          await laconic
+              .table(userTable)
+              .selectRaw('age >= 30 as is_older, COUNT(*) as cnt')
+              .groupByRaw('age >= 30')
+              .orderBy('is_older')
+              .get();
       expect(results.length, 2); // true and false groups
     });
 
     test('having accepts raw() expression as value', () async {
-      final results = await laconic
-          .table(userTable)
-          .selectRaw('age, COUNT(*) as cnt')
-          .groupBy('age')
-          .having('cnt', raw('2'), comparator: '>')
-          .get();
+      final results =
+          await laconic
+              .table(userTable)
+              .selectRaw('age, COUNT(*) as cnt')
+              .groupBy('age')
+              .having('cnt', raw('2'), comparator: '>')
+              .get();
       // No age has count > 2 in base data
       expect(results.length, 0);
     });
@@ -729,117 +732,224 @@ void main() {
     // ==================== Date Functions ====================
 
     test('whereYear filters by year', () async {
-      var results = await laconic
-          .table(userTable)
-          .whereYear('created_at', 2024)
-          .get();
+      var results =
+          await laconic.table(userTable).whereYear('created_at', 2024).get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jane'), isTrue);
     });
 
     test('whereMonth filters by month', () async {
-      var results = await laconic
-          .table(userTable)
-          .whereMonth('created_at', 6)
-          .get();
+      var results =
+          await laconic.table(userTable).whereMonth('created_at', 6).get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
     });
 
     test('whereDay filters by day', () async {
-      var results = await laconic
-          .table(userTable)
-          .whereDay('created_at', 15)
-          .get();
+      var results =
+          await laconic.table(userTable).whereDay('created_at', 15).get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
     });
 
     test('whereDate filters by full date', () async {
-      var results = await laconic
-          .table(userTable)
-          .whereDate('created_at', '2024-07-20')
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .whereDate('created_at', '2024-07-20')
+              .get();
       expect(results.length, 1);
       expect(results.first['name'], 'Jane');
     });
 
     test('whereTime filters by time', () async {
-      var results = await laconic
-          .table(userTable)
-          .whereTime('created_at', '10:30:00')
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .whereTime('created_at', '10:30:00')
+              .get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
     });
 
     test('orWhereDate combines with where', () async {
-      var results = await laconic
-          .table(userTable)
-          .where('age', 25)
-          .orWhereDate('created_at', '2024-07-20')
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .where('age', 25)
+              .orWhereDate('created_at', '2024-07-20')
+              .get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jane'), isTrue);
     });
 
     test('orWhereYear combines with where', () async {
-      var results = await laconic
-          .table(userTable)
-          .where('name', 'Jack')
-          .orWhereYear('created_at', 2024)
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .where('name', 'Jack')
+              .orWhereYear('created_at', 2024)
+              .get();
       expect(results.length, 3);
     });
 
     test('orWhereMonth combines with where', () async {
-      var results = await laconic
-          .table(userTable)
-          .where('age', 25)
-          .orWhereMonth('created_at', 7)
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .where('age', 25)
+              .orWhereMonth('created_at', 7)
+              .get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jane'), isTrue);
     });
 
     test('orWhereDay combines with where', () async {
-      var results = await laconic
-          .table(userTable)
-          .where('age', 30)
-          .orWhereDay('created_at', 15)
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .where('age', 30)
+              .orWhereDay('created_at', 15)
+              .get();
       expect(results.length, 3);
     });
 
     test('orWhereTime combines with where', () async {
-      var results = await laconic
-          .table(userTable)
-          .where('age', 35)
-          .orWhereTime('created_at', '10:30:00')
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .where('age', 35)
+              .orWhereTime('created_at', '10:30:00')
+              .get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
     });
 
+    test('date filters accept comparison operators', () async {
+      final after =
+          await laconic
+              .table(userTable)
+              .whereDate('created_at', '2024-07-01', comparator: '>')
+              .get();
+      expect(after.map((r) => r['name']), ['Jane']);
+
+      final years =
+          await laconic
+              .table(userTable)
+              .whereYear('created_at', 2024, comparator: '>=')
+              .get();
+      expect(years.length, 2);
+      expect(
+        await laconic
+            .table(userTable)
+            .whereYear('created_at', 2025, comparator: '>=')
+            .count(),
+        0,
+      );
+    });
+
+    test('locking clauses are ignored on SQLite', () async {
+      final sql =
+          laconic
+              .table(userTable)
+              .where('id', 1)
+              .lockForUpdate()
+              .sharedLock()
+              .toSql()
+              .toLowerCase();
+      expect(sql, isNot(contains('for update')));
+      expect(sql, isNot(contains('for share')));
+      expect(
+        await laconic.table(userTable).lockForUpdate().get(),
+        hasLength(3),
+      );
+    });
+
+    test('inRandomOrder uses the SQLite random function', () async {
+      final sql =
+          laconic.table(userTable).inRandomOrder().toSql().toLowerCase();
+      expect(sql, contains('random()'));
+      expect(
+        await laconic.table(userTable).inRandomOrder().get(),
+        hasLength(3),
+      );
+    });
+
+    test('truncate resets the auto-increment sequence', () async {
+      const probe = 'truncate_probe';
+      await laconic.statement(
+        'create table $probe (id integer primary key autoincrement, name text)',
+      );
+      try {
+        await laconic.table(probe).insert([
+          {'name': 'a'},
+        ]);
+        await laconic.table(probe).insert([
+          {'name': 'b'},
+        ]);
+        await laconic.table(probe).truncate();
+        final id = await laconic.table(probe).insertGetId({'name': 'c'});
+        expect(id, 1);
+        expect(await laconic.table(probe).count(), 1);
+      } finally {
+        await laconic.statement('drop table if exists $probe');
+      }
+    });
+
+    test('truncate works without an AUTOINCREMENT table', () async {
+      final memory = Laconic(SqliteDriver(SqliteConfig(':memory:')));
+      try {
+        await memory.statement(
+          'create table plain (id integer primary key, name text)',
+        );
+        await memory.table('plain').insert([
+          {'id': 1, 'name': 'a'},
+        ]);
+        await memory.table('plain').truncate();
+        expect(await memory.table('plain').count(), 0);
+      } finally {
+        await memory.close();
+      }
+    });
+
+    test('join supports raw and nested conditions', () async {
+      final rows =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .join('posts p', (join) {
+                join
+                    .on('u.id', 'p.user_id')
+                    .whereRaw('p.title like ?', ['%Thoughts%'])
+                    .whereNested((n) => n.where('p.id', 1).orWhere('p.id', 2));
+              })
+              .get();
+      expect(rows.length, 2);
+      expect(rows.every((r) => '${r['title']}'.contains('Thoughts')), isTrue);
+    });
+
     group('LaconicException error codes:', () {
       const uniqueTable = 'unique_names';
 
-      test('duplicate entry carries driver and SQLite extended code',
-          () async {
+      test('duplicate entry carries driver and SQLite extended code', () async {
         await laconic.statement(
           'create table $uniqueTable '
           '(id integer primary key autoincrement, name varchar(255) unique)',
         );
-        await laconic.table(uniqueTable).insert([{'name': 'alice'}]);
+        await laconic.table(uniqueTable).insert([
+          {'name': 'alice'},
+        ]);
         try {
-          await laconic.table(uniqueTable).insert([{'name': 'alice'}]);
+          await laconic.table(uniqueTable).insert([
+            {'name': 'alice'},
+          ]);
           fail('expected duplicate key error');
         } on LaconicException catch (e) {
           expect(e.driver, 'sqlite');
@@ -851,17 +961,19 @@ void main() {
         }
       });
 
-      test('non-constraint driver error carries driver but a different code',
-          () async {
-        try {
-          await laconic.statement('this is not sql');
-          fail('expected SQL error');
-        } on LaconicException catch (e) {
-          expect(e.driver, 'sqlite');
-          // 1 = SQLITE_ERROR, not a constraint code
-          expect(e.code, '1');
-        }
-      });
+      test(
+        'non-constraint driver error carries driver but a different code',
+        () async {
+          try {
+            await laconic.statement('this is not sql');
+            fail('expected SQL error');
+          } on LaconicException catch (e) {
+            expect(e.driver, 'sqlite');
+            // 1 = SQLITE_ERROR, not a constraint code
+            expect(e.code, '1');
+          }
+        },
+      );
     });
   });
 }

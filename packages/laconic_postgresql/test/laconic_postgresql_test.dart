@@ -90,7 +90,9 @@ void main() {
     });
 
     test('table(users).where("id", 1).update()', () async {
-      final affected = await laconic.table(userTable).where('id', 1).update({'age': 26});
+      final affected = await laconic.table(userTable).where('id', 1).update({
+        'age': 26,
+      });
       expect(affected, 1);
       var user = await laconic.table(userTable).where('id', 1).first();
       expect(user['age'], 26);
@@ -322,7 +324,10 @@ void main() {
     // ==================== Increment/Decrement ====================
 
     test('increment increases column value', () async {
-      final affected = await laconic.table(userTable).where('id', 1).increment('age');
+      final affected = await laconic
+          .table(userTable)
+          .where('id', 1)
+          .increment('age');
       expect(affected, 1);
       var user = await laconic.table(userTable).where('id', 1).first();
       expect(user['age'], 26);
@@ -351,7 +356,10 @@ void main() {
     });
 
     test('decrement decreases column value', () async {
-      final affected = await laconic.table(userTable).where('id', 2).decrement('age');
+      final affected = await laconic
+          .table(userTable)
+          .where('id', 2)
+          .decrement('age');
       expect(affected, 1);
       var user = await laconic.table(userTable).where('id', 2).first();
       expect(user['age'], 29);
@@ -577,100 +585,144 @@ void main() {
     // ==================== Date Functions ====================
 
     test('whereYear filters by year', () async {
-      var results = await laconic
-          .table(userTable)
-          .whereYear('created_at', 2024)
-          .get();
+      var results =
+          await laconic.table(userTable).whereYear('created_at', 2024).get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jane'), isTrue);
     });
 
     test('whereMonth filters by month', () async {
-      var results = await laconic
-          .table(userTable)
-          .whereMonth('created_at', 6)
-          .get();
+      var results =
+          await laconic.table(userTable).whereMonth('created_at', 6).get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
     });
 
     test('whereDay filters by day', () async {
-      var results = await laconic
-          .table(userTable)
-          .whereDay('created_at', 15)
-          .get();
+      var results =
+          await laconic.table(userTable).whereDay('created_at', 15).get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
     });
 
     test('whereDate filters by full date', () async {
-      var results = await laconic
-          .table(userTable)
-          .whereDate('created_at', '2024-07-20')
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .whereDate('created_at', '2024-07-20')
+              .get();
       expect(results.length, 1);
       expect(results.first['name'], 'Jane');
     });
 
     test('whereTime filters by time', () async {
-      var results = await laconic
-          .table(userTable)
-          .whereTime('created_at', '10:30:00')
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .whereTime('created_at', '10:30:00')
+              .get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
     });
 
+    test('date filters accept comparison operators', () async {
+      var after =
+          await laconic
+              .table(userTable)
+              .whereDate('created_at', '2024-07-01', comparator: '>')
+              .get();
+      expect(after.length, 1);
+      expect(after.first['name'], 'Jane');
+
+      var years =
+          await laconic
+              .table(userTable)
+              .whereYear('created_at', 2024, comparator: '>=')
+              .get();
+      expect(years.length, 2);
+    });
+
+    test('inRandomOrder uses the PostgreSQL random function', () async {
+      expect(
+        laconic.table(userTable).inRandomOrder().toSql().toLowerCase(),
+        contains('random()'),
+      );
+      expect(
+        await laconic.table(userTable).inRandomOrder().get(),
+        hasLength(3),
+      );
+    });
+
+    test('join supports raw and nested conditions', () async {
+      final rows =
+          await laconic
+              .table('$userTable u')
+              .select(['u.name', 'p.title'])
+              .join('posts p', (join) {
+                join
+                    .on('u.id', 'p.user_id')
+                    .whereRaw('p.title like ?', ['%Thoughts%'])
+                    .whereNested((n) => n.where('p.id', 1).orWhere('p.id', 2));
+              })
+              .get();
+      expect(rows.length, 2);
+    });
+
     test('orWhereDate combines with where', () async {
-      var results = await laconic
-          .table(userTable)
-          .where('age', 25)
-          .orWhereDate('created_at', '2024-07-20')
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .where('age', 25)
+              .orWhereDate('created_at', '2024-07-20')
+              .get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jane'), isTrue);
     });
 
     test('orWhereYear combines with where', () async {
-      var results = await laconic
-          .table(userTable)
-          .where('name', 'Jack')
-          .orWhereYear('created_at', 2024)
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .where('name', 'Jack')
+              .orWhereYear('created_at', 2024)
+              .get();
       expect(results.length, 3);
     });
 
     test('orWhereMonth combines with where', () async {
-      var results = await laconic
-          .table(userTable)
-          .where('age', 25)
-          .orWhereMonth('created_at', 7)
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .where('age', 25)
+              .orWhereMonth('created_at', 7)
+              .get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jane'), isTrue);
     });
 
     test('orWhereDay combines with where', () async {
-      var results = await laconic
-          .table(userTable)
-          .where('age', 30)
-          .orWhereDay('created_at', 15)
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .where('age', 30)
+              .orWhereDay('created_at', 15)
+              .get();
       expect(results.length, 3);
     });
 
     test('orWhereTime combines with where', () async {
-      var results = await laconic
-          .table(userTable)
-          .where('age', 35)
-          .orWhereTime('created_at', '10:30:00')
-          .get();
+      var results =
+          await laconic
+              .table(userTable)
+              .where('age', 35)
+              .orWhereTime('created_at', '10:30:00')
+              .get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
@@ -695,8 +747,7 @@ void main() {
         }
       });
 
-      test('unknown driver errors carry driver but a different code',
-          () async {
+      test('unknown driver errors carry driver but a different code', () async {
         try {
           await laconic.statement('select * from no_such_table_xyz');
           fail('expected SQL error');

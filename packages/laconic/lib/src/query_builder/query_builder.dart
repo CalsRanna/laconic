@@ -1,5 +1,6 @@
 import 'package:laconic/src/exception.dart';
 import 'package:laconic/src/laconic.dart';
+import 'package:laconic/src/operator.dart';
 import 'package:laconic/src/grammar/grammar.dart';
 import 'package:laconic/src/grammar/compiled_query.dart';
 import 'package:laconic/src/query_builder/join_clause.dart';
@@ -15,6 +16,12 @@ class QueryBuilder {
 
   /// The columns to select.
   List<String> _columns = ['*'];
+
+  /// Bindings for raw SELECT expressions, in column order.
+  final List<Object?> _selectBindings = [];
+
+  /// Bindings for raw GROUP BY expressions, in group order.
+  final List<Object?> _groupBindings = [];
 
   /// The WHERE conditions.
   final List<Map<String, dynamic>> _wheres = [];
@@ -85,6 +92,7 @@ class QueryBuilder {
       joins: _joins,
       orders: [],
       groups: _groups,
+      groupBindings: _groupBindings,
       havings: _havings,
       distinct: false,
       limit: null,
@@ -128,8 +136,24 @@ class QueryBuilder {
   /// Truncates the table, removing all rows and resetting auto-increment.
   /// Unlike [delete], this does not require a WHERE clause.
   Future<void> truncate() async {
-    final compiled = _grammar.compileTruncate(table: _table);
-    await _laconic.statement(compiled.sql, compiled.bindings);
+    for (final compiled in _grammar.compileTruncateAll(table: _table)) {
+      await _laconic.statement(compiled.sql, compiled.bindings);
+    }
+  }
+
+  /// Returns the first record matching the query, or `null` when none exists.
+  ///
+  /// Always appends `LIMIT 1` for efficiency, regardless of any
+  /// previously set [limit] on the builder.
+  ///
+  /// The `OrNull` suffix follows the Dart convention used by
+  /// `Iterable.firstOrNull`; use [first] for fail-fast behavior.
+  Future<LaconicResult?> firstOrNull() async {
+    final compiled = _compileSelect(limitOverride: 1);
+
+    final results = await _laconic.select(compiled.sql, compiled.bindings);
+
+    return results.isEmpty ? null : results.first;
   }
 
   /// Returns the first record matching the query.
@@ -137,17 +161,14 @@ class QueryBuilder {
   /// Always appends `LIMIT 1` for efficiency, regardless of any
   /// previously set [limit] on the builder.
   ///
-  /// Throws [LaconicException] if no record is found.
+  /// Throws [LaconicException] if no record is found. Equivalent to
+  /// Laravel's `firstOrFail()`; use [firstOrNull] to receive `null` instead.
   Future<LaconicResult> first() async {
-    final compiled = _compileSelect(limitOverride: 1);
-
-    final results = await _laconic.select(compiled.sql, compiled.bindings);
-
-    if (results.isEmpty) {
+    final result = await firstOrNull();
+    if (result == null) {
       throw LaconicException('No record found');
     }
-
-    return results.first;
+    return result;
   }
 
   /// Returns all records matching the query.
@@ -157,16 +178,38 @@ class QueryBuilder {
     return _laconic.select(compiled.sql, compiled.bindings);
   }
 
+  /// Returns the first record with the given [id], or `null` when none exists.
+  Future<LaconicResult?> findOrNull(Object? id) {
+    return where('id', id).firstOrNull();
+  }
+
   /// Returns the first record with the given [id]
   /// (shorthand for `where('id', id).first()`).
+  ///
+  /// Throws [LaconicException] if no record is found.
   Future<LaconicResult> find(Object? id) async {
-    return where('id', id).first();
+    final result = await findOrNull(id);
+    if (result == null) {
+      throw LaconicException('No record found');
+    }
+    return result;
+  }
+
+  /// Returns the first record where [column] matches [value], or `null`.
+  Future<LaconicResult?> firstWhereOrNull(String column, Object? value) {
+    return where(column, value).firstOrNull();
   }
 
   /// Returns the first record where [column] matches [value]
   /// (shorthand for `where(column, value).first()`).
+  ///
+  /// Throws [LaconicException] if no record is found.
   Future<LaconicResult> firstWhere(String column, Object? value) async {
-    return where(column, value).first();
+    final result = await firstWhereOrNull(column, value);
+    if (result == null) {
+      throw LaconicException('No record found');
+    }
+    return result;
   }
 
   /// Inserts records into the database.
@@ -298,7 +341,8 @@ class QueryBuilder {
   /// A RIGHT JOIN returns all records from the right table and the matched records
   /// from the left table. If there is no match, the left side will contain NULL values.
   ///
-  /// Note: SQLite does not support RIGHT JOIN natively. Consider using LEFT JOIN instead.
+  /// Note: SQLite versions before 3.39 do not support RIGHT JOIN. Modern
+  /// SQLite (3.39+) supports it natively.
   ///
   /// Example:
   /// ```dart
@@ -428,15 +472,27 @@ class QueryBuilder {
     return orderBy(column, direction: 'asc');
   }
 
-  /// Orders results in random order.
+  /// Orders results in random order using the dialect's random function.
   QueryBuilder inRandomOrder() {
-    return orderByRaw('RANDOM()');
+    return orderByRaw(_grammar.randomOrderExpression);
   }
 
-  /// Removes all previously set ORDER BY clauses.
-  QueryBuilder reorder() {
+  /// Removes all previously set ORDER BY clauses, optionally replacing them
+  /// with a new ordering.
+  ///
+  /// Mirrors Laravel's `reorder($column, $direction)`; call [reorder] with no
+  /// arguments to only clear the existing ordering.
+  QueryBuilder reorder([String? column, String direction = 'asc']) {
     _orders.clear();
+    if (column != null) {
+      orderBy(column, direction: direction);
+    }
     return this;
+  }
+
+  /// Removes all previously set ORDER BY clauses and orders by [column] desc.
+  QueryBuilder reorderDesc(String column) {
+    return reorder(column, 'desc');
   }
 
   /// Alias for [offset]. Skips the specified number of records.
@@ -464,10 +520,17 @@ class QueryBuilder {
     Object? value, {
     String comparator = '=',
   }) {
+    final operator = validateOperator(comparator);
+
+    if (value == null &&
+        (operator == '=' || operator == '!=' || operator == '<>')) {
+      return operator == '=' ? orWhereNull(column) : orWhereNotNull(column);
+    }
+
     _wheres.add({
       'type': 'basic',
       'column': column,
-      'comparator': comparator,
+      'comparator': operator,
       'value': value,
       'boolean': 'or',
     });
@@ -716,6 +779,8 @@ class QueryBuilder {
     final copy =
         QueryBuilder(laconic: _laconic, table: _table)
           .._columns = List<String>.from(_columns)
+          .._selectBindings.addAll(_selectBindings)
+          .._groupBindings.addAll(_groupBindings)
           .._wheres.addAll(_wheres.map(_deepCopyWhere))
           .._joins.addAll(_joins.map(_deepCopyJoin))
           .._orders.addAll(_orders.map((o) => Map<String, dynamic>.from(o)))
@@ -761,6 +826,7 @@ class QueryBuilder {
     } else {
       _columns = columns;
     }
+    _selectBindings.clear();
     return this;
   }
 
@@ -775,6 +841,7 @@ class QueryBuilder {
   QueryBuilder addSelect(List<String> columns) {
     if (_columns.contains('*')) {
       _columns = columns;
+      _selectBindings.clear();
     } else {
       _columns.addAll(columns);
     }
@@ -789,14 +856,16 @@ class QueryBuilder {
   /// Example:
   /// ```dart
   /// query.selectRaw('COUNT(*) as count');
-  /// query.select(['name']).selectRaw('COUNT(*) as count');
+  /// query.selectRaw('case when active = ? then 1 else 0 end as active', [1]);
   /// ```
-  QueryBuilder selectRaw(String sql) {
+  QueryBuilder selectRaw(String sql, [List<Object?> bindings = const []]) {
     if (_columns.length == 1 && _columns[0] == '*') {
       _columns = [sql];
+      _selectBindings.clear();
     } else {
       _columns.add(sql);
     }
+    _selectBindings.addAll(bindings);
     return this;
   }
 
@@ -891,10 +960,19 @@ class QueryBuilder {
   /// [value] is the value to compare.
   /// [comparator] is the comparison operator (defaults to '=').
   QueryBuilder where(String column, Object? value, {String comparator = '='}) {
+    final operator = validateOperator(comparator);
+
+    // Laravel converts a `null` comparison with =, != or <> into IS NULL /
+    // IS NOT NULL instead of emitting a comparison that can never match.
+    if (value == null &&
+        (operator == '=' || operator == '!=' || operator == '<>')) {
+      return operator == '=' ? whereNull(column) : whereNotNull(column);
+    }
+
     _wheres.add({
       'type': 'basic',
       'column': column,
-      'comparator': comparator,
+      'comparator': operator,
       'value': value,
       'boolean': 'and',
     });
@@ -935,7 +1013,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'column',
       'first': first,
-      'comparator': comparator,
+      'comparator': validateOperator(comparator),
       'second': second,
       'boolean': 'and',
     });
@@ -960,7 +1038,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'all',
       'columns': columns,
-      'comparator': comparator,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'and',
     });
@@ -985,7 +1063,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'any',
       'columns': columns,
-      'comparator': comparator,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'and',
     });
@@ -1010,7 +1088,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'none',
       'columns': columns,
-      'comparator': comparator,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'and',
     });
@@ -1211,7 +1289,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'column',
       'first': first,
-      'comparator': comparator,
+      'comparator': validateOperator(comparator),
       'second': second,
       'boolean': 'or',
     });
@@ -1294,120 +1372,170 @@ class QueryBuilder {
     return this;
   }
 
-  /// WHERE DATE(col) = value.
-  QueryBuilder whereDate(String column, Object? value) {
+  /// Adds a WHERE DATE(col) comparison (defaults to `=`).
+  QueryBuilder whereDate(
+    String column,
+    Object? value, {
+    String comparator = '=',
+  }) {
     _wheres.add({
       'type': 'date',
       'dateType': 'date',
       'column': column,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'and',
     });
     return this;
   }
 
-  /// OR WHERE DATE(col) = value.
-  QueryBuilder orWhereDate(String column, Object? value) {
+  /// Adds an OR WHERE DATE(col) comparison (defaults to `=`).
+  QueryBuilder orWhereDate(
+    String column,
+    Object? value, {
+    String comparator = '=',
+  }) {
     _wheres.add({
       'type': 'date',
       'dateType': 'date',
       'column': column,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'or',
     });
     return this;
   }
 
-  /// WHERE TIME(col) = value.
-  QueryBuilder whereTime(String column, Object? value) {
+  /// Adds a WHERE TIME(col) comparison (defaults to `=`).
+  QueryBuilder whereTime(
+    String column,
+    Object? value, {
+    String comparator = '=',
+  }) {
     _wheres.add({
       'type': 'date',
       'dateType': 'time',
       'column': column,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'and',
     });
     return this;
   }
 
-  /// OR WHERE TIME(col) = value.
-  QueryBuilder orWhereTime(String column, Object? value) {
+  /// Adds an OR WHERE TIME(col) comparison (defaults to `=`).
+  QueryBuilder orWhereTime(
+    String column,
+    Object? value, {
+    String comparator = '=',
+  }) {
     _wheres.add({
       'type': 'date',
       'dateType': 'time',
       'column': column,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'or',
     });
     return this;
   }
 
-  /// WHERE DAY(col) = value.
-  QueryBuilder whereDay(String column, Object? value) {
+  /// Adds a WHERE DAY(col) comparison (defaults to `=`).
+  QueryBuilder whereDay(
+    String column,
+    Object? value, {
+    String comparator = '=',
+  }) {
     _wheres.add({
       'type': 'date',
       'dateType': 'day',
       'column': column,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'and',
     });
     return this;
   }
 
-  /// OR WHERE DAY(col) = value.
-  QueryBuilder orWhereDay(String column, Object? value) {
+  /// Adds an OR WHERE DAY(col) comparison (defaults to `=`).
+  QueryBuilder orWhereDay(
+    String column,
+    Object? value, {
+    String comparator = '=',
+  }) {
     _wheres.add({
       'type': 'date',
       'dateType': 'day',
       'column': column,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'or',
     });
     return this;
   }
 
-  /// WHERE MONTH(col) = value.
-  QueryBuilder whereMonth(String column, Object? value) {
+  /// Adds a WHERE MONTH(col) comparison (defaults to `=`).
+  QueryBuilder whereMonth(
+    String column,
+    Object? value, {
+    String comparator = '=',
+  }) {
     _wheres.add({
       'type': 'date',
       'dateType': 'month',
       'column': column,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'and',
     });
     return this;
   }
 
-  /// OR WHERE MONTH(col) = value.
-  QueryBuilder orWhereMonth(String column, Object? value) {
+  /// Adds an OR WHERE MONTH(col) comparison (defaults to `=`).
+  QueryBuilder orWhereMonth(
+    String column,
+    Object? value, {
+    String comparator = '=',
+  }) {
     _wheres.add({
       'type': 'date',
       'dateType': 'month',
       'column': column,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'or',
     });
     return this;
   }
 
-  /// WHERE YEAR(col) = value.
-  QueryBuilder whereYear(String column, Object? value) {
+  /// Adds a WHERE YEAR(col) comparison (defaults to `=`).
+  QueryBuilder whereYear(
+    String column,
+    Object? value, {
+    String comparator = '=',
+  }) {
     _wheres.add({
       'type': 'date',
       'dateType': 'year',
       'column': column,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'and',
     });
     return this;
   }
 
-  /// OR WHERE YEAR(col) = value.
-  QueryBuilder orWhereYear(String column, Object? value) {
+  /// Adds an OR WHERE YEAR(col) comparison (defaults to `=`).
+  QueryBuilder orWhereYear(
+    String column,
+    Object? value, {
+    String comparator = '=',
+  }) {
     _wheres.add({
       'type': 'date',
       'dateType': 'year',
       'column': column,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'or',
     });
@@ -1532,7 +1660,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'all',
       'columns': columns,
-      'comparator': comparator,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'or',
     });
@@ -1557,7 +1685,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'any',
       'columns': columns,
-      'comparator': comparator,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'or',
     });
@@ -1585,8 +1713,9 @@ class QueryBuilder {
   /// ```dart
   /// query.groupByRaw('YEAR(created_at)');
   /// ```
-  QueryBuilder groupByRaw(String sql) {
+  QueryBuilder groupByRaw(String sql, [List<Object?> bindings = const []]) {
     _groups.add(sql);
+    _groupBindings.addAll(bindings);
     return this;
   }
 
@@ -1603,7 +1732,7 @@ class QueryBuilder {
   QueryBuilder having(String column, Object? value, {String comparator = '='}) {
     _havings.add({
       'column': column,
-      'comparator': comparator,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'and',
     });
@@ -1627,7 +1756,7 @@ class QueryBuilder {
   }) {
     _havings.add({
       'column': column,
-      'comparator': comparator,
+      'comparator': validateOperator(comparator),
       'value': value,
       'boolean': 'or',
     });
@@ -1681,7 +1810,8 @@ class QueryBuilder {
   /// final avgAge = await query.avg('age');
   /// ```
   Future<double?> avg(String column) async {
-    return _aggregate('AVG', column);
+    final value = await _aggregate('AVG', column);
+    return value?.toDouble();
   }
 
   /// Returns the sum of a column's values.
@@ -1692,7 +1822,7 @@ class QueryBuilder {
   /// ```dart
   /// final totalVotes = await query.sum('votes');
   /// ```
-  Future<double?> sum(String column) async {
+  Future<num?> sum(String column) async {
     return _aggregate('SUM', column);
   }
 
@@ -1704,7 +1834,7 @@ class QueryBuilder {
   /// ```dart
   /// final maxPrice = await query.max('price');
   /// ```
-  Future<double?> max(String column) async {
+  Future<num?> max(String column) async {
     return _aggregate('MAX', column);
   }
 
@@ -1716,7 +1846,7 @@ class QueryBuilder {
   /// ```dart
   /// final minPrice = await query.min('price');
   /// ```
-  Future<double?> min(String column) async {
+  Future<num?> min(String column) async {
     return _aggregate('MIN', column);
   }
 
@@ -1725,7 +1855,7 @@ class QueryBuilder {
   /// Preserves all query clauses. When GROUP BY is present, returns the
   /// aggregate value from the first group only. For grouped aggregates
   /// that require all group values, use [get] with [selectRaw] instead.
-  Future<double?> _aggregate(String function, String column) async {
+  Future<num?> _aggregate(String function, String column) async {
     if (_unions.isNotEmpty) {
       final query = clone()..reorder();
       query._limit = null;
@@ -1737,7 +1867,7 @@ class QueryBuilder {
         inner.bindings,
       );
       final value = results.first['aggregate'];
-      return value is num ? value.toDouble() : double.tryParse('$value');
+      return value is num ? value : num.tryParse('$value');
     }
 
     final compiled = _grammar.compileSelect(
@@ -1747,6 +1877,7 @@ class QueryBuilder {
       joins: _joins,
       orders: [],
       groups: _groups,
+      groupBindings: _groupBindings,
       havings: _havings,
       distinct: _distinct,
       limit: _groups.isEmpty ? null : 1,
@@ -1765,13 +1896,12 @@ class QueryBuilder {
       return null;
     }
 
-    // Convert to double
-    if (value is double) {
+    // Preserve the database's numeric type: SUM/MAX/MIN over integer columns
+    // should stay integers rather than being widened to double.
+    if (value is num) {
       return value;
-    } else if (value is int) {
-      return value.toDouble();
     } else if (value is String) {
-      return double.tryParse(value);
+      return num.tryParse(value);
     }
 
     return null;
@@ -1971,10 +2101,15 @@ class QueryBuilder {
     final compiled = _grammar.compileSelect(
       table: _table,
       columns: hasUnion ? _columns : columns ?? _columns,
+      selectBindings:
+          hasUnion
+              ? _selectBindings
+              : (columns == null ? _selectBindings : const []),
       wheres: _wheres,
       joins: _joins,
       orders: hasUnion ? [] : _orders,
       groups: _groups,
+      groupBindings: _groupBindings,
       havings: _havings,
       distinct: _distinct,
       limit: hasUnion ? null : limitOverride ?? _limit,

@@ -18,6 +18,8 @@ abstract class SqlGrammar {
   /// - [distinct]: Whether to select distinct records
   /// - [limit]: Optional LIMIT value
   /// - [offset]: Optional OFFSET value
+  /// - [selectBindings]: Bindings for raw SELECT expressions, in column order
+  /// - [groupBindings]: Bindings for raw GROUP BY expressions, in group order
   CompiledQuery compileSelect({
     required String table,
     required List<String> columns,
@@ -30,7 +32,12 @@ abstract class SqlGrammar {
     int? limit,
     int? offset,
     List<Map<String, dynamic>> locks = const [],
+    List<Object?> selectBindings = const [],
+    List<Object?> groupBindings = const [],
   });
+
+  /// The dialect's random-ordering function used by `inRandomOrder()`.
+  String get randomOrderExpression => 'random()';
 
   /// Compiles complete SELECT branches with final UNION ordering and pagination.
   ///
@@ -157,6 +164,14 @@ abstract class SqlGrammar {
 
   /// Compiles a TRUNCATE query.
   CompiledQuery compileTruncate({required String table});
+
+  /// Compiles every statement required to truncate [table].
+  ///
+  /// Most dialects need a single statement; SQLite also resets its
+  /// `sqlite_sequence` row so AUTOINCREMENT starts over.
+  List<CompiledQuery> compileTruncateAll({required String table}) {
+    return [compileTruncate(table: table)];
+  }
 
   /// Compiles an INSERT OR IGNORE query.
   CompiledQuery compileInsertOrIgnore({

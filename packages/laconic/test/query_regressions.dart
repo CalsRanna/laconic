@@ -217,4 +217,99 @@ void queryRegressions(Laconic Function() createDatabase) {
       expect(rows.single['renamed'], 9);
     },
   );
+
+  test('where null compiles to IS NULL and IS NOT NULL', () async {
+    await query().insert([
+      {'id': 90, 'active': 1, 'label': null},
+    ]);
+    try {
+      expect(ids(await query().where('label', null).get()), [90]);
+      expect(
+        ids(await query().where('label', null, comparator: '!=').orderBy('id').get()),
+        [1, 2, 3, 4, 5],
+      );
+      expect(ids(await query().where('id', 0).orWhere('label', null).get()), [
+        90,
+      ]);
+      expect(
+        query().where('label', null).toSql().toLowerCase(),
+        contains('is null'),
+      );
+      expect(
+        query().where('label', null, comparator: '!=').toSql().toLowerCase(),
+        contains('is not null'),
+      );
+    } finally {
+      await query().where('id', 90).delete();
+    }
+  });
+
+  test('firstOrNull and findOrNull return null for missing rows', () async {
+    expect(await query().where('id', 999).firstOrNull(), isNull);
+    expect(await query().findOrNull(999), isNull);
+    expect(await query().firstWhereOrNull('id', 999), isNull);
+    expect((await query().findOrNull(1))?['label'], '?');
+    expect((await query().firstWhereOrNull('id', 2))?['id'], 2);
+    await expectLater(
+      query().where('id', 999).first(),
+      throwsA(isA<LaconicException>()),
+    );
+    await expectLater(query().find(999), throwsA(isA<LaconicException>()));
+  });
+
+  test('selectRaw and groupByRaw accept bindings', () async {
+    final row =
+        await query().selectRaw('? as marker', [7]).where('id', 1).first();
+    expect('${row['marker']}', '7');
+
+    final totals =
+        await query()
+            .selectRaw('count(*) as total')
+            .groupByRaw('active + ?', [0])
+            .orderBy('total')
+            .get();
+    expect(totals.map((r) => '${r['total']}').toList(), ['2', '3']);
+  });
+
+  test('update and insert accept raw expression values', () async {
+    await query().where('id', 1).update({'label': raw("'raw-label'")});
+    try {
+      expect(await query().where('id', 1).value('label'), 'raw-label');
+
+      await query().insert([
+        {'id': 91, 'active': raw('1'), 'label': raw("'raw-insert'")},
+      ]);
+      try {
+        final row = await query().find(91);
+        expect(row['label'], 'raw-insert');
+        expect('${row['active']}', '1');
+      } finally {
+        await query().where('id', 91).delete();
+      }
+    } finally {
+      await query().where('id', 1).update({'label': '?'});
+    }
+  });
+
+  test('reorder replaces the existing ordering', () async {
+    expect(ids(await query().orderBy('id').reorder('id', 'desc').get()), [
+      5,
+      4,
+      3,
+      2,
+      1,
+    ]);
+    expect(
+      query().orderBy('id').reorder('id', 'desc').toSql(),
+      contains('desc'),
+    );
+  });
+
+  test('aggregates preserve integer results', () async {
+    final maxId = await query().max('id');
+    expect(maxId, 5);
+    expect(maxId, isA<int>());
+    expect(await query().sum('id'), 15);
+    expect(await query().avg('id'), 3);
+  });
 }

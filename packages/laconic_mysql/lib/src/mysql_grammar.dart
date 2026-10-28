@@ -5,6 +5,9 @@ import 'package:laconic/laconic.dart';
 /// Handles MySQL SQL syntax with `?` placeholders for parameter binding.
 class MysqlGrammar extends SqlGrammar {
   @override
+  String get randomOrderExpression => 'rand()';
+
+  @override
   CompiledQuery compileSelect({
     required String table,
     required List<String> columns,
@@ -17,6 +20,8 @@ class MysqlGrammar extends SqlGrammar {
     int? limit,
     int? offset,
     List<Map<String, dynamic>> locks = const [],
+    List<Object?> selectBindings = const [],
+    List<Object?> groupBindings = const [],
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
@@ -26,6 +31,7 @@ class MysqlGrammar extends SqlGrammar {
       buffer.write('distinct ');
     }
     buffer.write(_compileColumns(columns));
+    bindings.addAll(selectBindings);
     buffer.write(' from $table');
 
     if (joins.isNotEmpty) {
@@ -39,6 +45,7 @@ class MysqlGrammar extends SqlGrammar {
 
     if (groups.isNotEmpty) {
       buffer.write(_compileGroups(groups));
+      bindings.addAll(groupBindings);
     }
 
     if (havings.isNotEmpty) {
@@ -89,8 +96,11 @@ class MysqlGrammar extends SqlGrammar {
       buffer.write('(');
       final row = data[i];
       for (var j = 0; j < columns.length; j++) {
-        buffer.write('?');
-        bindings.add(row[columns[j]]);
+        final value = row[columns[j]];
+        buffer.write(value is Expression ? value.sql : '?');
+        if (value is! Expression) {
+          bindings.add(value);
+        }
         if (j < columns.length - 1) {
           buffer.write(', ');
         }
@@ -117,8 +127,13 @@ class MysqlGrammar extends SqlGrammar {
 
     final entries = data.entries.toList();
     for (var i = 0; i < entries.length; i++) {
-      buffer.write('${entries[i].key} = ?');
-      bindings.add(entries[i].value);
+      final value = entries[i].value;
+      buffer.write(
+        '${entries[i].key} = ${value is Expression ? value.sql : '?'}',
+      );
+      if (value is! Expression) {
+        bindings.add(value);
+      }
       if (i < entries.length - 1) {
         buffer.write(', ');
       }
@@ -177,8 +192,13 @@ class MysqlGrammar extends SqlGrammar {
 
     if (extra != null && extra.isNotEmpty) {
       for (final entry in extra.entries) {
-        buffer.write(', ${entry.key} = ?');
-        bindings.add(entry.value);
+        final value = entry.value;
+        buffer.write(
+          ', ${entry.key} = ${value is Expression ? value.sql : '?'}',
+        );
+        if (value is! Expression) {
+          bindings.add(value);
+        }
       }
     }
 
@@ -206,8 +226,13 @@ class MysqlGrammar extends SqlGrammar {
 
     if (extra != null && extra.isNotEmpty) {
       for (final entry in extra.entries) {
-        buffer.write(', ${entry.key} = ?');
-        bindings.add(entry.value);
+        final value = entry.value;
+        buffer.write(
+          ', ${entry.key} = ${value is Expression ? value.sql : '?'}',
+        );
+        if (value is! Expression) {
+          bindings.add(value);
+        }
       }
     }
 
@@ -380,6 +405,12 @@ class MysqlGrammar extends SqlGrammar {
         final keyword = not ? 'not exists' : 'exists';
         parts.add('$boolean$keyword (${condition['sql']})');
         bindings.addAll(condition['bindings'] as List<Object?>);
+      } else if (type == 'nested') {
+        final nested = _compileJoinConditions(
+          condition['conditions'] as List<Map<String, dynamic>>,
+          bindings,
+        );
+        parts.add('$boolean($nested)');
       }
     }
 
@@ -503,7 +534,7 @@ class MysqlGrammar extends SqlGrammar {
           where['dateType'] as String,
           where['column'] as String,
         );
-        parts.add('$boolean$expr = ?');
+        parts.add('$boolean$expr ${where['comparator'] ?? '='} ?');
         bindings.add(where['value']);
       }
     }

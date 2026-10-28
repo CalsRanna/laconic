@@ -88,6 +88,8 @@ class _MockGrammar extends SqlGrammar {
     int? limit,
     int? offset,
     List<Map<String, dynamic>> locks = const [],
+    List<Object?> selectBindings = const [],
+    List<Object?> groupBindings = const [],
   }) {
     final sql = StringBuffer('SELECT ');
     if (distinct) sql.write('DISTINCT ');
@@ -204,29 +206,39 @@ void main() async {
 
   // Nested WHERE group
   print('\n--- Nested WHERE ---');
-  await laconic.table('users')
+  await laconic
+      .table('users')
       .where('status', 'active')
-      .whereNested((q) => q.where('age', 18, comparator: '>=').orWhere('role', 'admin'))
+      .whereNested(
+        (q) => q.where('age', 18, comparator: '>=').orWhere('role', 'admin'),
+      )
       .get();
 
   // Debug: toSql() / dump()
   print('\n--- Debug ---');
   laconic.table('users').where('name', 'John').dump();
-  print('SQL: ${laconic.table('users').where('age', 18, comparator: '>').toSql()}');
+  print(
+    'SQL: ${laconic.table('users').where('age', 18, comparator: '>').toSql()}',
+  );
 
   // WHERE EXISTS
   print('\n--- WHERE EXISTS ---');
-  await laconic.table('users u')
+  await laconic
+      .table('users u')
       .whereExists((q) => q.from('orders o').whereColumn('o.user_id', 'u.id'))
       .get();
 
   // Upsert
   print('\n--- Upsert ---');
-  await laconic.table('users').upsert(
-    [{'email': 'john@example.com', 'name': 'John Updated'}],
-    uniqueBy: ['email'],
-    update: ['name'],
-  );
+  await laconic
+      .table('users')
+      .upsert(
+        [
+          {'email': 'john@example.com', 'name': 'John Updated'},
+        ],
+        uniqueBy: ['email'],
+        update: ['name'],
+      );
 
   // Locking
   print('\n--- Locking ---');
@@ -234,7 +246,9 @@ void main() async {
 
   // Union
   print('\n--- Union ---');
-  await laconic.table('users').where('role', 'admin')
+  await laconic
+      .table('users')
+      .where('role', 'admin')
       .union((q) => q.from('users').where('role', 'moderator'))
       .get();
 
@@ -262,7 +276,10 @@ void main() async {
 
   // Clone (reusable query scope)
   print('\n--- Clone ---');
-  final activeQuery = laconic.table('users').where('active', true).select(['id', 'name']);
+  final activeQuery = laconic.table('users').where('active', true).select([
+    'id',
+    'name',
+  ]);
   final count = await activeQuery.clone().count();
   final results = await activeQuery.clone().get();
   print('Active users: $count (fetched ${results.length})');
