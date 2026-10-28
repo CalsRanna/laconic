@@ -18,6 +18,7 @@ class MockGrammar extends SqlGrammar {
     List<Map<String, dynamic>> locks = const [],
     List<Object?> selectBindings = const [],
     List<Object?> groupBindings = const [],
+    List<String>? distinctColumns,
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
@@ -600,6 +601,22 @@ void main() {
 
       expect(queries.length, 1);
       expect(queries.first.sql, 'select * from users');
+    });
+
+    test('beforeQuery and afterQuery hooks fire', () async {
+      final events = <String>[];
+      final hooked = Laconic(
+        driver,
+        beforeQuery: (q) => events.add('before:${q.sql}'),
+        afterQuery: (q, elapsed) => events.add('after:${q.sql}'),
+      );
+
+      await hooked.table('users').get();
+
+      expect(events, [
+        'before:select * from users',
+        'after:select * from users',
+      ]);
     });
   });
 

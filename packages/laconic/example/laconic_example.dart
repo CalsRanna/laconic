@@ -90,6 +90,7 @@ class _MockGrammar extends SqlGrammar {
     List<Map<String, dynamic>> locks = const [],
     List<Object?> selectBindings = const [],
     List<Object?> groupBindings = const [],
+    List<String>? distinctColumns,
   }) {
     final sql = StringBuffer('SELECT ');
     if (distinct) sql.write('DISTINCT ');

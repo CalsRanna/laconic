@@ -19,6 +19,7 @@ class SqliteGrammar extends SqlGrammar {
     List<Map<String, dynamic>> locks = const [],
     List<Object?> selectBindings = const [],
     List<Object?> groupBindings = const [],
+    List<String>? distinctColumns,
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
@@ -446,6 +447,18 @@ class SqliteGrammar extends SqlGrammar {
           );
         } else {
           parts.add('$boolean${where['column']} ${where['comparator']} ?');
+          bindings.add(value);
+        }
+      } else if (type == 'like') {
+        final not = where['not'] as bool;
+        final keyword = not ? 'not like' : 'like';
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add(
+            '${boolean}lower(${where['column']}) $keyword lower(${value.sql})',
+          );
+        } else {
+          parts.add('${boolean}lower(${where['column']}) $keyword lower(?)');
           bindings.add(value);
         }
       } else if (type == 'column') {

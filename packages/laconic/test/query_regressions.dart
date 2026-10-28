@@ -572,4 +572,48 @@ void queryRegressions(Laconic Function() createDatabase) {
       throwsA(isA<LaconicException>()),
     );
   });
+
+  test('insert returns true', () async {
+    expect(
+      await query().insert([
+        {'id': 97, 'active': 0, 'label': 'inserted'},
+      ]),
+      isTrue,
+    );
+    await query().where('id', 97).delete();
+  });
+
+  test('whereMap and case-insensitive whereLike work', () async {
+    expect(await query().whereMap({'id': 1, 'active': 1}).count(), 1);
+    expect(await query().whereMap({'id': 1, 'active': 0}).count(), 0);
+    expect(
+      ids(await query().whereLike('label', 'TWO', caseSensitive: false).get()),
+      [2],
+    );
+    expect(
+      await query().whereNotLike('label', 'TWO', caseSensitive: false).count(),
+      4,
+    );
+  });
+
+  test('distinct with columns selects distinct values', () async {
+    final rows = await query().distinct(['active']).orderBy('active').get();
+    expect(rows.map((r) => '${r['active']}').toList(), ['0', '1']);
+  });
+
+  test('count supports column and distinct forms', () async {
+    await query().insert([
+      {'id': 98, 'active': 1, 'label': null},
+    ]);
+    try {
+      expect(await query().count(), 6);
+      expect(await query().count('id'), 6);
+      expect(await query().count('label'), 5);
+      expect(await query().distinct().count(), 6);
+      expect(await query().distinct(['active']).count(), 2);
+      expect(await query().distinct().count('active'), 2);
+    } finally {
+      await query().where('id', 98).delete();
+    }
+  });
 }

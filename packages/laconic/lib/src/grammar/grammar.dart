@@ -20,6 +20,7 @@ abstract class SqlGrammar {
   /// - [offset]: Optional OFFSET value
   /// - [selectBindings]: Bindings for raw SELECT expressions, in column order
   /// - [groupBindings]: Bindings for raw GROUP BY expressions, in group order
+  /// - [distinctColumns]: Columns for PostgreSQL's `DISTINCT ON`
   CompiledQuery compileSelect({
     required String table,
     required List<String> columns,
@@ -34,6 +35,7 @@ abstract class SqlGrammar {
     List<Map<String, dynamic>> locks = const [],
     List<Object?> selectBindings = const [],
     List<Object?> groupBindings = const [],
+    List<String>? distinctColumns,
   });
 
   /// The dialect's random-ordering function used by `inRandomOrder()`.

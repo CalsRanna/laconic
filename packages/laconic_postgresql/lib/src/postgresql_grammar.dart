@@ -25,13 +25,18 @@ class PostgresqlGrammar extends SqlGrammar {
     List<Map<String, dynamic>> locks = const [],
     List<Object?> selectBindings = const [],
     List<Object?> groupBindings = const [],
+    List<String>? distinctColumns,
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
 
     buffer.write('select ');
     if (distinct) {
-      buffer.write('distinct ');
+      if (distinctColumns != null && distinctColumns.isNotEmpty) {
+        buffer.write('distinct on (${distinctColumns.join(', ')}) ');
+      } else {
+        buffer.write('distinct ');
+      }
     }
     final compiledColumns = PostgresqlPlaceholders.compile(
       _compileColumns(columns),
@@ -543,6 +548,18 @@ class PostgresqlGrammar extends SqlGrammar {
           parts.add(
             '$boolean${where['column']} '
             '${where['comparator']} \$${bindings.length + 1}',
+          );
+          bindings.add(value);
+        }
+      } else if (type == 'like') {
+        final not = where['not'] as bool;
+        final keyword = not ? 'not ilike' : 'ilike';
+        final value = where['value'];
+        if (value is Expression) {
+          parts.add('$boolean${where['column']} $keyword ${value.sql}');
+        } else {
+          parts.add(
+            '$boolean${where['column']} $keyword \$${bindings.length + 1}',
           );
           bindings.add(value);
         }

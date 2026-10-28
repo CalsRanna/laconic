@@ -44,6 +44,9 @@ class QueryBuilder {
   /// Whether to select distinct records.
   bool _distinct = false;
 
+  /// Whether PostgreSQL should compile `DISTINCT ON`.
+  bool _distinctOn = false;
+
   /// UNION clauses.
   final List<Map<String, dynamic>> _unions = [];
 
@@ -67,8 +70,16 @@ class QueryBuilder {
   /// Uses SQL COUNT(*) aggregate function for optimal performance.
   /// When GROUP BY is present, wraps the query in a subquery to count
   /// groups server-side instead of fetching all rows.
-  Future<int> count() async {
-    if (_groups.isNotEmpty || _distinct || _unions.isNotEmpty) {
+  Future<int> count([String column = '*']) async {
+    final isStar = column == '*';
+
+    if (!isStar && (_groups.isNotEmpty || _unions.isNotEmpty)) {
+      throw LaconicException(
+        'count(column) is not supported with GROUP BY or UNION; use count()',
+      );
+    }
+
+    if (_groups.isNotEmpty || _unions.isNotEmpty || (_distinct && isStar)) {
       final query = clone()..reorder();
       query._limit = null;
       query._offset = null;
@@ -81,16 +92,23 @@ class QueryBuilder {
       }
       final inner = query._compileSelect();
       final results = await _laconic.select(
-        'select count(*) as aggregate from (${inner.sql}) as laconic_count',
+        'select count($column) as aggregate from (${inner.sql}) as laconic_count',
         inner.bindings,
       );
-      final value = results.first['aggregate'];
-      return value is int ? value : int.tryParse('$value') ?? 0;
+      final value = results.isEmpty ? null : results.first['aggregate'];
+      if (value == null) return 0;
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      return int.tryParse('$value') ?? 0;
     }
 
+    final aggregate =
+        _distinct
+            ? 'COUNT(DISTINCT $column) as aggregate'
+            : 'COUNT($column) as aggregate';
     final compiled = _grammar.compileSelect(
       table: _table,
-      columns: ['COUNT(*) as aggregate'],
+      columns: [aggregate],
       wheres: _wheres,
       joins: _joins,
       orders: [],
@@ -111,6 +129,7 @@ class QueryBuilder {
     if (value == null) return 0;
 
     if (value is int) return value;
+    if (value is num) return value.toInt();
     if (value is String) return int.tryParse(value) ?? 0;
 
     return 0;
@@ -239,7 +258,7 @@ class QueryBuilder {
   ///
   /// [data] must be a non-empty list of maps where each map represents a row.
   /// All maps must have the same keys.
-  Future<void> insert(List<Map<String, Object?>> data) async {
+  Future<bool> insert(List<Map<String, Object?>> data) async {
     if (data.isEmpty) {
       throw LaconicException('Cannot insert an empty list of data');
     }
@@ -247,6 +266,7 @@ class QueryBuilder {
     final compiled = _grammar.compileInsert(table: _table, data: data);
 
     await _laconic.statement(compiled.sql, compiled.bindings);
+    return true;
   }
 
   /// Inserts a single record and returns the auto-increment ID.
@@ -747,13 +767,45 @@ class QueryBuilder {
   }
 
   /// Adds an OR WHERE LIKE condition.
-  QueryBuilder orWhereLike(String column, Object? value) {
-    return orWhere(column, value, comparator: 'like');
+  ///
+  /// Pass `caseSensitive: false` for a case-insensitive comparison.
+  QueryBuilder orWhereLike(
+    String column,
+    Object? value, {
+    bool caseSensitive = true,
+  }) {
+    if (caseSensitive) {
+      return orWhere(column, value, comparator: 'like');
+    }
+    _wheres.add({
+      'type': 'like',
+      'column': column,
+      'value': value,
+      'boolean': 'or',
+      'not': false,
+    });
+    return this;
   }
 
   /// Adds an OR WHERE NOT LIKE condition.
-  QueryBuilder orWhereNotLike(String column, Object? value) {
-    return orWhere(column, value, comparator: 'not like');
+  ///
+  /// Pass `caseSensitive: false` for a case-insensitive comparison.
+  QueryBuilder orWhereNotLike(
+    String column,
+    Object? value, {
+    bool caseSensitive = true,
+  }) {
+    if (caseSensitive) {
+      return orWhere(column, value, comparator: 'not like');
+    }
+    _wheres.add({
+      'type': 'like',
+      'column': column,
+      'value': value,
+      'boolean': 'or',
+      'not': true,
+    });
+    return this;
   }
 
   /// Adds a raw WHERE condition.
@@ -996,6 +1048,7 @@ class QueryBuilder {
           .._groups.addAll(_groups)
           .._havings.addAll(_havings.map((h) => Map<String, dynamic>.from(h)))
           .._distinct = _distinct
+          .._distinctOn = _distinctOn
           .._limit = _limit
           .._offset = _offset
           .._locks.addAll(_locks.map((l) => Map<String, dynamic>.from(l)))
@@ -1215,13 +1268,58 @@ class QueryBuilder {
   }
 
   /// Adds a WHERE LIKE condition (shorthand).
-  QueryBuilder whereLike(String column, Object? value) {
-    return where(column, value, comparator: 'like');
+  ///
+  /// Pass `caseSensitive: false` for a case-insensitive comparison. The
+  /// default is `true` to preserve the database's native LIKE behavior;
+  /// Laravel defaults to case-insensitive.
+  QueryBuilder whereLike(
+    String column,
+    Object? value, {
+    bool caseSensitive = true,
+  }) {
+    if (caseSensitive) {
+      return where(column, value, comparator: 'like');
+    }
+    _wheres.add({
+      'type': 'like',
+      'column': column,
+      'value': value,
+      'boolean': 'and',
+      'not': false,
+    });
+    return this;
   }
 
   /// Adds a WHERE NOT LIKE condition (shorthand).
-  QueryBuilder whereNotLike(String column, Object? value) {
-    return where(column, value, comparator: 'not like');
+  ///
+  /// Pass `caseSensitive: false` for a case-insensitive comparison.
+  QueryBuilder whereNotLike(
+    String column,
+    Object? value, {
+    bool caseSensitive = true,
+  }) {
+    if (caseSensitive) {
+      return where(column, value, comparator: 'not like');
+    }
+    _wheres.add({
+      'type': 'like',
+      'column': column,
+      'value': value,
+      'boolean': 'and',
+      'not': true,
+    });
+    return this;
+  }
+
+  /// Adds AND-ed equality conditions from [values].
+  ///
+  /// This is the Dart-friendly equivalent of Laravel's `where([...])`; Dart
+  /// cannot overload [where] with both a named comparator and a Map.
+  QueryBuilder whereMap(Map<String, Object?> values) {
+    for (final entry in values.entries) {
+      where(entry.key, entry.value);
+    }
+    return this;
   }
 
   /// Adds a WHERE clause comparing two columns.
@@ -2333,8 +2431,19 @@ class QueryBuilder {
   /// ```dart
   /// query.distinct().get()
   /// ```
-  QueryBuilder distinct() {
+  /// Makes the query return only distinct records.
+  ///
+  /// Passing [columns] also selects those columns and enables PostgreSQL's
+  /// `DISTINCT ON (columns)`; other dialects compile a plain `DISTINCT`.
+  QueryBuilder distinct([List<String>? columns]) {
     _distinct = true;
+    if (columns != null && columns.isNotEmpty) {
+      _columns = columns;
+      _selectBindings.clear();
+      _distinctOn = true;
+    } else {
+      _distinctOn = false;
+    }
     return this;
   }
 
@@ -2816,6 +2925,8 @@ class QueryBuilder {
       groupBindings: _groupBindings,
       havings: _havings,
       distinct: _distinct,
+      distinctColumns:
+          hasUnion ? null : (_distinctOn ? (columns ?? _columns) : null),
       limit: hasUnion ? null : limitOverride ?? _limit,
       offset: hasUnion ? null : _offset,
       locks: hasUnion ? [] : _locks,

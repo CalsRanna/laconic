@@ -23,14 +23,38 @@ class Laconic {
 
   /// Optional listener for query execution.
   ///
-  /// Called before each query is executed with query details.
+  /// Called before each query is executed with query details. Kept for
+  /// backwards compatibility; prefer [beforeQuery].
   final void Function(LaconicQuery)? listen;
+
+  /// Called before each query is executed.
+  final void Function(LaconicQuery)? beforeQuery;
+
+  /// Called after each query completes, with its elapsed time.
+  final void Function(LaconicQuery query, Duration elapsed)? afterQuery;
 
   /// Creates a new Laconic instance with the given driver.
   ///
   /// [driver] provides the database-specific implementation.
-  /// [listen] is an optional callback for query logging/debugging.
-  Laconic(this._driver, {this.listen});
+  /// [listen] is a legacy callback for query logging/debugging.
+  /// [beforeQuery] and [afterQuery] wrap each query with timing support.
+  Laconic(this._driver, {this.listen, this.beforeQuery, this.afterQuery});
+
+  Future<T> _executeQuery<T>(
+    LaconicQuery query,
+    Future<T> Function() action,
+  ) async {
+    beforeQuery?.call(query);
+    listen?.call(query);
+
+    final stopwatch = Stopwatch()..start();
+    try {
+      return await action();
+    } finally {
+      stopwatch.stop();
+      afterQuery?.call(query, stopwatch.elapsed);
+    }
+  }
 
   /// Returns the SqlGrammar instance from the driver.
   ///
@@ -47,18 +71,18 @@ class Laconic {
   Future<List<LaconicResult>> select(
     String sql, [
     List<Object?> params = const [],
-  ]) async {
-    listen?.call(LaconicQuery(bindings: params, sql: sql));
-    return _driver.select(sql, params);
+  ]) {
+    final query = LaconicQuery(bindings: params, sql: sql);
+    return _executeQuery(query, () => _driver.select(sql, params));
   }
 
   /// Executes an SQL statement (INSERT/UPDATE/DELETE/DDL).
   ///
   /// [sql] is the SQL statement string using `?` as placeholders.
   /// [params] are the parameter values to bind to the placeholders.
-  Future<void> statement(String sql, [List<Object?> params = const []]) async {
-    listen?.call(LaconicQuery(bindings: params, sql: sql));
-    return _driver.statement(sql, params);
+  Future<void> statement(String sql, [List<Object?> params = const []]) {
+    final query = LaconicQuery(bindings: params, sql: sql);
+    return _executeQuery(query, () => _driver.statement(sql, params));
   }
 
   /// Executes an UPDATE/DELETE statement and returns the affected row count.
@@ -68,9 +92,9 @@ class Laconic {
   Future<int> affectingStatement(
     String sql, [
     List<Object?> params = const [],
-  ]) async {
-    listen?.call(LaconicQuery(bindings: params, sql: sql));
-    return _driver.affectingStatement(sql, params);
+  ]) {
+    final query = LaconicQuery(bindings: params, sql: sql);
+    return _executeQuery(query, () => _driver.affectingStatement(sql, params));
   }
 
   /// Executes an INSERT statement and returns the last inserted ID.
@@ -79,12 +103,9 @@ class Laconic {
   /// [params] are the parameter values to bind to the placeholders.
   ///
   /// For PostgreSQL, the SQL should include a RETURNING clause.
-  Future<int> insertAndGetId(
-    String sql, [
-    List<Object?> params = const [],
-  ]) async {
-    listen?.call(LaconicQuery(bindings: params, sql: sql));
-    return _driver.insertAndGetId(sql, params);
+  Future<int> insertAndGetId(String sql, [List<Object?> params = const []]) {
+    final query = LaconicQuery(bindings: params, sql: sql);
+    return _executeQuery(query, () => _driver.insertAndGetId(sql, params));
   }
 
   /// Creates a query builder for the specified table.

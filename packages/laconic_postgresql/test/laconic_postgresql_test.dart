@@ -673,6 +673,27 @@ void main() {
       );
     });
 
+    test('distinct with columns compiles DISTINCT ON', () {
+      expect(
+        laconic.table(userTable).distinct(['gender']).toSql().toLowerCase(),
+        contains('distinct on (gender)'),
+      );
+    });
+
+    test('whereLike is case-sensitive by default', () async {
+      expect(
+        await laconic.table(userTable).whereLike('name', 'john').count(),
+        0,
+      );
+      expect(
+        await laconic
+            .table(userTable)
+            .whereLike('name', 'john', caseSensitive: false)
+            .count(),
+        1,
+      );
+    });
+
     test('join supports raw and nested conditions', () async {
       final rows =
           await laconic
