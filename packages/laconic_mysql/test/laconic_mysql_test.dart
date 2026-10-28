@@ -675,6 +675,22 @@ void main() {
       );
     });
 
+    test('lock supports raw clauses', () async {
+      expect(
+        laconic
+            .table(userTable)
+            .where('id', 1)
+            .lock('for update nowait')
+            .toSql()
+            .toLowerCase(),
+        contains('for update nowait'),
+      );
+      expect(
+        laconic.table(userTable).lock(false).toSql().toLowerCase(),
+        contains('lock in share mode'),
+      );
+    });
+
     test('join supports raw and nested conditions', () async {
       final rows =
           await laconic

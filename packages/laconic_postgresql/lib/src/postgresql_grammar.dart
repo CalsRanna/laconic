@@ -85,6 +85,8 @@ class PostgresqlGrammar extends SqlGrammar {
         buffer.write(' for update');
       } else if (lock['type'] == 'for_share') {
         buffer.write(' for share');
+      } else if (lock['type'] == 'raw') {
+        buffer.write(' ${lock['value']}');
       }
     }
 

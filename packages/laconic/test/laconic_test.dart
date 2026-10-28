@@ -118,6 +118,8 @@ class MockGrammar extends SqlGrammar {
     for (final lock in locks) {
       if (lock['type'] == 'for_update') {
         buffer.write(' for update');
+      } else if (lock['type'] == 'raw') {
+        buffer.write(' ${lock['value']}');
       }
     }
 
@@ -563,6 +565,18 @@ void main() {
       final query = laconic.table('users').limit(3).offset(2);
       expect(query.getLimit(), 3);
       expect(query.getOffset(), 2);
+    });
+
+    test('lock accepts bools and validated raw clauses', () {
+      expect(
+        laconic.table('users').lock('for update nowait').toSql(),
+        contains('for update nowait'),
+      );
+      expect(laconic.table('users').lock(true).toSql(), contains('for update'));
+      expect(
+        () => laconic.table('users').lock('drop table users'),
+        throwsA(isA<LaconicException>()),
+      );
     });
 
     test('join compiles correctly', () async {

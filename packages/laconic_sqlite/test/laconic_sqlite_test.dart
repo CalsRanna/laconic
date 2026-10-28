@@ -862,10 +862,12 @@ void main() {
               .where('id', 1)
               .lockForUpdate()
               .sharedLock()
+              .lock('for update nowait')
               .toSql()
               .toLowerCase();
       expect(sql, isNot(contains('for update')));
       expect(sql, isNot(contains('for share')));
+      expect(sql, isNot(contains('nowait')));
       expect(
         await laconic.table(userTable).lockForUpdate().get(),
         hasLength(3),

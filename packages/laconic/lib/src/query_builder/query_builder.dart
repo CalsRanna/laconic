@@ -174,6 +174,14 @@ class QueryBuilder {
     return result;
   }
 
+  /// Returns the first record, or the result of [fallback] when none exists.
+  Future<LaconicResult> firstOr(LaconicResult Function() fallback) async {
+    return await firstOrNull() ?? fallback();
+  }
+
+  /// Alias for [first], matching Laravel's fail-fast name.
+  Future<LaconicResult> firstOrFail() => first();
+
   /// Returns all records matching the query.
   Future<List<LaconicResult>> get() async {
     final compiled = _compileSelect();
@@ -197,6 +205,18 @@ class QueryBuilder {
     }
     return result;
   }
+
+  /// Returns the record with [id], or the result of [fallback] when none
+  /// exists.
+  Future<LaconicResult> findOr(
+    Object? id,
+    LaconicResult Function() fallback,
+  ) async {
+    return await findOrNull(id) ?? fallback();
+  }
+
+  /// Alias for [find], matching Laravel's fail-fast name.
+  Future<LaconicResult> findOrFail(Object? id) => find(id);
 
   /// Returns the first record where [column] matches [value], or `null`.
   Future<LaconicResult?> firstWhereOrNull(String column, Object? value) {
@@ -498,14 +518,45 @@ class QueryBuilder {
     return this;
   }
 
+  static final RegExp _lockPattern = RegExp(
+    r'^(for (update|share|key share|no key update)|lock in share mode)'
+    r'( nowait| skip locked)?$',
+  );
+
+  /// Adds a locking clause.
+  ///
+  /// [value] may be `true` (FOR UPDATE), `false` (FOR SHARE), or a raw clause
+  /// such as `'for update nowait'`.
+  QueryBuilder lock(Object value) {
+    if (value == true) return lockForUpdate();
+    if (value == false) return sharedLock();
+    if (value is! String) {
+      throw LaconicException('lock() expects a bool or a lock clause string');
+    }
+    final normalized = value.trim().toLowerCase();
+    if (!_lockPattern.hasMatch(normalized)) {
+      throw LaconicException('Invalid lock clause: "$value"');
+    }
+    _locks.add({'type': 'raw', 'value': normalized});
+    return this;
+  }
+
   /// Adds a UNION clause, or UNION ALL when [all] is true.
   ///
-  /// Ordering, limit and offset on this builder apply to the complete union.
-  /// Clauses inside [callback] apply only to that branch.
-  QueryBuilder union(void Function(QueryBuilder) callback, {bool all = false}) {
-    final uq = QueryBuilder(laconic: _laconic, table: '');
-    callback(uq);
-    final compiled = uq._compileSelect();
+  /// [query] may be a callback receiving a fresh builder, or an existing
+  /// [QueryBuilder]. Ordering, limit and offset on this builder apply to the
+  /// complete union; clauses inside a callback apply only to that branch.
+  QueryBuilder union(Object query, {bool all = false}) {
+    final CompiledQuery compiled;
+    if (query is void Function(QueryBuilder)) {
+      final uq = QueryBuilder(laconic: _laconic, table: '');
+      query(uq);
+      compiled = uq._compileSelect();
+    } else if (query is QueryBuilder) {
+      compiled = query._compileSelect();
+    } else {
+      throw LaconicException('union expects a callback or a QueryBuilder');
+    }
     _unions.add({
       'sql': compiled.sql,
       'bindings': compiled.bindings,
@@ -515,8 +566,8 @@ class QueryBuilder {
   }
 
   /// Adds a UNION ALL clause.
-  QueryBuilder unionAll(void Function(QueryBuilder) callback) {
-    return union(callback, all: true);
+  QueryBuilder unionAll(Object query) {
+    return union(query, all: true);
   }
 
   /// Adds an ORDER BY clause to the query.
@@ -543,6 +594,23 @@ class QueryBuilder {
   /// Adds an ORDER BY ... DESC clause (shorthand).
   QueryBuilder orderByDesc(String column) {
     return orderBy(column, direction: 'desc');
+  }
+
+  /// Orders by the position of [column] values in [values].
+  ///
+  /// Values not present in [values] sort after the listed ones.
+  QueryBuilder inOrderOf(String column, List<Object?> values) {
+    if (values.isEmpty) {
+      return this;
+    }
+    final clauses = <String>[];
+    for (var i = 0; i < values.length; i++) {
+      clauses.add('when ? then $i');
+    }
+    return orderByRaw(
+      'case $column ${clauses.join(' ')} else ${values.length} end',
+      values,
+    );
   }
 
   /// Orders by `created_at` descending (most recent first).
@@ -591,6 +659,46 @@ class QueryBuilder {
   /// Sets LIMIT and OFFSET for a given page number (1-indexed).
   QueryBuilder forPage(int page, {int perPage = 15}) {
     return limit(perPage).offset((page - 1) * perPage);
+  }
+
+  /// Constrains to the page after [lastId] using keyset pagination.
+  ///
+  /// When [lastId] is `null`, rows with a NULL [column] are excluded instead
+  /// of being compared.
+  QueryBuilder forPageAfterId(
+    int perPage, [
+    Object? lastId = 0,
+    String column = 'id',
+  ]) {
+    _orders.removeWhere(
+      (order) => order['type'] != 'raw' && order['column'] == column,
+    );
+    if (lastId == null) {
+      whereNotNull(column);
+    } else {
+      where(column, lastId, comparator: '>');
+    }
+    return orderBy(column).limit(perPage);
+  }
+
+  /// Constrains to the page before [lastId] using keyset pagination.
+  ///
+  /// When [lastId] is `null`, rows with a NULL [column] are excluded instead
+  /// of being compared.
+  QueryBuilder forPageBeforeId(
+    int perPage, [
+    Object? lastId = 0,
+    String column = 'id',
+  ]) {
+    _orders.removeWhere(
+      (order) => order['type'] != 'raw' && order['column'] == column,
+    );
+    if (lastId == null) {
+      whereNotNull(column);
+    } else {
+      where(column, lastId, comparator: '<');
+    }
+    return orderByDesc(column).limit(perPage);
   }
 
   /// Adds an OR WHERE condition to the query.

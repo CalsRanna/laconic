@@ -518,4 +518,58 @@ void queryRegressions(Laconic Function() createDatabase) {
     expect(sql, contains('id = 1'));
     expect(sql, contains("label = 'O''Reilly'"));
   });
+
+  test('inOrderOf orders by the given values', () async {
+    expect(await query().inOrderOf('id', [3, 1, 5, 2, 4]).pluck('id'), [
+      3,
+      1,
+      5,
+      2,
+      4,
+    ]);
+  });
+
+  test('forPageAfterId and forPageBeforeId use keyset pagination', () async {
+    expect(ids(await query().forPageAfterId(2, 2).get()), [3, 4]);
+    expect(ids(await query().forPageBeforeId(2, 4).get()), [3, 2]);
+    expect(ids(await query().forPageAfterId(2, null).get()), [1, 2]);
+  });
+
+  test('union accepts a QueryBuilder directly', () async {
+    final branch = query().select(['id']).where('id', 1);
+    final unionQuery = query()
+        .select(['id'])
+        .where('id', 3)
+        .union(branch)
+        .orderBy('id');
+    expect(ids(await unionQuery.get()), [1, 3]);
+
+    final all = query()
+        .select(['id'])
+        .where('id', 1)
+        .unionAll(query().select(['id']).where('id', 1));
+    expect(ids(await all.get()), [1, 1]);
+  });
+
+  test('firstOr and findOr return fallbacks', () async {
+    final fallback = LaconicResult.fromMap({'id': 0, 'label': 'fallback'});
+    expect(
+      (await query().where('id', 1).firstOr(() => fallback))['label'],
+      '?',
+    );
+    expect(
+      (await query().where('id', 999).firstOr(() => fallback))['label'],
+      'fallback',
+    );
+    expect((await query().findOr(999, () => fallback))['label'], 'fallback');
+    expect((await query().findOrFail(1))['id'], 1);
+    await expectLater(
+      query().findOrFail(999),
+      throwsA(isA<LaconicException>()),
+    );
+    await expectLater(
+      query().where('id', 999).firstOrFail(),
+      throwsA(isA<LaconicException>()),
+    );
+  });
 }

@@ -72,6 +72,8 @@ class MysqlGrammar extends SqlGrammar {
         buffer.write(' for update');
       } else if (lock['type'] == 'for_share') {
         buffer.write(' lock in share mode');
+      } else if (lock['type'] == 'raw') {
+        buffer.write(' ${lock['value']}');
       }
     }
 
