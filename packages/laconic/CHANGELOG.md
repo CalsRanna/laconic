@@ -1,3 +1,13 @@
+## Unreleased
+
+- Fix `cursorPaginate` to group existing OR conditions before applying the
+  cursor and filter the complete result of `union` / `unionAll` queries.
+- Add `SqlGrammar.compileInlineSubquery` so SELECT subqueries can transform SQL
+  and bindings together. Its default delegates to the existing `inlineSubquery`
+  implementation and preserves bindings.
+- Custom grammars using `implements SqlGrammar` must implement the new method;
+  subclasses using `extends SqlGrammar` inherit the default implementation.
+
 ## 6.0.0
 
 ### Breaking changes and migration

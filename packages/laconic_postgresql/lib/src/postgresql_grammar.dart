@@ -17,6 +17,16 @@ class PostgresqlGrammar extends SqlGrammar {
       PostgresqlPlaceholders.toQuestionPlaceholders(query.sql);
 
   @override
+  CompiledQuery compileInlineSubquery(CompiledQuery query) {
+    final bindings = <Object?>[];
+    final sql = PostgresqlPlaceholders.toQuestionPlaceholders(
+      query.sql,
+      onParameter: (index) => bindings.add(query.bindings[index - 1]),
+    );
+    return CompiledQuery(sql: sql, bindings: bindings);
+  }
+
+  @override
   CompiledQuery compileSelect({
     required String table,
     required List<String> columns,

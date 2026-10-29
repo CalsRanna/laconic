@@ -60,6 +60,14 @@ abstract class SqlGrammar {
   /// before the surrounding compiler assigns final indexes.
   String inlineSubquery(CompiledQuery query) => query.sql;
 
+  /// Compiles an inline subquery together with its corresponding bindings.
+  ///
+  /// The default preserves bindings and delegates SQL conversion to
+  /// [inlineSubquery]. Dialects that reorder or repeat placeholders must also
+  /// return bindings in their new occurrence order.
+  CompiledQuery compileInlineSubquery(CompiledQuery query) =>
+      CompiledQuery(sql: inlineSubquery(query), bindings: query.bindings);
+
   /// Compiles complete SELECT branches with final UNION ordering and pagination.
   ///
   /// [all] contains one flag for each branch after the first. Each branch is

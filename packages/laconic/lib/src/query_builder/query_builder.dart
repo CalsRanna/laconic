@@ -987,10 +987,32 @@ class QueryBuilder {
     }
     final q = clone()..reorder();
     q._offset = null;
-    if (cursor != null) {
+    if (cursor != null && q._unions.isEmpty) {
+      final conditions = List<Map<String, dynamic>>.of(q._wheres);
+      q._wheres.clear();
+      if (conditions.isNotEmpty) {
+        q._wheres.add({
+          'type': 'nested',
+          'conditions': conditions,
+          'boolean': 'and',
+        });
+      }
       q.where(column, cursor, comparator: '>');
     }
-    final rows = await q.orderBy(column).limit(perPage + 1).get();
+    q.orderBy(column).limit(perPage + 1);
+    final compiled = q._compileSelect(
+      unionWheres: [
+        if (cursor != null && q._unions.isNotEmpty)
+          {
+            'type': 'basic',
+            'column': column,
+            'comparator': '>',
+            'value': cursor,
+            'boolean': 'and',
+          },
+      ],
+    );
+    final rows = await _laconic.select(compiled.sql, compiled.bindings);
     final hasMorePages = rows.length > perPage;
     final data = hasMorePages ? rows.sublist(0, perPage) : rows;
 
@@ -1538,8 +1560,8 @@ class QueryBuilder {
 
   /// Adds a subquery to the SELECT clause as `(subquery) as as`.
   QueryBuilder selectSub(Object query, String as) {
-    final compiled = _compileSubquery(query);
-    final sql = '(${_grammar.inlineSubquery(compiled)}) as $as';
+    final compiled = _grammar.compileInlineSubquery(_compileSubquery(query));
+    final sql = '(${compiled.sql}) as $as';
     if (_columns.length == 1 && _columns[0] == '*') {
       _columns = [sql];
       _selectBindings.clear();

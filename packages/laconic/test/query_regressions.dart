@@ -879,6 +879,55 @@ void queryRegressions(Laconic Function() createDatabase) {
     expect(third.hasMorePages, isFalse);
   });
 
+  test(
+    'cursorPaginate groups existing OR conditions before the cursor',
+    () async {
+      final q = query().where('active', 1).orWhere('label', 'two');
+      final sql = q.toSql();
+      final bindings = q.getBindings();
+
+      final first = await q.cursorPaginate(2);
+      expect(ids(first.data), [1, 2]);
+      expect(first.nextCursor, 2);
+      expect(first.hasMorePages, isTrue);
+
+      final second = await q.cursorPaginate(2, cursor: first.nextCursor);
+      expect(ids(second.data), [3, 5]);
+      expect(second.nextCursor, isNull);
+      expect(second.hasMorePages, isFalse);
+      expect(q.toSql(), sql);
+      expect(q.getBindings(), bindings);
+    },
+  );
+
+  for (final all in [false, true]) {
+    test('cursorPaginate filters every UNION branch (all: $all)', () async {
+      final q = query()
+          .select(['id'])
+          .where('active', 0)
+          .union(query().select(['id']).where('active', 1), all: all);
+      final sql = q.toSql();
+      final bindings = q.getBindings();
+
+      final first = await q.cursorPaginate(2);
+      expect(ids(first.data), [1, 2]);
+      expect(first.nextCursor, 2);
+      expect(first.hasMorePages, isTrue);
+
+      final second = await q.cursorPaginate(2, cursor: first.nextCursor);
+      expect(ids(second.data), [3, 4]);
+      expect(second.nextCursor, 4);
+      expect(second.hasMorePages, isTrue);
+
+      final third = await q.cursorPaginate(2, cursor: second.nextCursor);
+      expect(ids(third.data), [5]);
+      expect(third.nextCursor, isNull);
+      expect(third.hasMorePages, isFalse);
+      expect(q.toSql(), sql);
+      expect(q.getBindings(), bindings);
+    });
+  }
+
   test('lazy and lazyById stream every row', () async {
     final lazyIds =
         await query().orderBy('id').lazy(2).map((row) => row['id']).toList();

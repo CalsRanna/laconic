@@ -1,4 +1,5 @@
 import 'package:laconic/laconic.dart';
+import 'package:laconic_postgresql/src/postgresql_grammar.dart';
 import 'package:laconic_postgresql/src/postgresql_placeholders.dart';
 import 'package:test/test.dart';
 
@@ -67,6 +68,38 @@ void main() {
     expect(() => compile('id = ?', []), throwsA(isA<LaconicException>()));
     expect(() => compile(r'id = $2', [1]), throwsA(isA<LaconicException>()));
     expect(() => compile(r'id = $0', [1]), throwsA(isA<LaconicException>()));
+  });
+
+  test(
+    'inline bindings follow parameters outside SQL literals and comments',
+    () {
+      const query = CompiledQuery(
+        sql: r'''SELECT '$1', "$2", $tag$ $1 $tag$, identifier$2,
+$2::int - $1::int + $2::int -- $1
+/* $2 /* $1 */ $2 */''',
+        bindings: [3, 10],
+      );
+      final inlined = PostgresqlGrammar().compileInlineSubquery(query);
+      expect(inlined.sql, r'''SELECT '$1', "$2", $tag$ $1 $tag$, identifier$2,
+?::int - ?::int + ?::int -- $1
+/* $2 /* $1 */ $2 */''');
+      expect(inlined.bindings, [10, 3, 10]);
+      expect(query.bindings, [3, 10]);
+    },
+  );
+
+  test('inline conversion retains JSON question-mark operators', () {
+    const query = CompiledQuery(
+      sql: r'SELECT $2::jsonb ? $1 OR $2::jsonb ? $1',
+      bindings: ['key', '{"key":1}'],
+    );
+    final inlined = PostgresqlGrammar().compileInlineSubquery(query);
+    final compiled = PostgresqlPlaceholders.compile(
+      inlined.sql,
+      inlined.bindings,
+    );
+    expect(compiled.sql, r'SELECT $1::jsonb ? $2 OR $3::jsonb ? $4');
+    expect(compiled.bindings, ['{"key":1}', 'key', '{"key":1}', 'key']);
   });
 
   test('large raw IN lists retain every binding position', () {

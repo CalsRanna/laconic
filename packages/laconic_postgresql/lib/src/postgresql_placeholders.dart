@@ -196,9 +196,14 @@ class PostgresqlPlaceholders {
     return CompiledQuery(sql: output.toString(), bindings: bindings);
   }
 
-  /// Converts native `$N` placeholders back to `?` so a compiled subquery
-  /// can be embedded into a larger statement and renumbered in order.
-  static String toQuestionPlaceholders(String sql) {
+  /// Converts native `$N` placeholders back to `?` for subquery embedding.
+  ///
+  /// Calls [onParameter] with each original 1-based parameter index in SQL
+  /// occurrence order, allowing bindings to be reordered and repeated.
+  static String toQuestionPlaceholders(
+    String sql, {
+    void Function(int index)? onParameter,
+  }) {
     final output = StringBuffer();
     var i = 0;
 
@@ -280,6 +285,7 @@ class PostgresqlPlaceholders {
           end++;
         }
         if (end > i + 1) {
+          onParameter?.call(int.parse(sql.substring(i + 1, end)));
           output.write('?');
           i = end;
           continue;

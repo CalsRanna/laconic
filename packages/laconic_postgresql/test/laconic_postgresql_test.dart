@@ -37,6 +37,70 @@ void main() {
       expect(users.first['name'], 'John');
     });
 
+    test('selectSub preserves reordered numbered bindings', () async {
+      final subquery = laconic
+          .table(userTable)
+          .selectRaw(r'$2::int - $1::int as answer', [3, 10])
+          .where('id', 1);
+      expect((await subquery.get()).single['answer'], 7);
+
+      final row =
+          (await laconic
+                  .table(userTable)
+                  .selectRaw('?::int as marker', [42])
+                  .selectSub(subquery, 'answer')
+                  .where('id', 1)
+                  .get())
+              .single;
+      expect(row.toMap(), {'marker': 42, 'answer': 7});
+      expect(subquery.getBindings(), [3, 10, 1]);
+    });
+
+    test('selectSub preserves repeated numbered bindings', () async {
+      final subquery = laconic
+          .table(userTable)
+          .selectRaw(r'$1::int + $1::int as answer', [3])
+          .where('id', 1);
+      expect((await subquery.get()).single['answer'], 6);
+
+      final row =
+          (await laconic
+                  .table(userTable)
+                  .selectSub(subquery, 'answer')
+                  .where('id', 1)
+                  .get())
+              .single;
+      expect(row['answer'], 6);
+      expect(subquery.getBindings(), [3, 1]);
+    });
+
+    test('selectSub supports nested and sibling numbered subqueries', () async {
+      final leaf = laconic
+          .table(userTable)
+          .selectRaw(r'$2::int - $1::int + $2::int', [3, 10])
+          .where('id', 1);
+      final nested = laconic
+          .table(userTable)
+          .selectSub(leaf, 'answer')
+          .where('id', 1);
+      final row =
+          (await laconic
+                  .table(userTable)
+                  .selectRaw('?::int as marker', [42])
+                  .selectSub(nested, 'nested_answer')
+                  .selectSub(leaf, 'sibling_answer')
+                  .selectRaw('?::text as suffix', ['tail'])
+                  .where('id', 1)
+                  .get())
+              .single;
+      expect(row.toMap(), {
+        'marker': 42,
+        'nested_answer': 17,
+        'sibling_answer': 17,
+        'suffix': 'tail',
+      });
+    });
+
     test('insert into user', () async {
       var id = await laconic.table(userTable).insertGetId({
         'name': 'Tom',

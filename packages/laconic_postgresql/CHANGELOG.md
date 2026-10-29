@@ -1,3 +1,9 @@
+## Unreleased
+
+- Preserve reordered and repeated numbered parameters when embedding SELECT
+  subqueries, including nested subqueries and adjacent bound expressions.
+- Requires the matching unreleased core with `SqlGrammar.compileInlineSubquery`.
+
 ## 4.0.0
 
 ### Breaking changes and migration
