@@ -1,0 +1,19 @@
+name: laconic_sqlserver
+description: SQL Server driver for the Laconic query builder.
+version: 1.0.0
+homepage: https://github.com/CalsRanna/laconic
+repository: https://github.com/CalsRanna/laconic
+topics: [sqlserver, database, sql, driver]
+
+environment:
+  sdk: '>=3.7.0 <4.0.0'
+
+resolution: workspace
+
+dependencies:
+  laconic: ^6.0.0
+  mssql: ^0.2.0
+
+dev_dependencies:
+  lints: ^5.1.1
+  test: ^1.25.15

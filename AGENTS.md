@@ -4,9 +4,9 @@
 
 ## 项目概览
 
-Laconic 是一个 Laravel 风格的 Dart SQL 查询构造器，支持 MySQL、SQLite 和 PostgreSQL。它提供流畅、可链式调用的 API，用于构建和执行参数化数据库查询，拥有 130+ 个公开方法，覆盖查询、子查询、分页、流式读取、JSON/全文检索和方言特性。
+Laconic 是一个 Laravel 风格的 Dart SQL 查询构造器，支持 MySQL、MariaDB、SQLite、PostgreSQL 和 SQL Server。它提供流畅、可链式调用的 API，用于构建和执行参数化数据库查询，拥有 130+ 个公开方法，覆盖查询、子查询、分页、流式读取、JSON/全文检索和方言特性。
 
-该项目是一个 **Dart workspace 单体仓库**（SDK >=3.7.0），包含四个包：
+该项目是一个 **Dart workspace 单体仓库**（SDK >=3.7.0），包含六个包：
 
 | 包 | 用途 | 关键依赖 |
 |---------|---------|---------------|
@@ -14,6 +14,13 @@ Laconic 是一个 Laravel 风格的 Dart SQL 查询构造器，支持 MySQL、SQ
 | `packages/laconic_sqlite/` | SQLite 驱动 + 语法 | `sqlite3: ^3.3.2` |
 | `packages/laconic_mysql/` | MySQL 驱动 + 内嵌客户端 + 语法 | `buffer: ^1.1.1`、`crypto: ^3.0.1` |
 | `packages/laconic_postgresql/` | PostgreSQL 驱动 + 语法 | `postgres: ^3.5.4` |
+
+新增驱动：`packages/laconic_mariadb/`（MariaDB 10.11+，复用 `laconic_mysql`）和
+`packages/laconic_sqlserver/`（SQL Server 2022+，依赖 `mssql: ^0.2.0`），首版均为
+`1.0.0`（尚未发布）。完整测试还需包含这两个包的 `test` 目录。
+MariaDB 不支持 LATERAL；SQL Server 使用 TOP/OFFSET、OUTPUT、MERGE、APPLY 和表锁提示，
+不支持的接口会抛出异常；完整能力边界见各包 README。
+核心 `SqlGrammar.compileAggregateExpression` 允许 SQL Server 为 AVG 输入添加类型转换。
 
 workspace 根目录的 `pubspec.yaml` 定义了 workspace 成员；各个包使用 `resolution: workspace` 并依赖 `laconic: ^6.0.0`（当前发布线：核心 6.0、SQLite/PostgreSQL 4.0、MySQL 5.0）。
 

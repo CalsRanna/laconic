@@ -3293,7 +3293,7 @@ class QueryBuilder {
       query._locks.clear();
       final inner = query._compileSelect();
       final results = await _laconic.select(
-        'select $function($column) as aggregate from (${inner.sql}) as laconic_aggregate',
+        'select ${_grammar.compileAggregateExpression(function, column)} as aggregate from (${inner.sql}) as laconic_aggregate',
         inner.bindings,
       );
       final value = results.first['aggregate'];
@@ -3303,7 +3303,7 @@ class QueryBuilder {
     final compiled = _grammar.compileSelect(
       table: _table,
       columns: [
-        '$function(${_distinct ? 'DISTINCT ' : ''}$column) as aggregate',
+        '${_grammar.compileAggregateExpression(function, column, distinct: _distinct)} as aggregate',
       ],
       wheres: _wheres,
       joins: _joins,
@@ -3744,7 +3744,7 @@ class QueryBuilder {
       }
     }
     final orderSql =
-        orderParts.isEmpty ? '' : ' order by ${orderParts.join(', ')}';
+        ' order by ${orderParts.isEmpty ? groupColumn : orderParts.join(', ')}';
     final rowNumber =
         'row_number() over (partition by $groupColumn$orderSql) '
         'as laconic_row';
@@ -3760,26 +3760,37 @@ class QueryBuilder {
     inner._selectBindings.addAll(windowBindings);
 
     final innerCompiled = inner._compileSelect();
-    final outerColumns =
-        columns == null || columns.isEmpty ? '*' : columns.join(', ');
     final offset = _offset;
-
-    final buffer = StringBuffer(
-      'select $outerColumns from (${innerCompiled.sql}) as laconic_group '
-      'where laconic_row <= $groupValue',
-    );
-    if (offset != null) {
-      buffer.write(' and laconic_row > $offset');
-    }
-    buffer.write(' order by laconic_row');
-    final limit = limitOverride ?? _limit;
-    if (limit != null) {
-      buffer.write(' limit $limit');
-    }
-
-    return CompiledQuery(
-      sql: buffer.toString(),
-      bindings: innerCompiled.bindings,
+    return _grammar.compileSelect(
+      table: 'laconic_group',
+      columns: columns == null || columns.isEmpty ? ['*'] : columns,
+      fromSubquery: innerCompiled,
+      fromAlias: 'laconic_group',
+      wheres: [
+        {
+          'type': 'basic',
+          'column': 'laconic_row',
+          'comparator': '<=',
+          'value': groupValue,
+          'boolean': 'and',
+        },
+        if (offset != null)
+          {
+            'type': 'basic',
+            'column': 'laconic_row',
+            'comparator': '>',
+            'value': offset,
+            'boolean': 'and',
+          },
+      ],
+      joins: [],
+      orders: [
+        {'column': 'laconic_row', 'direction': 'asc'},
+      ],
+      groups: [],
+      havings: [],
+      distinct: false,
+      limit: limitOverride ?? _limit,
     );
   }
 

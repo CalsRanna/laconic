@@ -4,12 +4,12 @@
   <a href="README.md">English</a> | <a href="README_ZH.md">简体中文</a>
 </p>
 
-一个 Laravel 风格的 Dart SQL 查询构建器，支持 MySQL、SQLite 和 PostgreSQL 数据库。提供流畅的链式 API 来优雅地构建数据库查询。
+一个 Laravel 风格的 Dart SQL 查询构建器，支持 MySQL、MariaDB、SQLite、PostgreSQL 和 SQL Server 数据库。提供流畅的链式 API 来优雅地构建数据库查询。
 
 ## 特性
 
 - **Laravel 风格 API** - 130+ 个链式方法，覆盖过滤、联表、聚合、子查询、分页和写入
-- **多数据库支持** - 通过独立驱动包支持 MySQL、SQLite 和 PostgreSQL
+- **多数据库支持** - 通过独立驱动包支持 MySQL、MariaDB、SQLite、PostgreSQL 和 SQL Server
 - **子查询** - SELECT/FROM/JOIN 子查询、WHERE EXISTS、IN 子查询、insert-using 和 UNION
 - **分页与流式** - `paginate`、`simplePaginate`、`cursorPaginate`、原生 `cursor()`、`lazy()`、`lazyById()`
 - **JSON 与全文** - JSON contains/key/length/overlaps 与 `->` 路径；MySQL/PostgreSQL 全文；SQLite FTS5
@@ -32,6 +32,10 @@
 | [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite 驱动 | 4.0.0 |
 | [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL 驱动 | 5.0.0 |
 | [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL 驱动 | 4.0.0 |
+| [laconic_mariadb](packages/laconic_mariadb/README.md) | MariaDB 10.11+ | 1.0.0 (开发中) |
+| [laconic_sqlserver](packages/laconic_sqlserver/README.md) | SQL Server 2022+ | 1.0.0 (开发中) |
+
+MariaDB 和 SQL Server 驱动目前仅在本 workspace 中提供，尚未发布到 pub.dev。用法、连接配置及方言限制见上方包文档。
 
 ## 安装
 

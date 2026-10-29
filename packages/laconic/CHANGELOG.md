@@ -1,5 +1,13 @@
 ## Unreleased
 
+- Add MariaDB 10.11+ and SQL Server 2022+ workspace driver packages (1.0.0).
+- Compile the outer `groupLimit` query through the database grammar so SQL Server
+  uses valid pagination and ordered subqueries. Supply a window ordering when
+  none was requested; callers should specify an order for deterministic selection.
+- Add `SqlGrammar.compileAggregateExpression` so SQL Server preserves fractional
+  integer averages, including UNION aggregates. Existing grammar subclasses inherit
+  the default; custom grammars using `implements SqlGrammar` must add the method.
+
 - Apply `distinct` to aggregate inputs for `sum`, `avg`, `min` and `max`.
 - Preserve per-partition selection and offsets when using `groupLimit` with
   cursor pagination or ID-based chunking, including `lazyById` and `eachById`.

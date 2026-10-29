@@ -4,12 +4,12 @@
   <a href="README.md">English</a> | <a href="README_ZH.md">简体中文</a>
 </p>
 
-A Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and PostgreSQL databases. Provides a fluent, chainable API for elegant database queries.
+A Laravel-style SQL query builder for Dart, supporting MySQL, MariaDB, SQLite, PostgreSQL, and SQL Server databases. Provides a fluent, chainable API for elegant database queries.
 
 ## Features
 
 - **Laravel-style API** - 130+ chainable methods for filtering, joins, aggregates, subqueries, pagination and writes
-- **Multi-database Support** - MySQL, SQLite, and PostgreSQL via separate driver packages
+- **Multi-database Support** - MySQL, MariaDB, SQLite, PostgreSQL, and SQL Server via separate driver packages
 - **Subqueries** - SELECT/FROM/JOIN subqueries, WHERE EXISTS, IN subqueries, insert-using and UNION
 - **Pagination and Streaming** - `paginate`, `simplePaginate`, `cursorPaginate`, native `cursor()`, `lazy()`, `lazyById()`
 - **JSON and Full Text** - JSON contains/key/length/overlaps with `->` paths; MySQL/PostgreSQL full text; SQLite FTS5
@@ -32,6 +32,10 @@ A Laravel-style SQL query builder for Dart, supporting MySQL, SQLite, and Postgr
 | [laconic_sqlite](https://pub.dev/packages/laconic_sqlite) | SQLite driver | 4.0.0 |
 | [laconic_mysql](https://pub.dev/packages/laconic_mysql) | MySQL driver | 5.0.0 |
 | [laconic_postgresql](https://pub.dev/packages/laconic_postgresql) | PostgreSQL driver | 4.0.0 |
+| [laconic_mariadb](packages/laconic_mariadb/README.md) | MariaDB 10.11+ | 1.0.0 (unreleased) |
+| [laconic_sqlserver](packages/laconic_sqlserver/README.md) | SQL Server 2022+ | 1.0.0 (unreleased) |
+
+MariaDB and SQL Server drivers are currently available in this workspace and are not yet published on pub.dev. See their package READMEs for setup and dialect limitations.
 
 ## Installation
 

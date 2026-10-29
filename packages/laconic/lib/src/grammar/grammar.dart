@@ -50,6 +50,13 @@ abstract class SqlGrammar {
   /// The dialect's random-ordering function used by `inRandomOrder()`.
   String get randomOrderExpression => 'random()';
 
+  /// Compiles an aggregate expression, allowing dialect-specific type handling.
+  String compileAggregateExpression(
+    String function,
+    String column, {
+    bool distinct = false,
+  }) => '$function(${distinct ? 'DISTINCT ' : ''}$column)';
+
   /// Whether compiled SQL uses `$1, $2, ...` placeholders.
   bool get numberedPlaceholders => false;
 

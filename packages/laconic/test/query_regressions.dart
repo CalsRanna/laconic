@@ -2,7 +2,10 @@ import 'package:laconic/laconic.dart';
 import 'package:test/test.dart';
 
 // The same behavior checks run against each real database driver.
-void queryRegressions(Laconic Function() createDatabase) {
+void queryRegressions(
+  Laconic Function() createDatabase, {
+  bool supportsInsertOrIgnore = true,
+}) {
   const table = 'laconic_query_regressions';
   const jsonTable = 'laconic_json_probe';
   const groupLimitTable = 'laconic_group_limit_probe';
@@ -1211,6 +1214,15 @@ void queryRegressions(Laconic Function() createDatabase) {
   });
 
   test(
+    'groupLimit without explicit ordering selects one row per group',
+    () async {
+      final q = db.table(groupLimitTable).groupLimit(1, 'grp');
+      expect(await q.count(), 2);
+      expect((await q.get()).map((row) => row['grp']).toSet(), {'a', 'b'});
+    },
+  );
+
+  test(
     'groupLimit cursor pagination preserves the partition selection',
     () async {
       final q = db
@@ -1367,6 +1379,16 @@ void queryRegressions(Laconic Function() createDatabase) {
   });
 
   test('insertOrIgnoreUsing ignores duplicate rows', () async {
+    if (!supportsInsertOrIgnore) {
+      await expectLater(
+        query().insertOrIgnoreUsing([
+          'id',
+          'label',
+        ], query().select(['id', 'label'])),
+        throwsA(isA<LaconicException>()),
+      );
+      return;
+    }
     const probe = 'laconic_insert_ignore_using_probe';
     await db.statement('drop table if exists $probe');
     await db.statement(

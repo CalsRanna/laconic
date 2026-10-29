@@ -9,3 +9,5 @@ workspace:
   - packages/laconic_sqlite
   - packages/laconic_mysql
   - packages/laconic_postgresql
+  - packages/laconic_mariadb
+  - packages/laconic_sqlserver

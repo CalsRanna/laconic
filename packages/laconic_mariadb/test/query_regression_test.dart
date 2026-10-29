@@ -1,0 +1,4 @@
+import '../../laconic/test/query_regressions.dart';
+import 'test_helper.dart';
+
+void main() => queryRegressions(createDatabase);
