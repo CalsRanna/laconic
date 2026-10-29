@@ -11,3 +11,4 @@ workspace:
   - packages/laconic_postgresql
   - packages/laconic_mariadb
   - packages/laconic_sqlserver
+  - packages/laconic_migrations

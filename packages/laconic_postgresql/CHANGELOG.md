@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Implement core Schema Builder operations, search-path-aware inspection,
+  identity columns, and transactional migration DDL.
+
 - Compare JSON overlap elements as JSONB values so numbers, booleans, nulls,
   objects and nested arrays retain their types. Preserve SQL NULL semantics.
 - Search non-null full-text columns even when another searched column is NULL.

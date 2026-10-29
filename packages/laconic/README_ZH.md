@@ -412,3 +412,9 @@ class MyDriver implements DatabaseDriver {
 ## 许可证
 
 MIT License
+
+## Schema Builder（未发布）
+
+`Laconic.schema` 提供建表、改表与结构检查，DDL 统一使用 `SqlGrammar`。
+参见 [Schema 使用与自定义驱动说明](../../SCHEMA.md)。迁移流程位于独立的
+[`laconic_migrations` 包](../laconic_migrations/README.md)。

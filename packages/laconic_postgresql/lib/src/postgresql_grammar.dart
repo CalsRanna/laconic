@@ -3,12 +3,14 @@ import 'dart:convert';
 import 'package:laconic/laconic.dart';
 import 'postgresql_placeholders.dart';
 
+part 'postgresql_schema.dart';
+
 /// PostgreSQL-specific SQL grammar.
 ///
 /// Handles PostgreSQL-specific syntax differences:
 /// - Positional parameters ($1, $2, etc.)
 /// - RETURNING clause for insertGetId
-class PostgresqlGrammar extends SqlGrammar {
+class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
   @override
   bool get numberedPlaceholders => true;
 

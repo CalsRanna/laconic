@@ -661,3 +661,10 @@ MIT License
 ## Contributing
 
 Issues and Pull Requests are welcome!
+
+## Schema and migrations (unreleased)
+
+The core now provides `db.schema` for table creation, alteration, and inspection.
+DDL uses the existing `SqlGrammar`; concrete dialects live in their driver packages.
+See [Schema Builder and driver extension](SCHEMA.md) and the optional
+[`laconic_migrations` package](packages/laconic_migrations/README.md).

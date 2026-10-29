@@ -2,10 +2,12 @@ import 'dart:convert';
 
 import 'package:laconic/laconic.dart';
 
+part 'mysql_schema.dart';
+
 /// MySQL-specific SQL grammar.
 ///
 /// Handles MySQL SQL syntax with `?` placeholders for parameter binding.
-class MysqlGrammar extends SqlGrammar {
+class MysqlGrammar extends SqlGrammar with _MysqlSchema {
   @override
   String get randomOrderExpression => 'rand()';
 

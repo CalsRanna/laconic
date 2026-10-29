@@ -619,3 +619,9 @@ MIT License
 ## 贡献
 
 欢迎提交 Issues 和 Pull Requests！
+
+## Schema 与迁移（未发布）
+
+核心新增 `db.schema`，用于建表、改表和结构检查。DDL 统一由现有 `SqlGrammar` 编译，
+具体方言仍在各驱动包内。详见 [Schema Builder 与驱动扩展](SCHEMA.md)，
+以及独立的 [`laconic_migrations` 包](packages/laconic_migrations/README.md)。

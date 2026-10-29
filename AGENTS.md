@@ -6,7 +6,7 @@
 
 Laconic 是一个 Laravel 风格的 Dart SQL 查询构造器，支持 MySQL、MariaDB、SQLite、PostgreSQL 和 SQL Server。它提供流畅、可链式调用的 API，用于构建和执行参数化数据库查询，拥有 130+ 个公开方法，覆盖查询、子查询、分页、流式读取、JSON/全文检索和方言特性。
 
-该项目是一个 **Dart workspace 单体仓库**（SDK >=3.7.0），包含六个包：
+该项目是一个 **Dart workspace 单体仓库**（SDK >=3.7.0），包含七个包：
 
 | 包 | 用途 | 关键依赖 |
 |---------|---------|---------------|
@@ -177,6 +177,16 @@ packages/laconic_postgresql/lib/src/
 ```
 
 ## 关键设计模式
+
+### Schema Builder 与 Migration
+
+- 核心 `Laconic.schema` 返回 `SchemaBuilder`，`Blueprint` 用类型化命令描述表结构。
+- DDL、默认值编码和结构检查 SQL 都由现有 `SqlGrammar` 编译；不新增 SchemaGrammar、SchemaProvider 或单独的 schema 包。
+- 各驱动的 schema 实现在同库 `*_schema.dart` part 文件中，通过私有 mixin 组织；MariaDB 复用 MySQL 实现。
+- 编译器保持无状态、无 I/O；一次操作先完整编译再逐条执行。查询钩子由现有 Laconic 执行入口统一触发。
+- `laconic_migrations` 仅依赖核心，提供 Migration/Migrator；每个普通迁移按 grammar 的 `supportsSchemaTransactions` 声明处理事务。MySQL/MariaDB 不自动开启 DDL 事务。
+- 跨方言 Schema 行为测试位于核心 `test/schema_regressions.dart`；迁移测试位于 `packages/laconic_migrations/test`，完整回归必须包含此目录。
+- 详细 API、限制和第三方扩展契约见根目录 SCHEMA.md。版本号暂保留原发布线，发布前须按 RELEASE.md 协调新 API 的最低版本。
 
 ### 语法模式（策略模式）
 QueryBuilder 将查询组件收集到列表数据结构中（`_wheres`、`_joins`、`_orders`、`_groups`、`_havings`）。SQL 生成完全委托给 `SqlGrammar` 子类。这将查询构造器 API 与数据库特定的 SQL 语法解耦。

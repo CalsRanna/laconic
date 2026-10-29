@@ -2,10 +2,12 @@ import 'dart:convert';
 
 import 'package:laconic/laconic.dart';
 
+part 'sqlserver_schema.dart';
+
 /// SQL Server 2022+ SQL grammar.
 ///
 /// Handles SQL Server SQL syntax with `?` placeholders for parameter binding.
-class SqlserverGrammar extends SqlGrammar {
+class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
   @override
   String get randomOrderExpression => 'newid()';
 

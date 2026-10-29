@@ -1,3 +1,8 @@
+## Unreleased
+
+- Support core Schema Builder operations through the shared MySQL compilation
+  implementation, verified against MariaDB.
+
 ## 1.0.0 (unreleased)
 
 - Initial MariaDB 10.11+ driver, grammar and configuration.

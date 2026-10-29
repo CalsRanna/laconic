@@ -2,6 +2,7 @@ import 'package:laconic/src/database_driver.dart';
 import 'package:laconic/src/query.dart';
 import 'package:laconic/src/grammar/grammar.dart';
 import 'package:laconic/src/query_builder/query_builder.dart';
+import 'package:laconic/src/schema/schema_builder.dart';
 import 'package:laconic/src/result.dart';
 
 /// The main entry point for building and executing database queries.
@@ -61,6 +62,9 @@ class Laconic {
   /// The SqlGrammar is responsible for compiling query components into
   /// database-specific SQL strings with parameter bindings.
   SqlGrammar get grammar => _driver.grammar;
+
+  /// The table structure builder using this connection and its SQL grammar.
+  late final SchemaBuilder schema = SchemaBuilder(this);
 
   /// Runs a SELECT statement against the database.
   ///

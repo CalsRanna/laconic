@@ -55,3 +55,5 @@ export 'src/query_builder/join_clause.dart';
 export 'src/query_builder/query_builder.dart';
 export 'src/expression.dart';
 export 'src/result.dart';
+export 'src/schema/blueprint.dart';
+export 'src/schema/schema_builder.dart';

@@ -536,3 +536,11 @@ See the [CHANGELOG](CHANGELOG.md) for the full release notes.
 ## License
 
 MIT License
+
+## Schema Builder (unreleased)
+
+`Laconic.schema` exposes the core Schema Builder. SQL compilation stays in
+`SqlGrammar`, with concrete behavior supplied by the selected driver. See
+[the schema guide](../../SCHEMA.md) for supported operations and custom drivers.
+Versioned migrations are provided by the separate
+[`laconic_migrations` package](../laconic_migrations/README.md).

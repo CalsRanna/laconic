@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Implement core Schema Builder operations, column inspection, and transactional
+  migration DDL. Reject constraint alterations requiring a table rebuild.
+
 - Restrict FTS5 full-text searches to the requested columns, including queries
   containing OR expressions or explicit column filters.
 - Read `selectStream` results through a native cursor instead of buffering all

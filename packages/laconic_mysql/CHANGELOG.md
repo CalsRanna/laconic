@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Implement core Schema Builder operations, namespace-aware inspection, and
+  SQL-mode-independent string defaults. Declare non-transactional migration DDL.
+
 - Decode unsigned BIGINT text results above the signed 64-bit range as `BigInt`,
   matching binary query results, including streamed rows.
 - Support `offset` without an explicit `limit`.

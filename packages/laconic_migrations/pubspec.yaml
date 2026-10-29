@@ -1,0 +1,22 @@
+name: laconic_migrations
+description: Explicit, versioned database migrations for Laconic.
+version: 1.0.0
+repository: https://github.com/CalsRanna/laconic
+topics: [database, migrations, sql, laconic]
+
+environment:
+  sdk: '>=3.7.0 <4.0.0'
+
+resolution: workspace
+
+dependencies:
+  laconic: ^6.0.0
+
+dev_dependencies:
+  lints: ^5.1.1
+  test: ^1.25.15
+  laconic_sqlite: ^4.0.0
+  laconic_mysql: ^5.0.0
+  laconic_postgresql: ^4.0.0
+  laconic_mariadb: ^1.0.0
+  laconic_sqlserver: ^1.0.0

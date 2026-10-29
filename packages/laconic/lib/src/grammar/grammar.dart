@@ -1,11 +1,304 @@
 import 'package:laconic/src/exception.dart';
 import 'package:laconic/src/grammar/compiled_query.dart';
+import 'package:laconic/src/expression.dart';
+import 'package:laconic/src/schema/blueprint.dart';
 
 /// Abstract base class for SQL grammar implementations.
 ///
 /// SqlGrammar subclasses are responsible for compiling query components into
 /// database-specific SQL strings with parameter bindings.
 abstract class SqlGrammar {
+  /// Whether ordinary table DDL can share a transaction with migration records.
+  ///
+  /// Individual migrations must opt out when using non-transactional statements.
+  bool get supportsSchemaTransactions => false;
+
+  /// Quotes a schema identifier, or each component of a qualified table name.
+  String quoteSchemaIdentifier(String name, {bool qualified = false}) {
+    final parts = qualified ? schemaTableParts(name) : [name];
+    return parts
+        .map((part) {
+          if (part.isEmpty || part.contains('\u0000')) {
+            throw LaconicException(
+              'Schema identifiers must be nonempty and contain no NUL',
+            );
+          }
+          return '"${part.replaceAll('"', '""')}"';
+        })
+        .join('.');
+  }
+
+  /// Splits an unquoted table name into an optional schema and a table.
+  List<String> schemaTableParts(String table) {
+    final parts = table.split('.');
+    if (parts.length > 2 ||
+        parts.any((p) => p.isEmpty || p.contains('\u0000'))) {
+      throw LaconicException('Expected table or schema.table: $table');
+    }
+    return parts;
+  }
+
+  /// Compiles a literal for a DDL default, which cannot use value bindings.
+  ///
+  /// [Expression] values are trusted SQL and are emitted unchanged.
+  String compileSchemaLiteral(Object? value) {
+    if (value == null) return 'null';
+    if (value is Expression) return value.sql;
+    if (value is bool) return value ? 'true' : 'false';
+    if (value is num && value.isFinite) return '$value';
+    if (value is DateTime) return compileSchemaLiteral(value.toIso8601String());
+    if (value is String && !value.contains('\u0000')) {
+      return "'${value.replaceAll("'", "''")}'";
+    }
+    throw LaconicException('Unsupported schema default: ${value.runtimeType}');
+  }
+
+  /// Compiles a portable column type for this database.
+  String compileColumnType(ColumnDefinition column) {
+    throw LaconicException(
+      'This grammar does not implement schema column types',
+    );
+  }
+
+  /// Compiles the generated-identity clause for an integer column.
+  String compileAutoIncrement(ColumnDefinition column) {
+    throw LaconicException(
+      'This grammar does not support generated identities',
+    );
+  }
+
+  /// Compiles a column and its inline modifiers.
+  String compileColumnDefinition(ColumnDefinition column) {
+    if (column.isPrimary && column.isNullable) {
+      throw LaconicException('Primary key columns cannot be nullable');
+    }
+    if (column.autoIncrement &&
+        (!column.isPrimary || column.hasDefault || column.isNullable)) {
+      throw LaconicException(
+        'Generated identities require a non-null primary key without a default',
+      );
+    }
+    final sql = StringBuffer(
+      '${quoteSchemaIdentifier(column.name)} ${compileColumnType(column)}',
+    );
+    if (column.autoIncrement) sql.write(' ${compileAutoIncrement(column)}');
+    sql.write(column.isNullable ? ' null' : ' not null');
+    if (column.hasDefault) {
+      sql.write(' default ${compileSchemaLiteral(column.defaultValue)}');
+    }
+    if (column.isPrimary) sql.write(' primary key');
+    if (column.isUnique) sql.write(' unique');
+    return sql.toString();
+  }
+
+  /// Compiles an entire table definition before any statement is executed.
+  List<CompiledQuery> compileCreateTable(Blueprint blueprint) {
+    final table = quoteSchemaIdentifier(blueprint.table, qualified: true);
+    final columns = blueprint.commands.whereType<ColumnDefinition>().toList();
+    if (columns.isEmpty) {
+      throw LaconicException('A table requires at least one column');
+    }
+    if (columns.map((c) => c.name).toSet().length != columns.length) {
+      throw LaconicException('Duplicate columns in table definition');
+    }
+    final primaryCount =
+        columns.where((c) => c.isPrimary).length +
+        blueprint.commands
+            .whereType<IndexDefinition>()
+            .where((i) => i.type == IndexType.primary)
+            .length;
+    if (primaryCount > 1) {
+      throw LaconicException(
+        'Use one primary definition for a composite primary key',
+      );
+    }
+    final definitions = columns.map(compileColumnDefinition).toList();
+    final indexes = <CompiledQuery>[];
+    for (final command in blueprint.commands) {
+      if (command is IndexDefinition) {
+        if (command.type == IndexType.primary) {
+          definitions.add(
+            'constraint ${quoteSchemaIdentifier(command.name)} primary key (${compileSchemaColumns(command.columns)})',
+          );
+        } else {
+          indexes.add(compileSchemaIndex(blueprint.table, command));
+        }
+      } else if (command is ForeignKeyDefinition) {
+        definitions.add(compileForeignKey(command));
+      } else if (command is SchemaChangeCommand) {
+        throw LaconicException(
+          'Existing-object alterations cannot be used in create()',
+        );
+      }
+    }
+    return [
+      CompiledQuery(
+        sql: 'create table $table (${definitions.join(', ')})',
+        bindings: [],
+      ),
+      ...indexes,
+    ];
+  }
+
+  /// Compiles ordered alterations, rejecting unsupported operations eagerly.
+  List<CompiledQuery> compileAlterTable(Blueprint blueprint) {
+    final table = quoteSchemaIdentifier(blueprint.table, qualified: true);
+    final statements = <CompiledQuery>[];
+    for (final command in blueprint.commands) {
+      if (command is ColumnDefinition) {
+        statements.add(compileAddColumn(blueprint.table, command));
+      } else if (command is IndexDefinition) {
+        if (command.type == IndexType.primary) {
+          statements.add(
+            CompiledQuery(
+              sql:
+                  'alter table $table add constraint ${quoteSchemaIdentifier(command.name)} primary key (${compileSchemaColumns(command.columns)})',
+              bindings: [],
+            ),
+          );
+        } else {
+          statements.add(compileSchemaIndex(blueprint.table, command));
+        }
+      } else if (command is ForeignKeyDefinition) {
+        statements.add(
+          CompiledQuery(
+            sql: 'alter table $table add ${compileForeignKey(command)}',
+            bindings: [],
+          ),
+        );
+      } else if (command is SchemaChangeCommand) {
+        statements.add(compileSchemaChange(blueprint.table, command));
+      }
+    }
+    return statements;
+  }
+
+  /// Compiles adding a column to an existing table.
+  CompiledQuery compileAddColumn(
+    String table,
+    ColumnDefinition column,
+  ) => CompiledQuery(
+    sql:
+        'alter table ${quoteSchemaIdentifier(table, qualified: true)} add column ${compileColumnDefinition(column)}',
+    bindings: [],
+  );
+
+  /// Compiles a non-primary index.
+  CompiledQuery compileSchemaIndex(
+    String table,
+    IndexDefinition index,
+  ) => CompiledQuery(
+    sql:
+        'create ${index.type == IndexType.unique ? 'unique ' : ''}index ${quoteSchemaIdentifier(index.name)} on ${quoteSchemaIdentifier(table, qualified: true)} (${compileSchemaColumns(index.columns)})',
+    bindings: [],
+  );
+
+  /// Compiles a nonempty list of unqualified column identifiers.
+  String compileSchemaColumns(List<String> columns) {
+    if (columns.isEmpty) {
+      throw LaconicException('A key requires at least one column');
+    }
+    return columns.map(quoteSchemaIdentifier).join(', ');
+  }
+
+  /// Compiles a complete named foreign key constraint.
+  String compileForeignKey(ForeignKeyDefinition key) {
+    if (key.referencedTable == null ||
+        key.referencedColumns.length != key.columns.length) {
+      throw LaconicException(
+        'Foreign keys require a table and matching referenced columns',
+      );
+    }
+    var sql =
+        'constraint ${quoteSchemaIdentifier(key.name)} foreign key (${compileSchemaColumns(key.columns)}) references ${quoteSchemaIdentifier(key.referencedTable!, qualified: true)} (${compileSchemaColumns(key.referencedColumns)})';
+    if (key.deleteAction != null) {
+      sql += ' on delete ${compileReferentialAction(key.deleteAction!)}';
+    }
+    if (key.updateAction != null) {
+      sql += ' on update ${compileReferentialAction(key.updateAction!)}';
+    }
+    return sql;
+  }
+
+  /// Validates and compiles a foreign key action.
+  String compileReferentialAction(String action) {
+    if (!const [
+      'cascade',
+      'restrict',
+      'no action',
+      'set null',
+      'set default',
+    ].contains(action)) {
+      throw LaconicException('Unsupported foreign key action: $action');
+    }
+    return action;
+  }
+
+  /// Compiles dropping or renaming a table member.
+  CompiledQuery compileSchemaChange(String table, SchemaChangeCommand command) {
+    final target = quoteSchemaIdentifier(table, qualified: true);
+    final name = quoteSchemaIdentifier(command.name);
+    switch (command.change) {
+      case SchemaChange.dropColumn:
+        return CompiledQuery(
+          sql: 'alter table $target drop column $name',
+          bindings: [],
+        );
+      case SchemaChange.renameColumn:
+        return CompiledQuery(
+          sql:
+              'alter table $target rename column $name to ${quoteSchemaIdentifier(command.newName!)}',
+          bindings: [],
+        );
+      case SchemaChange.dropIndex:
+        final parts = schemaTableParts(table);
+        final prefix =
+            parts.length == 2 ? '${quoteSchemaIdentifier(parts.first)}.' : '';
+        return CompiledQuery(sql: 'drop index $prefix$name', bindings: []);
+      case SchemaChange.dropForeign:
+        return CompiledQuery(
+          sql: 'alter table $target drop constraint $name',
+          bindings: [],
+        );
+    }
+  }
+
+  /// Compiles dropping a table, optionally tolerating a missing table.
+  List<CompiledQuery> compileDropTable(
+    String table, {
+    bool ifExists = false,
+  }) => [
+    CompiledQuery(
+      sql:
+          'drop table ${ifExists ? 'if exists ' : ''}${quoteSchemaIdentifier(table, qualified: true)}',
+      bindings: [],
+    ),
+  ];
+
+  /// Compiles renaming a table within its current schema.
+  List<CompiledQuery> compileRenameTable(String from, String to) {
+    if (schemaTableParts(to).length != 1) {
+      throw LaconicException('The new table name must be unqualified');
+    }
+    return [
+      CompiledQuery(
+        sql:
+            'alter table ${quoteSchemaIdentifier(from, qualified: true)} rename to ${quoteSchemaIdentifier(to)}',
+        bindings: [],
+      ),
+    ];
+  }
+
+  /// Compiles a query returning a row only when the table exists.
+  CompiledQuery compileTableExists(String table) {
+    throw LaconicException('This grammar does not implement table inspection');
+  }
+
+  /// Compiles a query returning ordered column names under the `name` alias.
+  CompiledQuery compileColumnListing(String table) {
+    throw LaconicException('This grammar does not implement column inspection');
+  }
+
   /// Compiles a SELECT query.
   ///
   /// Parameters:

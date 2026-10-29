@@ -1,5 +1,13 @@
 ## Unreleased
 
+- Add `Laconic.schema`, `SchemaBuilder`, and typed Blueprint commands in the core.
+- Extend the existing `SqlGrammar` with DDL compilation, identifier/default encoding,
+  structure inspection queries, and a schema transaction capability. No new
+  `DatabaseDriver` members or runtime dependencies are required.
+- Custom grammars using `implements SqlGrammar` must add the new members;
+  subclasses using `extends` inherit defaults and can implement schema support
+  incrementally. See SCHEMA.md for the extension contract.
+
 - Add MariaDB 10.11+ and SQL Server 2022+ workspace driver packages (1.0.0).
 - Compile the outer `groupLimit` query through the database grammar so SQL Server
   uses valid pagination and ordered subqueries. Supply a window ordering when

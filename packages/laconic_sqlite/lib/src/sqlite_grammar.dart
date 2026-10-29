@@ -1,9 +1,11 @@
 import 'package:laconic/laconic.dart';
 
+part 'sqlite_schema.dart';
+
 /// SQLite-specific SQL grammar.
 ///
 /// Handles SQLite SQL syntax with `?` placeholders for parameter binding.
-class SqliteGrammar extends SqlGrammar {
+class SqliteGrammar extends SqlGrammar with _SqliteSchema {
   @override
   CompiledQuery compileSelect({
     required String table,
