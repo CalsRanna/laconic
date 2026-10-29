@@ -135,7 +135,7 @@ PostgreSQL 使用 `PostgresqlPlaceholders` 做单次扫描的占位符转换，�
 
 ```
 packages/laconic/lib/
-├── laconic.dart                    # 统一导出数据库 API 和两个公共 CLI 函数
+├── laconic.dart                    # 统一导出数据库 API 和公共 MigrationCli 类
 └── src/
     ├── laconic.dart                # 连接门面、查询钩子、QueryBuilder / SchemaBuilder 工厂
     ├── exception.dart              # 共享 LaconicException
@@ -146,14 +146,14 @@ packages/laconic/lib/
     │   ├── pagination.dart         # 分页结果类型
     │   ├── operator.dart           # 内部比较运算符校验
     │   └── query_debug.dart        # 内部 SQL 调试格式化，不用于执行
-    ├── grammar/                    # SqlGrammar、CompiledQuery、Expression / raw()
+    ├── grammar/                    # SqlGrammar、CompiledQuery、Expression
     ├── schema/
     │   ├── blueprint.dart          # 收集表结构命令的流式 API
     │   ├── schema_command.dart     # sealed SchemaCommand 和列、索引、外键、变更模型
     │   └── schema_builder.dart     # 编译并执行 Schema 操作
     ├── migrations/                # Migration、MigrationStatus、Migrator
     └── cli/
-        ├── migration_cli.dart     # 两个公共 CLI 函数的组装入口
+        ├── migration_cli.dart     # 公共 MigrationCli 类的组装入口
         ├── command_runner.dart    # 命令解析、校验、请求模型、退出码
         ├── make_command.dart      # make 命令
         ├── migration_executor.dart # 在注入连接上执行迁移并输出结果
@@ -191,9 +191,11 @@ packages/laconic_postgresql/lib/src/
 
 ### 核心包内部依赖
 
+- 除 Dart 必需的 `main()` 外，不声明顶层函数或变量。辅助逻辑放入所属类或调用方法的局部作用域，常量按职责放入类中；共享测试数据使用不可变常量。
+
 - 通过 `lib/laconic.dart` 统一导出公共 API；`lib/src` 按职责组织，包内实现使用相对导入。
 - 数据库实现不反向依赖 CLI 实现；公共入口同时导出两者。CLI 通过传入的 Laconic 连接使用查询、Schema 和 Migration。
-- QueryBuilder 的公开链式方法保持为类成员；纯调试格式化委托给内部辅助函数。
+- QueryBuilder 的公开链式方法保持为类成员；纯调试格式化委托给内部 `QueryDebug` 类。
 - SchemaCommand 的 sealed 子类型保持在同一个库，Blueprint 只负责收集这些命令。
 - 公共入口只导出用户和驱动需要的类型；CLI 请求、源码生成和 SQL 调试辅助函数不导出。
 
@@ -204,7 +206,7 @@ packages/laconic_postgresql/lib/src/
 - 各驱动的 schema 实现在同库 `*_schema.dart` part 文件中，通过私有 mixin 组织；MariaDB 复用 MySQL 实现。
 - 编译器保持无状态、无 I/O；一次操作先完整编译再逐条执行。查询钩子由现有 Laconic 执行入口统一触发。
 - 核心包内置迁移引擎 `lib/src/migrations/`，从 `laconic.dart` 导出 Migration/MigrationStatus/Migrator；每个普通迁移按 grammar 的 `supportsSchemaTransactions` 声明处理事务。MySQL/MariaDB 不自动开启 DDL 事务。
-- Migration CLI 实现位于 `lib/src/cli/`，公共函数从 `lib/laconic.dart` 导出，支持 make/migrate/rollback/status。项目配置导出 createDatabase()，迁移文件导出 migration()；通过临时静态 import 入口运行，不使用反射。可执行入口为 `bin/laconic.dart`，使用 `dart run laconic`。核心仅增加 args/cli_util/io/path 工具依赖，dependencies 和 dev_dependencies 均不引入具体数据库驱动。
+- Migration CLI 实现位于 `lib/src/cli/`，公共 `MigrationCli` 类从 `lib/laconic.dart` 导出，支持 make/migrate/rollback/status。项目配置提供 `DatabaseConfiguration.createDatabase()` 静态方法，迁移文件导出具有无参构造器的 `DatabaseMigration` 类；通过临时静态 import 入口运行，不使用反射。可执行入口为 `bin/laconic.dart`，使用 `dart run laconic`。核心仅增加 args/cli_util/io/path 工具依赖，dependencies 和 dev_dependencies 均不引入具体数据库驱动。
 - 跨方言 Schema/Migration 行为测试位于核心 `test/regressions/schema_regressions.dart` 和 `test/regressions/migrator_regressions.dart`，由各驱动的测试入口调用。核心 `test/cli/migration_cli_test.dart` 测试无驱动 CLI 行为；SQLite 包负责 CLI 数据库与子进程集成测试，迁移示例也位于 SQLite 包。
 - 详细 API、限制和第三方扩展契约见根目录 SCHEMA.md。版本号暂保留原发布线，发布前须按 RELEASE.md 协调新 API 的最低版本。
 
@@ -212,7 +214,7 @@ packages/laconic_postgresql/lib/src/
 QueryBuilder 将查询组件收集到列表数据结构中（`_wheres`、`_joins`、`_orders`、`_groups`、`_havings`）。SQL 生成完全委托给 `SqlGrammar` 子类。这将查询构造器 API 与数据库特定的 SQL 语法解耦。
 
 ### 参数绑定防止 SQL 注入
-所有用户值都经过参数化绑定。语法层在编译过程中将绑定收集到有序列表中。WHERE 类型 `column`、`betweenColumns` 和 `null` 不需要绑定（列比较 / 字面量 NULL）。`Expression` 类（`raw()`）允许在不进行参数化的情况下嵌入原始 SQL——请谨慎使用。
+所有用户值都经过参数化绑定。语法层在编译过程中将绑定收集到有序列表中。WHERE 类型 `column`、`betweenColumns` 和 `null` 不需要绑定（列比较 / 字面量 NULL）。`Expression` 类允许在不进行参数化的情况下嵌入原始 SQL——请谨慎使用。
 
 ### 每个驱动单例语法
 每个驱动持有一个 `static final` 语法实例，避免每次查询都重新分配。语法层是无状态的——它们仅在每次 compile 调用期间读取输入参数并写入本地 `bindings` 列表。
@@ -235,7 +237,7 @@ MySQL 和 PostgreSQL 驱动使用 Dart 的 `runZoned` 配合区域值，通过�
 
 | `type` | 公共方法 | 是否有绑定 | 说明 |
 |--------|---------------|-------------|-------|
-| `basic` | `where()`、`orWhere()` | 是 | 最常用。支持 `raw()` Expression 值；值为 `null` 时转 IS NULL。 |
+| `basic` | `where()`、`orWhere()` | 是 | 最常用。支持 `Expression` 值；值为 `null` 时转 IS NULL。 |
 | `like` | `whereLike(caseSensitive: false)` 等 | 是 | 大小写不敏感 LIKE |
 | `column` | `whereColumn()`、`orWhereColumn()` | 否 | 列对列比较 |
 | `in` | `whereIn()`、`orWhereIn()`、`whereNotIn()`、`orWhereNotIn()` | 是 | List 形式；空列表 → `1=0` / `1=1` |
@@ -309,10 +311,10 @@ MySQL 和 PostgreSQL 驱动使用 Dart 的 `runZoned` 配合区域值，通过�
 核心包从 `lib/laconic.dart` 导出：
 - `Laconic` 类、`DatabaseDriver`（抽象）、`SqlGrammar`（抽象）、`CompiledQuery`
 - `QueryBuilder`、`JoinClause`、`LaconicResult`、`LaconicQuery`、`LaconicException`
-- `Expression` 类 + `raw()` 顶层函数
+- `Expression` 类及其构造器
 - `LaconicPage`、`LaconicSimplePage`、`LaconicCursorPage`
-- `Migration`、`MigrationStatus`、`Migrator`；`runMigrationCli`、`runMigrationCommand`
-- `operator.dart` 的运算符校验为内部实现，不导出
+- `Migration`、`MigrationStatus`、`Migrator`；`MigrationCli`（`run`、`runCommand`）
+- `SqlOperator.validate` 的运算符校验为内部实现，不导出
 
 ## 测试策略
 

@@ -41,7 +41,7 @@ void main() {
     () async {
       var opened = 0;
       var closed = 0;
-      Future<int> run(List<String> args) => runMigrationCommand(
+      Future<int> run(List<String> args) => MigrationCli.runCommand(
         args,
         createDatabase: () {
           opened++;
@@ -82,7 +82,7 @@ void main() {
 
   test('execution errors return nonzero and close the database', () async {
     var closed = false;
-    final code = await runMigrationCommand(
+    final code = await MigrationCli.runCommand(
       ['rollback'],
       createDatabase:
           () => Laconic(

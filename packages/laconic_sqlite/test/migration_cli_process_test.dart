@@ -59,7 +59,9 @@ dependency_overrides:
     await config.writeAsString('''import 'package:laconic/laconic.dart';
 import 'package:laconic_sqlite/laconic_sqlite.dart';
 
-Laconic createDatabase() => Laconic(SqliteDriver(SqliteConfig('test.db')));
+abstract final class DatabaseConfiguration {
+  static Laconic createDatabase() => Laconic(SqliteDriver(SqliteConfig('test.db')));
+}
 ''');
   });
   tearDown(() => project.delete(recursive: true));

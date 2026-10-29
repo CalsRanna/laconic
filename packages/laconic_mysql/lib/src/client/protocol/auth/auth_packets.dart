@@ -54,9 +54,11 @@ class MysqlAuthSwitchResponsePacket extends MysqlPacketPayload {
   }) {
     assert(challenge.length == 20);
     final passwordBytes = utf8.encode(password);
-    final authData = xor(
-      sha1(passwordBytes),
-      sha1(challenge + sha1(sha1(passwordBytes))),
+    final authData = MysqlAuthCrypto.xor(
+      MysqlAuthCrypto.sha1(passwordBytes),
+      MysqlAuthCrypto.sha1(
+        challenge + MysqlAuthCrypto.sha1(MysqlAuthCrypto.sha1(passwordBytes)),
+      ),
     );
     return MysqlAuthSwitchResponsePacket(authData: authData);
   }
@@ -67,9 +69,12 @@ class MysqlAuthSwitchResponsePacket extends MysqlPacketPayload {
   }) {
     assert(challenge.length == 20);
     final passwordBytes = utf8.encode(password);
-    final authData = xor(
-      sha256(passwordBytes),
-      sha256(sha256(sha256(passwordBytes)) + challenge),
+    final authData = MysqlAuthCrypto.xor(
+      MysqlAuthCrypto.sha256(passwordBytes),
+      MysqlAuthCrypto.sha256(
+        MysqlAuthCrypto.sha256(MysqlAuthCrypto.sha256(passwordBytes)) +
+            challenge,
+      ),
     );
     return MysqlAuthSwitchResponsePacket(authData: authData);
   }

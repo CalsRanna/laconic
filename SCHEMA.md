@@ -12,7 +12,7 @@ DDL 实现，没有新增公开的 SchemaGrammar 或 SchemaProvider。
 核心包还内置 `Migration`、`Migrator` 和 CLI，负责迁移顺序、历史、批次和回滚。
 迁移类型和 CLI API 统一从 `package:laconic/laconic.dart` 导出，
 命令入口为 `dart run laconic`。核心因 CLI 引入 args/cli_util/io/path，
-不依赖任何具体数据库驱动；应用通过 `createDatabase()` 提供所选驱动的连接。
+不依赖任何具体数据库驱动；应用通过 `DatabaseConfiguration.createDatabase()` 提供所选驱动的连接。
 真实数据库的迁移测试归各驱动包所有。文件生成与命令用法见
 [Migration CLI](packages/laconic/MIGRATIONS.md#cli)。
 
@@ -68,7 +68,7 @@ Schema 操作通过 `Laconic.statement/select` 执行，会触发已有查询钩
 外键列应使用匹配类型，例如 `bigInteger('user_id')`；这里不隐式使用 unsigned。
 `timestamps()` 添加 nullable 的 `created_at` 和 `updated_at`，不会自动填充值。
 DDL 默认值不能简单使用查询参数绑定，因此普通值会被方言编码为 SQL 字面量；
-`defaultTo(raw('CURRENT_TIMESTAMP'))` 允许显式提供可信 SQL 表达式。
+`defaultTo(Expression('CURRENT_TIMESTAMP'))` 允许显式提供可信 SQL 表达式。
 
 ```dart
 await db.schema.create('posts', (table) {

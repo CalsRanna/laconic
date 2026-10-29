@@ -349,7 +349,7 @@ class MysqlCommandExecutor {
                 final hasMore =
                     allowMultipleResults &&
                     (eof.payload as MysqlEofPacket).statusFlags &
-                            mysqlServerFlagMoreResultsExists !=
+                            MysqlServerStatus.moreResultsExists !=
                         0;
                 if (hasMore) {
                   state = 0;

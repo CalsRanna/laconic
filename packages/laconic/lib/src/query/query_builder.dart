@@ -1089,7 +1089,7 @@ class QueryBuilder {
     Object? value, {
     String comparator = '=',
   }) {
-    final operator = validateOperator(comparator);
+    final operator = SqlOperator.validate(comparator);
 
     if (value == null &&
         (operator == '=' || operator == '!=' || operator == '<>')) {
@@ -1706,7 +1706,7 @@ class QueryBuilder {
   /// [value] is the value to compare.
   /// [comparator] is the comparison operator (defaults to '=').
   QueryBuilder where(String column, Object? value, {String comparator = '='}) {
-    final operator = validateOperator(comparator);
+    final operator = SqlOperator.validate(comparator);
 
     // Laravel converts a `null` comparison with =, != or <> into IS NULL /
     // IS NOT NULL instead of emitting a comparison that can never match.
@@ -1830,7 +1830,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'column',
       'first': first,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'second': second,
       'boolean': 'and',
     });
@@ -1855,7 +1855,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'all',
       'columns': columns,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'and',
     });
@@ -1880,7 +1880,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'any',
       'columns': columns,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'and',
     });
@@ -1905,7 +1905,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'none',
       'columns': columns,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'and',
     });
@@ -1921,7 +1921,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'none',
       'columns': columns,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'or',
     });
@@ -2108,7 +2108,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'column',
       'first': first,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'second': second,
       'boolean': 'or',
     });
@@ -2228,7 +2228,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'rowValues',
       'columns': columns,
-      'operator': validateOperator(operator),
+      'operator': SqlOperator.validate(operator),
       'values': values,
       'boolean': 'and',
     });
@@ -2249,7 +2249,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'rowValues',
       'columns': columns,
-      'operator': validateOperator(operator),
+      'operator': SqlOperator.validate(operator),
       'values': values,
       'boolean': 'or',
     });
@@ -2485,7 +2485,7 @@ class QueryBuilder {
       'type': 'jsonLength',
       'column': split.column,
       'path': split.path ?? (path == null ? null : _normalizeJsonPath(path)),
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': boolean,
     });
@@ -2664,7 +2664,7 @@ class QueryBuilder {
       'type': 'date',
       'dateType': 'date',
       'column': column,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'and',
     });
@@ -2681,7 +2681,7 @@ class QueryBuilder {
       'type': 'date',
       'dateType': 'date',
       'column': column,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'or',
     });
@@ -2698,7 +2698,7 @@ class QueryBuilder {
       'type': 'date',
       'dateType': 'time',
       'column': column,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'and',
     });
@@ -2715,7 +2715,7 @@ class QueryBuilder {
       'type': 'date',
       'dateType': 'time',
       'column': column,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'or',
     });
@@ -2732,7 +2732,7 @@ class QueryBuilder {
       'type': 'date',
       'dateType': 'day',
       'column': column,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'and',
     });
@@ -2749,7 +2749,7 @@ class QueryBuilder {
       'type': 'date',
       'dateType': 'day',
       'column': column,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'or',
     });
@@ -2766,7 +2766,7 @@ class QueryBuilder {
       'type': 'date',
       'dateType': 'month',
       'column': column,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'and',
     });
@@ -2783,7 +2783,7 @@ class QueryBuilder {
       'type': 'date',
       'dateType': 'month',
       'column': column,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'or',
     });
@@ -2800,7 +2800,7 @@ class QueryBuilder {
       'type': 'date',
       'dateType': 'year',
       'column': column,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'and',
     });
@@ -2817,7 +2817,7 @@ class QueryBuilder {
       'type': 'date',
       'dateType': 'year',
       'column': column,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'or',
     });
@@ -2942,7 +2942,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'all',
       'columns': columns,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'or',
     });
@@ -2967,7 +2967,7 @@ class QueryBuilder {
     _wheres.add({
       'type': 'any',
       'columns': columns,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'or',
     });
@@ -3014,7 +3014,7 @@ class QueryBuilder {
   QueryBuilder having(String column, Object? value, {String comparator = '='}) {
     _havings.add({
       'column': column,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'and',
     });
@@ -3038,7 +3038,7 @@ class QueryBuilder {
   }) {
     _havings.add({
       'column': column,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'value': value,
       'boolean': 'or',
     });
@@ -3571,7 +3571,7 @@ class QueryBuilder {
 
     return update({
       for (final entry in columns.entries)
-        entry.key: raw('${entry.key} $operator ${entry.value}'),
+        entry.key: Expression('${entry.key} $operator ${entry.value}'),
       ...?extra,
     });
   }
@@ -3591,7 +3591,7 @@ class QueryBuilder {
   /// Intended for debugging and logging only; the result is not a safe way to
   /// execute a query. Use [toSql] and [getBindings] for execution.
   String toRawSql() {
-    return interpolateQuery(
+    return QueryDebug.interpolate(
       _compileForDebug(),
       numberedPlaceholders: _grammar.numberedPlaceholders,
     );

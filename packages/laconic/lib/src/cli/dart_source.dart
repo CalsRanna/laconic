@@ -1,3 +1,6 @@
 import 'dart:convert';
 
-String dartString(String value) => jsonEncode(value).replaceAll(r'$', r'\$');
+abstract final class DartSource {
+  static String stringLiteral(String value) =>
+      jsonEncode(value).replaceAll(r'$', r'\$');
+}

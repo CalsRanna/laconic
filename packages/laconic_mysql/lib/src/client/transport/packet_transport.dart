@@ -187,7 +187,7 @@ class MysqlPacketTransport {
       }
       _expectedIncomingSequence = (header.sequenceId + 1) & 0xff;
       if (_logicalPacketSequence == null &&
-          header.payloadLength < mysqlMaxPhysicalPacketPayload) {
+          header.payloadLength < MysqlPacket.maxPhysicalPayload) {
         yield chunk;
         continue;
       }
@@ -195,10 +195,10 @@ class MysqlPacketTransport {
       if (header.payloadLength > 0) {
         _logicalPacketData.add(Uint8List.sublistView(chunk, 4));
       }
-      if (header.payloadLength < mysqlMaxPhysicalPacketPayload) {
+      if (header.payloadLength < MysqlPacket.maxPhysicalPayload) {
         final payload = _logicalPacketData.takeBytes();
         final logicalPacket = Uint8List(4 + payload.length);
-        final length = payload.length.clamp(0, mysqlMaxPhysicalPacketPayload);
+        final length = payload.length.clamp(0, MysqlPacket.maxPhysicalPayload);
         logicalPacket[0] = length & 0xff;
         logicalPacket[1] = (length >> 8) & 0xff;
         logicalPacket[2] = (length >> 16) & 0xff;

@@ -12,8 +12,6 @@ import 'package:laconic_mysql/src/client/protocol/packet.dart';
 import 'package:laconic_mysql/src/client/transport/packet_transport.dart';
 import 'package:test/test.dart';
 
-const _password = 'secret';
-
 class _BytesPayload extends MysqlPacketPayload {
   final Uint8List bytes;
 
@@ -95,154 +93,156 @@ class _RecordingTransport extends MysqlPacketTransport {
   }
 }
 
-Future<_SocketPair> _openSocketPair() async {
-  final listener = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-  final accepted = listener.first;
-  final client = await Socket.connect(
-    InternetAddress.loopbackIPv4,
-    listener.port,
-  );
-  final server = await accepted;
-  await listener.close();
-  return _SocketPair(client: client, server: server);
-}
-
-Uint8List _initialHandshake({
-  required bool supportsTls,
-  String authPlugin = 'mysql_native_password',
-}) {
-  final capabilities =
-      mysqlCapFlagClientProtocol41 |
-      mysqlCapFlagClientFoundRows |
-      mysqlCapFlagClientConnectWithDB |
-      mysqlCapFlagClientSecureConnection |
-      mysqlCapFlagClientPluginAuth |
-      mysqlCapFlagClientPluginAuthLenEncClientData |
-      (supportsTls ? mysqlCapFlagClientSsl : 0);
-  final payload =
-      BytesBuilder(copy: false)
-        ..addByte(10)
-        ..add(utf8.encode('8.0.36-test'))
-        ..addByte(0)
-        ..add([1, 0, 0, 0])
-        ..add(List<int>.generate(8, (index) => index + 1))
-        ..addByte(0)
-        ..add([capabilities & 0xff, (capabilities >> 8) & 0xff])
-        ..addByte(45)
-        ..add([2, 0])
-        ..add([(capabilities >> 16) & 0xff, (capabilities >> 24) & 0xff])
-        ..addByte(21)
-        ..add(List<int>.filled(10, 0))
-        ..add(List<int>.generate(12, (index) => index + 9))
-        ..addByte(0)
-        ..add(utf8.encode(authPlugin))
-        ..addByte(0);
-
-  return MysqlPacket(
-    sequenceId: 0,
-    payload: _BytesPayload(payload.takeBytes()),
-    payloadLength: 0,
-  ).encode();
-}
-
-Uint8List _extraAuthPacket({required int sequence, required int status}) {
-  return _extraAuthDataPacket(sequence: sequence, data: [status]);
-}
-
-Uint8List _extraAuthDataPacket({
-  required int sequence,
-  required List<int> data,
-}) {
-  return MysqlPacket(
-    sequenceId: sequence,
-    payload: _BytesPayload([0x01, ...data]),
-    payloadLength: 0,
-  ).encode();
-}
-
-String _certificatePath(String name) {
-  final packageRelative = 'test/certificates/$name';
-  if (File(packageRelative).existsSync()) {
-    return packageRelative;
-  }
-  return 'packages/laconic_mysql/$packageRelative';
-}
-
-SecurityContext _serverContext() {
-  return SecurityContext(withTrustedRoots: false)
-    ..useCertificateChain(_certificatePath('tls-server-cert.pem'))
-    ..usePrivateKey(_certificatePath('tls-server-key.pem'));
-}
-
-SecurityContext _trustedClientContext() {
-  return SecurityContext(withTrustedRoots: false)
-    ..setTrustedCertificates(_certificatePath('tls-ca-cert.pem'));
-}
-
-Future<void> _expectTlsUpgrade({
-  required String host,
-  required SecurityContext? context,
-  required bool allowBadCertificates,
-  required bool succeeds,
-}) async {
-  final pair = await _openSocketPair();
-  final packetReceived = Completer<Uint8List>();
-  final transport = MysqlPacketTransport(
-    socket: pair.client,
-    onPacket: (packet) async {
-      if (!packetReceived.isCompleted) {
-        packetReceived.complete(packet);
-      }
-    },
-    onError: (error, stackTrace) {
-      if (!packetReceived.isCompleted) {
-        packetReceived.completeError(error, stackTrace);
-      }
-    },
-    onDone: () {},
-  );
-
-  final serverUpgrade = SecureSocket.secureServer(
-    pair.server,
-    _serverContext(),
-  );
-  final clientUpgrade = transport.upgradeToTls(
-    host: host,
-    context: context,
-    allowBadCertificates: allowBadCertificates,
-  );
-
-  if (!succeeds) {
-    await expectLater(
-      Future.wait([serverUpgrade, clientUpgrade]),
-      throwsA(isA<HandshakeException>()),
-    );
-    pair.client.destroy();
-    pair.server.destroy();
-    return;
-  }
-
-  await clientUpgrade;
-  final secureServer = await serverUpgrade;
-  secureServer.add([1, 0, 0, 0, 42]);
-  await secureServer.flush();
-
-  final packet = await packetReceived.future.timeout(
-    const Duration(seconds: 2),
-  );
-  expect(packet, [1, 0, 0, 0, 42]);
-
-  await transport.close();
-  await secureServer.close();
-}
-
 void main() {
+  const password = 'secret';
+
+  Future<_SocketPair> openSocketPair() async {
+    final listener = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final accepted = listener.first;
+    final client = await Socket.connect(
+      InternetAddress.loopbackIPv4,
+      listener.port,
+    );
+    final server = await accepted;
+    await listener.close();
+    return _SocketPair(client: client, server: server);
+  }
+
+  Uint8List initialHandshake({
+    required bool supportsTls,
+    String authPlugin = 'mysql_native_password',
+  }) {
+    final capabilities =
+        MysqlCapabilities.clientProtocol41 |
+        MysqlCapabilities.clientFoundRows |
+        MysqlCapabilities.clientConnectWithDB |
+        MysqlCapabilities.clientSecureConnection |
+        MysqlCapabilities.clientPluginAuth |
+        MysqlCapabilities.clientPluginAuthLenEncClientData |
+        (supportsTls ? MysqlCapabilities.clientSsl : 0);
+    final payload =
+        BytesBuilder(copy: false)
+          ..addByte(10)
+          ..add(utf8.encode('8.0.36-test'))
+          ..addByte(0)
+          ..add([1, 0, 0, 0])
+          ..add(List<int>.generate(8, (index) => index + 1))
+          ..addByte(0)
+          ..add([capabilities & 0xff, (capabilities >> 8) & 0xff])
+          ..addByte(45)
+          ..add([2, 0])
+          ..add([(capabilities >> 16) & 0xff, (capabilities >> 24) & 0xff])
+          ..addByte(21)
+          ..add(List<int>.filled(10, 0))
+          ..add(List<int>.generate(12, (index) => index + 9))
+          ..addByte(0)
+          ..add(utf8.encode(authPlugin))
+          ..addByte(0);
+
+    return MysqlPacket(
+      sequenceId: 0,
+      payload: _BytesPayload(payload.takeBytes()),
+      payloadLength: 0,
+    ).encode();
+  }
+
+  Uint8List extraAuthDataPacket({
+    required int sequence,
+    required List<int> data,
+  }) {
+    return MysqlPacket(
+      sequenceId: sequence,
+      payload: _BytesPayload([0x01, ...data]),
+      payloadLength: 0,
+    ).encode();
+  }
+
+  Uint8List extraAuthPacket({required int sequence, required int status}) {
+    return extraAuthDataPacket(sequence: sequence, data: [status]);
+  }
+
+  String certificatePath(String name) {
+    final packageRelative = 'test/certificates/$name';
+    if (File(packageRelative).existsSync()) {
+      return packageRelative;
+    }
+    return 'packages/laconic_mysql/$packageRelative';
+  }
+
+  SecurityContext serverContext() {
+    return SecurityContext(withTrustedRoots: false)
+      ..useCertificateChain(certificatePath('tls-server-cert.pem'))
+      ..usePrivateKey(certificatePath('tls-server-key.pem'));
+  }
+
+  SecurityContext trustedClientContext() {
+    return SecurityContext(withTrustedRoots: false)
+      ..setTrustedCertificates(certificatePath('tls-ca-cert.pem'));
+  }
+
+  Future<void> expectTlsUpgrade({
+    required String host,
+    required SecurityContext? context,
+    required bool allowBadCertificates,
+    required bool succeeds,
+  }) async {
+    final pair = await openSocketPair();
+    final packetReceived = Completer<Uint8List>();
+    final transport = MysqlPacketTransport(
+      socket: pair.client,
+      onPacket: (packet) async {
+        if (!packetReceived.isCompleted) {
+          packetReceived.complete(packet);
+        }
+      },
+      onError: (error, stackTrace) {
+        if (!packetReceived.isCompleted) {
+          packetReceived.completeError(error, stackTrace);
+        }
+      },
+      onDone: () {},
+    );
+
+    final serverUpgrade = SecureSocket.secureServer(
+      pair.server,
+      serverContext(),
+    );
+    final clientUpgrade = transport.upgradeToTls(
+      host: host,
+      context: context,
+      allowBadCertificates: allowBadCertificates,
+    );
+
+    if (!succeeds) {
+      await expectLater(
+        Future.wait([serverUpgrade, clientUpgrade]),
+        throwsA(isA<HandshakeException>()),
+      );
+      pair.client.destroy();
+      pair.server.destroy();
+      return;
+    }
+
+    await clientUpgrade;
+    final secureServer = await serverUpgrade;
+    secureServer.add([1, 0, 0, 0, 42]);
+    await secureServer.flush();
+
+    final packet = await packetReceived.future.timeout(
+      const Duration(seconds: 2),
+    );
+    expect(packet, [1, 0, 0, 0, 42]);
+
+    await transport.close();
+    await secureServer.close();
+  }
+
   group('TLS handshake protocol', () {
     late _SocketPair sockets;
     late _RecordingTransport transport;
 
     setUp(() async {
-      sockets = await _openSocketPair();
+      sockets = await openSocketPair();
       transport = _RecordingTransport(sockets.client);
     });
 
@@ -257,7 +257,7 @@ void main() {
         final runner = MysqlHandshakeRunner(
           transport: transport,
           username: 'user',
-          password: _password,
+          password: password,
           host: 'db.internal',
           databaseName: 'app',
           secure: false,
@@ -266,7 +266,7 @@ void main() {
         );
 
         await runner.processInitialHandshake(
-          _initialHandshake(supportsTls: true),
+          initialHandshake(supportsTls: true),
         );
 
         expect(transport.upgrades, isEmpty);
@@ -275,7 +275,7 @@ void main() {
         final response =
             transport.sentPackets.single.payload
                 as MysqlHandshakeResponse41Packet;
-        expect(response.capabilityFlags & mysqlCapFlagClientSsl, isZero);
+        expect(response.capabilityFlags & MysqlCapabilities.clientSsl, isZero);
         expect(response.database, 'app');
       },
     );
@@ -285,7 +285,7 @@ void main() {
       final runner = MysqlHandshakeRunner(
         transport: transport,
         username: 'user',
-        password: _password,
+        password: password,
         host: 'db.internal',
         databaseName: 'app',
         secure: true,
@@ -293,9 +293,7 @@ void main() {
         securityContext: context,
       );
 
-      await runner.processInitialHandshake(
-        _initialHandshake(supportsTls: true),
-      );
+      await runner.processInitialHandshake(initialHandshake(supportsTls: true));
 
       expect(transport.events, ['send:1', 'tls', 'send:2', 'expect:3']);
       expect(transport.sentPackets, hasLength(2));
@@ -303,8 +301,8 @@ void main() {
       final response =
           transport.sentPackets.last.payload as MysqlHandshakeResponse41Packet;
       expect(
-        response.capabilityFlags & mysqlCapFlagClientSsl,
-        mysqlCapFlagClientSsl,
+        response.capabilityFlags & MysqlCapabilities.clientSsl,
+        MysqlCapabilities.clientSsl,
       );
       expect(response.database, 'app');
 
@@ -318,7 +316,7 @@ void main() {
       final runner = MysqlHandshakeRunner(
         transport: transport,
         username: 'user',
-        password: _password,
+        password: password,
         host: 'db.internal',
         databaseName: null,
         secure: true,
@@ -327,7 +325,7 @@ void main() {
       );
 
       await expectLater(
-        runner.processInitialHandshake(_initialHandshake(supportsTls: false)),
+        runner.processInitialHandshake(initialHandshake(supportsTls: false)),
         throwsA(
           isA<MysqlClientException>().having(
             (error) => error.message,
@@ -344,7 +342,7 @@ void main() {
       final runner = MysqlHandshakeRunner(
         transport: transport,
         username: 'user',
-        password: _password,
+        password: password,
         host: 'db.internal',
         databaseName: null,
         secure: true,
@@ -353,7 +351,7 @@ void main() {
       );
 
       await expectLater(
-        runner.processInitialHandshake(_initialHandshake(supportsTls: true)),
+        runner.processInitialHandshake(initialHandshake(supportsTls: true)),
         throwsA(isA<HandshakeException>()),
       );
       expect(transport.events, ['send:1', 'tls']);
@@ -370,7 +368,7 @@ void main() {
         final runner = MysqlHandshakeRunner(
           transport: transport,
           username: 'user',
-          password: _password,
+          password: password,
           host: 'db.internal',
           databaseName: null,
           secure: true,
@@ -378,7 +376,7 @@ void main() {
           securityContext: null,
         );
         await runner.processInitialHandshake(
-          _initialHandshake(
+          initialHandshake(
             supportsTls: true,
             authPlugin: 'caching_sha2_password',
           ),
@@ -388,7 +386,7 @@ void main() {
         transport.expectedSequences.clear();
 
         final authenticated = await runner.processAuthenticationResponse(
-          _extraAuthPacket(sequence: 3, status: 4),
+          extraAuthPacket(sequence: 3, status: 4),
         );
 
         expect(authenticated, isFalse);
@@ -396,7 +394,7 @@ void main() {
         final response =
             transport.sentPackets.single.payload
                 as MysqlExtraAuthDataResponsePacket;
-        expect(response.encode(), [...utf8.encode(_password), 0]);
+        expect(response.encode(), [...utf8.encode(password), 0]);
       },
     );
 
@@ -406,7 +404,7 @@ void main() {
         final runner = MysqlHandshakeRunner(
           transport: transport,
           username: 'user',
-          password: _password,
+          password: password,
           host: 'db.internal',
           databaseName: null,
           secure: false,
@@ -414,7 +412,7 @@ void main() {
           securityContext: null,
         );
         await runner.processInitialHandshake(
-          _initialHandshake(
+          initialHandshake(
             supportsTls: true,
             authPlugin: 'caching_sha2_password',
           ),
@@ -424,7 +422,7 @@ void main() {
         transport.expectedSequences.clear();
 
         await runner.processAuthenticationResponse(
-          _extraAuthPacket(sequence: 2, status: 4),
+          extraAuthPacket(sequence: 2, status: 4),
         );
         expect(transport.events, ['send:3', 'expect:4']);
         final keyRequest =
@@ -437,10 +435,10 @@ void main() {
         transport.expectedSequences.clear();
         final publicKey =
             File(
-              _certificatePath('mysql-rsa-public-key.pem'),
+              certificatePath('mysql-rsa-public-key.pem'),
             ).readAsStringSync();
         await runner.processAuthenticationResponse(
-          _extraAuthDataPacket(sequence: 4, data: utf8.encode(publicKey)),
+          extraAuthDataPacket(sequence: 4, data: utf8.encode(publicKey)),
         );
 
         expect(transport.events, ['send:5', 'expect:6']);
@@ -449,17 +447,17 @@ void main() {
                 as MysqlExtraAuthDataResponsePacket;
         expect(encrypted.appendNullTerminator, isFalse);
         expect(encrypted.encode(), hasLength(256));
-        expect(encrypted.encode(), isNot(equals(utf8.encode(_password))));
+        expect(encrypted.encode(), isNot(equals(utf8.encode(password))));
       },
     );
 
     test('non-TLS caching_sha2 can use a pinned server public key', () async {
       final publicKey =
-          File(_certificatePath('mysql-rsa-public-key.pem')).readAsStringSync();
+          File(certificatePath('mysql-rsa-public-key.pem')).readAsStringSync();
       final runner = MysqlHandshakeRunner(
         transport: transport,
         username: 'user',
-        password: _password,
+        password: password,
         host: 'db.internal',
         databaseName: null,
         secure: false,
@@ -469,7 +467,7 @@ void main() {
         serverPublicKey: publicKey,
       );
       await runner.processInitialHandshake(
-        _initialHandshake(
+        initialHandshake(
           supportsTls: true,
           authPlugin: 'caching_sha2_password',
         ),
@@ -478,7 +476,7 @@ void main() {
       transport.sentPackets.clear();
 
       await runner.processAuthenticationResponse(
-        _extraAuthPacket(sequence: 2, status: 4),
+        extraAuthPacket(sequence: 2, status: 4),
       );
 
       expect(transport.events, ['send:3', 'expect:4']);
@@ -493,7 +491,7 @@ void main() {
       final runner = MysqlHandshakeRunner(
         transport: transport,
         username: 'user',
-        password: _password,
+        password: password,
         host: 'db.internal',
         databaseName: null,
         secure: false,
@@ -502,7 +500,7 @@ void main() {
         allowPublicKeyRetrieval: false,
       );
       await runner.processInitialHandshake(
-        _initialHandshake(
+        initialHandshake(
           supportsTls: true,
           authPlugin: 'caching_sha2_password',
         ),
@@ -512,7 +510,7 @@ void main() {
 
       await expectLater(
         runner.processAuthenticationResponse(
-          _extraAuthPacket(sequence: 2, status: 4),
+          extraAuthPacket(sequence: 2, status: 4),
         ),
         throwsA(
           isA<MysqlClientException>().having(
@@ -536,13 +534,13 @@ void main() {
         authPluginDataPart1: Uint8List(8),
         authPluginDataPart2: Uint8List(12),
         capabilityFlags:
-            mysqlCapFlagClientProtocol41 |
-            mysqlCapFlagClientFoundRows |
-            mysqlCapFlagClientConnectWithDB |
-            mysqlCapFlagClientSecureConnection |
-            mysqlCapFlagClientPluginAuth |
-            mysqlCapFlagClientSsl |
-            mysqlCapFlagClientMultiStatements,
+            MysqlCapabilities.clientProtocol41 |
+            MysqlCapabilities.clientFoundRows |
+            MysqlCapabilities.clientConnectWithDB |
+            MysqlCapabilities.clientSecureConnection |
+            MysqlCapabilities.clientPluginAuth |
+            MysqlCapabilities.clientSsl |
+            MysqlCapabilities.clientMultiStatements,
         charset: 45,
         statusFlags: Uint8List(2),
         authPluginName: 'mysql_native_password',
@@ -557,12 +555,15 @@ void main() {
 
       expect(encoded, hasLength(32));
       expect(data.getUint32(0, Endian.little), request.capabilityFlags);
-      expect(request.capabilityFlags & mysqlCapFlagClientSsl, isNot(0));
+      expect(request.capabilityFlags & MysqlCapabilities.clientSsl, isNot(0));
       expect(
-        request.capabilityFlags & mysqlCapFlagClientMultiStatements,
+        request.capabilityFlags & MysqlCapabilities.clientMultiStatements,
         isZero,
       );
-      expect(request.capabilityFlags & mysqlCapFlagClientConnectWithDB, isZero);
+      expect(
+        request.capabilityFlags & MysqlCapabilities.clientConnectWithDB,
+        isZero,
+      );
       expect(data.getUint32(4, Endian.little), 50 * 1024 * 1024);
       expect(data.getUint8(8), 45);
       expect(encoded.sublist(9), everyElement(isZero));
@@ -571,7 +572,7 @@ void main() {
 
   group('packet transport certificate validation', () {
     test('rejects an untrusted server certificate by default', () async {
-      await _expectTlsUpgrade(
+      await expectTlsUpgrade(
         host: 'localhost',
         context: null,
         allowBadCertificates: false,
@@ -580,18 +581,18 @@ void main() {
     });
 
     test('accepts a certificate trusted by a custom SecurityContext', () async {
-      await _expectTlsUpgrade(
+      await expectTlsUpgrade(
         host: 'localhost',
-        context: _trustedClientContext(),
+        context: trustedClientContext(),
         allowBadCertificates: false,
         succeeds: true,
       );
     });
 
     test('still rejects a trusted certificate for the wrong host', () async {
-      await _expectTlsUpgrade(
+      await expectTlsUpgrade(
         host: 'wrong.example',
-        context: _trustedClientContext(),
+        context: trustedClientContext(),
         allowBadCertificates: false,
         succeeds: false,
       );
@@ -600,7 +601,7 @@ void main() {
     test(
       'accepts an invalid certificate only when explicitly allowed',
       () async {
-        await _expectTlsUpgrade(
+        await expectTlsUpgrade(
           host: 'localhost',
           context: null,
           allowBadCertificates: true,

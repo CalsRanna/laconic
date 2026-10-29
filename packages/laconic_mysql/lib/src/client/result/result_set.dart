@@ -53,7 +53,8 @@ class MysqlBufferedResultSet extends MysqlResultSet {
   }
 
   @override
-  Iterable<MysqlResultColumn> get columns => _columns.map(_toResultColumn);
+  Iterable<MysqlResultColumn> get columns =>
+      _columns.map(MysqlResultColumn.fromDefinition);
 }
 
 class MysqlStreamingResultSet extends MysqlResultSet {
@@ -104,7 +105,8 @@ class MysqlStreamingResultSet extends MysqlResultSet {
   Stream<MysqlResultRow> get rowStream => _controller.stream;
 
   @override
-  Iterable<MysqlResultColumn> get columns => _columns.map(_toResultColumn);
+  Iterable<MysqlResultColumn> get columns =>
+      _columns.map(MysqlResultColumn.fromDefinition);
 }
 
 class MysqlCommandResult extends MysqlResultSet {
@@ -129,12 +131,4 @@ class MysqlCommandResult extends MysqlResultSet {
 
   @override
   Iterable<MysqlResultColumn> get columns => const [];
-}
-
-MysqlResultColumn _toResultColumn(MysqlColumnDefinitionPacket column) {
-  return MysqlResultColumn(
-    name: column.name,
-    type: column.type,
-    length: column.columnLength,
-  );
 }

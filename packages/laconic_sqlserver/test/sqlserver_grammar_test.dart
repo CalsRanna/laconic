@@ -43,7 +43,7 @@ void main() {
   test('OUTPUT goes before VALUES including raw expression values', () {
     final c = grammar.compileInsertGetId(
       table: 'users',
-      data: {'name': 'a', 'age': raw('20')},
+      data: {'name': 'a', 'age': Expression('20')},
       idColumn: 'user_id',
     );
     expect(

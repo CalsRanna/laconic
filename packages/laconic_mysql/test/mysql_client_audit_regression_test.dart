@@ -11,13 +11,6 @@ import 'package:laconic_mysql/src/client/exceptions.dart';
 import 'package:laconic_mysql/src/client/protocol/packet.dart';
 import 'package:test/test.dart';
 
-const _host = '127.0.0.1';
-const _port = 3306;
-const _database = 'testdb';
-const _username = 'root';
-const _password = 'root';
-const _table = 'mysql_client_audit_values';
-
 class _BytesPayload extends MysqlPacketPayload {
   final Uint8List bytes;
 
@@ -27,39 +20,51 @@ class _BytesPayload extends MysqlPacketPayload {
   Uint8List encode() => bytes;
 }
 
-Future<MysqlConnection> _openConnection({
-  Duration commandTimeout = const Duration(seconds: 10),
-}) async {
-  final connection = await MysqlConnection.createConnection(
-    host: _host,
-    port: _port,
-    userName: _username,
-    password: _password,
-    databaseName: _database,
-    secure: false,
-    commandTimeout: commandTimeout,
-  );
-  await connection.connect();
-  return connection;
-}
-
-MysqlConfig _config({
-  int maxConnections = 1,
-  Duration commandTimeout = const Duration(seconds: 10),
-}) {
-  return MysqlConfig(
-    database: _database,
-    host: _host,
-    port: _port,
-    username: _username,
-    password: _password,
-    maxConnections: maxConnections,
-    useSsl: false,
-    commandTimeout: commandTimeout,
-  );
-}
-
 void main() {
+  const testHost = '127.0.0.1';
+
+  const testPort = 3306;
+
+  const testDatabase = 'testdb';
+
+  const testUsername = 'root';
+
+  const testPassword = 'root';
+
+  const testTable = 'mysql_client_audit_values';
+
+  Future<MysqlConnection> openConnection({
+    Duration commandTimeout = const Duration(seconds: 10),
+  }) async {
+    final connection = await MysqlConnection.createConnection(
+      host: testHost,
+      port: testPort,
+      userName: testUsername,
+      password: testPassword,
+      databaseName: testDatabase,
+      secure: false,
+      commandTimeout: commandTimeout,
+    );
+    await connection.connect();
+    return connection;
+  }
+
+  MysqlConfig createConfig({
+    int maxConnections = 1,
+    Duration commandTimeout = const Duration(seconds: 10),
+  }) {
+    return MysqlConfig(
+      database: testDatabase,
+      host: testHost,
+      port: testPort,
+      username: testUsername,
+      password: testPassword,
+      maxConnections: maxConnections,
+      useSsl: false,
+      commandTimeout: commandTimeout,
+    );
+  }
+
   test('secure defaults require certificate validation', () {
     const config = MysqlConfig(database: 'db', password: 'secret');
 
@@ -69,10 +74,10 @@ void main() {
     expect(config.serverPublicKey, isNull);
     expect(
       () => MysqlConnectionPool(
-        host: _host,
-        port: _port,
-        userName: _username,
-        password: _password,
+        host: testHost,
+        port: testPort,
+        userName: testUsername,
+        password: testPassword,
         maxConnections: 0,
       ),
       throwsArgumentError,
@@ -83,22 +88,22 @@ void main() {
     'TLS rejects the test server certificate unless explicitly allowed',
     () async {
       final strictConnection = await MysqlConnection.createConnection(
-        host: _host,
-        port: _port,
-        userName: _username,
-        password: _password,
-        databaseName: _database,
+        host: testHost,
+        port: testPort,
+        userName: testUsername,
+        password: testPassword,
+        databaseName: testDatabase,
         secure: true,
       );
       addTearDown(strictConnection.close);
       await expectLater(strictConnection.connect(), throwsA(isA<Exception>()));
 
       final developmentConnection = await MysqlConnection.createConnection(
-        host: _host,
-        port: _port,
-        userName: _username,
-        password: _password,
-        databaseName: _database,
+        host: testHost,
+        port: testPort,
+        userName: testUsername,
+        password: testPassword,
+        databaseName: testDatabase,
         secure: true,
         allowBadCertificates: true,
       );
@@ -111,7 +116,7 @@ void main() {
   test('caching_sha2_password authenticates over TLS', () async {
     const user = 'laconic_audit_sha2';
     const password = 'sha2-audit-password-long';
-    final admin = await _openConnection();
+    final admin = await openConnection();
     addTearDown(admin.close);
     await admin.execute("DROP USER IF EXISTS '$user'@'%'");
     await admin.execute(
@@ -121,8 +126,8 @@ void main() {
     addTearDown(() => admin.execute("DROP USER IF EXISTS '$user'@'%'"));
 
     final connection = await MysqlConnection.createConnection(
-      host: _host,
-      port: _port,
+      host: testHost,
+      port: testPort,
       userName: user,
       password: password,
       secure: true,
@@ -140,7 +145,7 @@ void main() {
     () async {
       const user = 'laconic_audit_sha2_plain';
       const password = 'sha2-plain-audit-password-long';
-      final admin = await _openConnection();
+      final admin = await openConnection();
       addTearDown(admin.close);
       await admin.execute("DROP USER IF EXISTS '$user'@'%'");
       await admin.execute(
@@ -150,8 +155,8 @@ void main() {
       addTearDown(() => admin.execute("DROP USER IF EXISTS '$user'@'%'"));
 
       final connection = await MysqlConnection.createConnection(
-        host: _host,
-        port: _port,
+        host: testHost,
+        port: testPort,
         userName: user,
         password: password,
         secure: false,
@@ -179,10 +184,10 @@ void main() {
     });
 
     final connection = await MysqlConnection.createConnection(
-      host: _host,
+      host: testHost,
       port: server.port,
-      userName: _username,
-      password: _password,
+      userName: testUsername,
+      password: testPassword,
       secure: false,
       connectTimeout: const Duration(milliseconds: 150),
     );
@@ -195,23 +200,23 @@ void main() {
   test('an exact 16 MiB payload includes an empty terminator packet', () {
     final packet = MysqlPacket(
       sequenceId: 9,
-      payload: _BytesPayload(Uint8List(mysqlMaxPhysicalPacketPayload)),
+      payload: _BytesPayload(Uint8List(MysqlPacket.maxPhysicalPayload)),
       payloadLength: 0,
     );
 
     final encoded = packet.encode();
-    expect(encoded.lengthInBytes, mysqlMaxPhysicalPacketPayload + 8);
+    expect(encoded.lengthInBytes, MysqlPacket.maxPhysicalPayload + 8);
     expect(encoded.sublist(0, 4), [0xff, 0xff, 0xff, 9]);
     expect(encoded.sublist(encoded.lengthInBytes - 4), [0, 0, 0, 10]);
   });
 
   test('pool never exceeds maxConnections during concurrent startup', () async {
     final pool = MysqlConnectionPool(
-      host: _host,
-      port: _port,
-      userName: _username,
-      password: _password,
-      databaseName: _database,
+      host: testHost,
+      port: testPort,
+      userName: testUsername,
+      password: testPassword,
+      databaseName: testDatabase,
       secure: false,
       maxConnections: 2,
     );
@@ -235,7 +240,7 @@ void main() {
   test(
     'close fails an in-flight command instead of leaving it pending',
     () async {
-      final connection = await _openConnection();
+      final connection = await openConnection();
       addTearDown(connection.close);
 
       final query = connection.execute('SELECT SLEEP(5)');
@@ -250,7 +255,7 @@ void main() {
   );
 
   test('command timeout closes a stalled connection', () async {
-    final connection = await _openConnection(
+    final connection = await openConnection(
       commandTimeout: const Duration(milliseconds: 150),
     );
     addTearDown(connection.close);
@@ -265,7 +270,7 @@ void main() {
   test(
     'prepare completes for a statement without parameters or columns',
     () async {
-      final connection = await _openConnection();
+      final connection = await openConnection();
       addTearDown(connection.close);
 
       final statement = await connection
@@ -278,7 +283,7 @@ void main() {
   test(
     'multi statements are rejected and cannot contaminate the next query',
     () async {
-      final connection = await _openConnection();
+      final connection = await openConnection();
       addTearDown(connection.close);
 
       await expectLater(
@@ -292,7 +297,7 @@ void main() {
   );
 
   test('named text parameters are rejected instead of interpolated', () async {
-    final connection = await _openConnection();
+    final connection = await openConnection();
     addTearDown(connection.close);
 
     await expectLater(
@@ -305,13 +310,13 @@ void main() {
   });
 
   test('prepared parameters and binary results preserve MySQL types', () async {
-    final laconic = Laconic(MysqlDriver(_config()));
+    final laconic = Laconic(MysqlDriver(createConfig()));
     addTearDown(laconic.close);
 
-    await laconic.statement('DROP TABLE IF EXISTS $_table');
-    addTearDown(() => laconic.statement('DROP TABLE IF EXISTS $_table'));
+    await laconic.statement('DROP TABLE IF EXISTS $testTable');
+    addTearDown(() => laconic.statement('DROP TABLE IF EXISTS $testTable'));
     await laconic.statement('''
-      CREATE TABLE $_table (
+      CREATE TABLE $testTable (
         id INT PRIMARY KEY AUTO_INCREMENT,
         flag BOOLEAN NOT NULL,
         amount DOUBLE NOT NULL,
@@ -328,7 +333,7 @@ void main() {
     final payload = Uint8List.fromList([0, 255, 1]);
     await laconic.statement(
       '''
-      INSERT INTO $_table
+      INSERT INTO $testTable
         (flag, amount, happened_at, payload, document, event_year,
          event_date, unsigned_value)
       VALUES (?, ?, ?, ?, ?, ?, ?, 18446744073709551615)
@@ -337,7 +342,11 @@ void main() {
     );
 
     final matching =
-        await laconic.table(_table).where('flag', true).where('id', 1).first();
+        await laconic
+            .table(testTable)
+            .where('flag', true)
+            .where('id', 1)
+            .first();
 
     expect(matching['flag'], isTrue);
     expect(matching['amount'], 1.25);
@@ -349,12 +358,13 @@ void main() {
     expect(matching['event_date'], '2024-02-03');
     expect(matching['unsigned_value'], BigInt.parse('18446744073709551615'));
 
-    final notMatching = await laconic.table(_table).where('flag', false).get();
+    final notMatching =
+        await laconic.table(testTable).where('flag', false).get();
     expect(notMatching, isEmpty);
   });
 
   test('text and streaming results preserve unsigned BIGINT values', () async {
-    final laconic = Laconic(MysqlDriver(_config()));
+    final laconic = Laconic(MysqlDriver(createConfig()));
     addTearDown(laconic.close);
     final values = <Object>[
       0,
@@ -381,14 +391,14 @@ void main() {
 
   test('packets larger than 16 MiB are fragmented and reassembled', () async {
     final laconic = Laconic(
-      MysqlDriver(_config(commandTimeout: const Duration(seconds: 60))),
+      MysqlDriver(createConfig(commandTimeout: const Duration(seconds: 60))),
     );
     addTearDown(laconic.close);
 
-    await laconic.statement('DROP TABLE IF EXISTS $_table');
-    addTearDown(() => laconic.statement('DROP TABLE IF EXISTS $_table'));
+    await laconic.statement('DROP TABLE IF EXISTS $testTable');
+    addTearDown(() => laconic.statement('DROP TABLE IF EXISTS $testTable'));
     await laconic.statement('''
-        CREATE TABLE $_table (
+        CREATE TABLE $testTable (
           id INT PRIMARY KEY AUTO_INCREMENT,
           payload LONGBLOB NOT NULL
         )
@@ -397,8 +407,8 @@ void main() {
     final payload = Uint8List(0x00ffffff + 1024);
     payload[0] = 17;
     payload[payload.length - 1] = 29;
-    final id = await laconic.table(_table).insertGetId({'payload': payload});
-    final row = await laconic.table(_table).where('id', id).first();
+    final id = await laconic.table(testTable).insertGetId({'payload': payload});
+    final row = await laconic.table(testTable).where('id', id).first();
     final returned = row['payload'] as Uint8List;
 
     expect(returned.lengthInBytes, payload.lengthInBytes);
@@ -409,7 +419,7 @@ void main() {
   test(
     'prepared statement LRU deallocates evicted server statements',
     () async {
-      final laconic = Laconic(MysqlDriver(_config()));
+      final laconic = Laconic(MysqlDriver(createConfig()));
       addTearDown(laconic.close);
 
       for (var i = 0; i < 70; i++) {
@@ -427,7 +437,7 @@ void main() {
   );
 
   test('iterable results support pause, resume, and cancellation', () async {
-    final connection = await _openConnection();
+    final connection = await openConnection();
     addTearDown(connection.close);
 
     final result = await connection.execute(

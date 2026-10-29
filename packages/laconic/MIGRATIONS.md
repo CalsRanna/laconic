@@ -2,8 +2,7 @@
 
 Database migrations and the CLI are built into `laconic`. These unreleased APIs
 require matching core and driver sources containing the Schema Builder API.
-Import `Migration`, `MigrationStatus`, `Migrator`, `runMigrationCli`, and
-`runMigrationCommand` from `package:laconic/laconic.dart`.
+Import `Migration`, `MigrationStatus`, `Migrator`, and `MigrationCli` from `package:laconic/laconic.dart`.
 The core uses `args`, `cli_util`, `io`, and `path` for the CLI, and has no
 concrete database driver dependencies, including development dependencies.
 Applications choose and inject their driver; integration tests live in driver packages.
@@ -27,7 +26,7 @@ class CreateUsers extends Migration {
   Future<void> down(Laconic db) => db.schema.drop('users');
 }
 
-// db is an existing Laconic instance using your chosen driver.
+// Inside an async method; db is an existing Laconic instance using your driver.
 final migrator = Migrator(db, migrations: [CreateUsers()]);
 await migrator.migrate();
 final states = await migrator.status();
@@ -70,7 +69,7 @@ undo earlier successful migrations. Reversing DDL does not restore deleted data.
 Run exactly one migrator per database at a time, using your deployment system to
 serialize runs. The instance rejects overlapping mutations but does not provide
 a cross-process/distributed lock. Take a database backup before destructive
-operations. Migration functions execute application code; run trusted sources.
+operations. Migration methods execute application code; run trusted sources.
 
 ## CLI
 
@@ -78,17 +77,19 @@ Run the CLI from your application directory after resolving dependencies with
 `dart pub get`. Add `laconic` and your selected driver to
 that application's dependencies.
 
-Create `database/migrations.dart` with a top-level `createDatabase()` function
-returning `Laconic` or `Future<Laconic>`. For example, with SQLite:
+Create `database/migrations.dart` with a `DatabaseConfiguration` class whose static
+`createDatabase()` method returns `Laconic` or `Future<Laconic>`. For example, with SQLite:
 
 ```dart
 import 'dart:io';
 import 'package:laconic/laconic.dart';
 import 'package:laconic_sqlite/laconic_sqlite.dart';
 
-Laconic createDatabase() => Laconic(SqliteDriver(SqliteConfig(
-  Platform.environment['DATABASE_PATH'] ?? 'app.db',
-)));
+abstract final class DatabaseConfiguration {
+  static Laconic createDatabase() => Laconic(SqliteDriver(SqliteConfig(
+    Platform.environment['DATABASE_PATH'] ?? 'app.db',
+  )));
+}
 ```
 
 The configuration belongs to the application. Use any Laconic driver and read
@@ -134,7 +135,7 @@ dart run laconic \
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--config` | `database/migrations.dart` | Dart file exporting `createDatabase()` |
+| `--config` | `database/migrations.dart` | Dart file exporting `DatabaseConfiguration.createDatabase()` |
 | `--path` | `database/migrations` | Flat directory containing migration Dart files |
 | `--table` | `migrations` | Database migration history table |
 
@@ -144,10 +145,11 @@ report a missing directory instead of silently running an empty registry.
 
 Generated filenames use a UTC timestamp with microsecond precision followed by
 the lower_snake_case name. Existing files are never overwritten. Each migration
-file must export a top-level `Migration migration()` factory, and its migration
-name must match the filename without `.dart`. To use an existing class through
-the CLI, add a factory such as `Migration migration() => CreateUsers();` and
-ensure its stable name matches its filename. Helpers should live outside the
+file must export a `DatabaseMigration extends Migration` class with an unnamed,
+zero-argument constructor. Its migration name must match the filename without
+`.dart`. To use an existing class through the CLI, rename it to `DatabaseMigration`
+or add `class DatabaseMigration extends CreateUsers {}` in its migration file.
+Ensure its stable name matches its filename. Helpers should live outside the
 migrations directory. Only regular `.dart` files in that directory are loaded;
 subdirectories are not scanned and symlinked Dart files are rejected explicitly.
 
@@ -156,7 +158,7 @@ imports under `.dart_tool/laconic/`, then invokes the Dart SDK. It
 removes the entrypoint after the subprocess finishes, including failures. This
 does not use reflection or interpret Dart source. The CLI requires the Dart SDK
 even when the launcher itself is compiled to a native executable. A custom
-statically registered executable can instead call `runMigrationCommand()` from
+statically registered executable can instead call `MigrationCli.runCommand()` from
 `package:laconic/laconic.dart` directly; see its API documentation.
 
 `status --json` writes an array of `{name, status, batch, missing}` to stdout.

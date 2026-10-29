@@ -391,7 +391,7 @@ await laconic.table('posts').whereFullText(['title', 'body'], 'dart').get();
 await laconic.table('users').whereBinary('name', 'John').get(); // MySQL
 await laconic.table('users').useIndex('idx_name').get();       // MySQL
 await laconic.table('accounts').updateFrom('balances', {       // PostgreSQL
-  'amount': raw('balances.amount'),
+  'amount': Expression('balances.amount'),
 });
 ```
 

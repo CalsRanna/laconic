@@ -72,7 +72,7 @@ class MysqlResultRow {
     }
     if (T == bool &&
         value is int &&
-        column.type.value == mysqlColumnTypeTiny &&
+        column.type.value == MysqlColumnType.tinyCode &&
         column.columnLength == 1) {
       return (value > 0) as T;
     }
@@ -98,7 +98,7 @@ class MysqlResultRow {
       return null;
     }
     if (value is int &&
-        column.type.value == mysqlColumnTypeTiny &&
+        column.type.value == MysqlColumnType.tinyCode &&
         column.columnLength == 1) {
       return value > 0;
     }
@@ -108,8 +108,8 @@ class MysqlResultRow {
 
     final type = column.type.getBestMatchDartType(column.columnLength);
     if (type == int) {
-      if (column.type.value == mysqlColumnTypeLongLong &&
-          column.flags & mysqlColumnFlagUnsigned != 0) {
+      if (column.type.value == MysqlColumnType.longLongCode &&
+          column.flags & MysqlColumnFlags.unsigned != 0) {
         return int.tryParse(value) ?? BigInt.parse(value);
       }
       return int.parse(value);
@@ -122,6 +122,14 @@ class MysqlResultRow {
 }
 
 class MysqlResultColumn {
+  factory MysqlResultColumn.fromDefinition(MysqlColumnDefinitionPacket column) {
+    return MysqlResultColumn(
+      name: column.name,
+      type: column.type,
+      length: column.columnLength,
+    );
+  }
+
   final String name;
   final MysqlColumnType type;
   final int length;

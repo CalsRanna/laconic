@@ -3,33 +3,6 @@ import 'package:io/io.dart';
 
 import 'cli_exception.dart';
 
-Future<int> runMigrationRunner(
-  MigrationCommandRunner runner,
-  List<String> args,
-  StringSink error,
-) async {
-  try {
-    if (args.isEmpty) {
-      runner.usageException('Provide a command, or use --help.');
-    }
-    return await runner.run(args) ?? ExitCode.success.code;
-  } on UsageException catch (e) {
-    error
-      ..writeln(e.message)
-      ..writeln(e.usage);
-    return ExitCode.usage.code;
-  } on MigrationCliException catch (e) {
-    error.writeln(e.message);
-    return e.exitCode;
-  } on FormatException catch (e) {
-    error.writeln(e.message);
-    return ExitCode.data.code;
-  } catch (e) {
-    error.writeln('Migration command failed: $e');
-    return ExitCode.software.code;
-  }
-}
-
 typedef ExecuteMigrationCommand =
     Future<int> Function(
       MigrationCommandRequest request,
@@ -37,6 +10,29 @@ typedef ExecuteMigrationCommand =
     );
 
 class MigrationCommandRunner extends CommandRunner<int> {
+  Future<int> runSafely(List<String> args, StringSink error) async {
+    try {
+      if (args.isEmpty) {
+        usageException('Provide a command, or use --help.');
+      }
+      return await run(args) ?? ExitCode.success.code;
+    } on UsageException catch (e) {
+      error
+        ..writeln(e.message)
+        ..writeln(e.usage);
+      return ExitCode.usage.code;
+    } on MigrationCliException catch (e) {
+      error.writeln(e.message);
+      return e.exitCode;
+    } on FormatException catch (e) {
+      error.writeln(e.message);
+      return ExitCode.data.code;
+    } catch (e) {
+      error.writeln('Migration command failed: $e');
+      return ExitCode.software.code;
+    }
+  }
+
   final StringSink output;
 
   MigrationCommandRunner(this.output, ExecuteMigrationCommand execute)

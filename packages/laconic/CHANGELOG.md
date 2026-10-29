@@ -1,6 +1,23 @@
 ## Unreleased
 
-- Export `runMigrationCli` and `runMigrationCommand` from `laconic.dart` and
+- **Breaking:** remove the top-level `raw(sql)` helper. Use `Expression(sql)`
+  (or `const Expression(sql)`) from the same public library instead.
+- **Breaking (unreleased CLI):** replace `runMigrationCli(...)` and
+  `runMigrationCommand(...)` with `MigrationCli.run(...)` and
+  `MigrationCli.runCommand(...)`; arguments and exit codes stay the same.
+  Move the configuration factory to the static
+  `DatabaseConfiguration.createDatabase()` method. Replace each migration's
+  top-level `migration()` factory with a public `DatabaseMigration` class and
+  an unnamed zero-argument constructor. Existing migration names and filenames
+  must remain unchanged. See MIGRATIONS.md for the new conventions.
+- Scope internal SQL helpers, CLI operations, MySQL protocol constants/codecs,
+  and shared test suites to their owning classes. Make shared test data immutable;
+  keep helpers used by one test local to its entrypoint.
+- This source change retains workspace version numbers pending release planning.
+  Removing `raw` requires a core major release; coordinate driver minimum core
+  versions as described in RELEASE.md.
+
+- Export `MigrationCli` from `laconic.dart` and
   remove the separate `cli.dart` entrypoint. Update CLI imports to
   `package:laconic/laconic.dart`.
 
@@ -18,15 +35,15 @@
   in existing migration files. Core has no concrete driver dependencies; database
   integration tests and the runnable example now live in driver packages.
 - Add `args`, `cli_util`, `io`, and `path` for the built-in CLI. The main library
-  exports migration types and CLI functions together.
+  exports migration types and CLI entrypoints together.
 - Add the `laconic` executable with `make`, `migrate`, `rollback`, and
   `status`, Laravel-style aliases, batch/step options, and JSON status output.
-- Generate timestamped migration factories, optionally with create/drop-table
+- Generate timestamped migration classes, optionally with create/drop-table
   bodies, without overwriting existing files.
-- Load application-owned database configuration and migration factories through
+- Load application-owned database configuration and migration classes through
   temporary static Dart entrypoints. Forward diagnostics and exit codes, close
   database connections, and remove temporary files after execution.
-- Add an embeddable `runMigrationCommand` CLI API and test native launcher SDK
+- Add an embeddable `MigrationCli.runCommand` CLI API and test native launcher SDK
   discovery, failure behavior, generated files, and end-to-end SQLite workflows.
 - Add explicit `Migration` registration and `Migrator` execution using Laconic.
 - Track successful migrations and batches; support status, rollback, and reset.
@@ -278,7 +295,7 @@
 
 ### Features
 
-- **New `Expression` and `raw()`** - Embed raw SQL expressions in queries without parameterization
+- **New `Expression` and `Expression()`** - Embed raw SQL expressions in queries without parameterization
 - **New `orderByRaw()`** - Add raw ORDER BY expressions with optional bindings
 - **New `groupByRaw()`** - Add raw GROUP BY expressions
 - **New `havingRaw()` / `orHavingRaw()`** - Add raw HAVING conditions with optional bindings

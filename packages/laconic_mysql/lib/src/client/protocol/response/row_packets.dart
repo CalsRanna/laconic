@@ -32,20 +32,20 @@ class MysqlTextRowPacket extends MysqlPacketPayload {
         final type = colDef.type.value;
         final isBinaryString =
             colDef.charset == 63 &&
-            (type == mysqlColumnTypeString ||
-                type == mysqlColumnTypeVarString ||
-                type == mysqlColumnTypeVarChar);
+            (type == MysqlColumnType.stringCode ||
+                type == MysqlColumnType.varStringCode ||
+                type == MysqlColumnType.varCharCode);
         final isBinaryBlob =
             colDef.charset == 63 &&
-            (type == mysqlColumnTypeTinyBlob ||
-                type == mysqlColumnTypeMediumBlob ||
-                type == mysqlColumnTypeLongBlob ||
-                type == mysqlColumnTypeBlob);
+            (type == MysqlColumnType.tinyBlobCode ||
+                type == MysqlColumnType.mediumBlobCode ||
+                type == MysqlColumnType.longBlobCode ||
+                type == MysqlColumnType.blobCode);
         final isBinary =
             isBinaryString ||
             isBinaryBlob ||
-            type == mysqlColumnTypeGeometry ||
-            type == mysqlColumnTypeBit;
+            type == MysqlColumnType.geometryCode ||
+            type == MysqlColumnType.bitCode;
         value =
             isBinary
                 ? buffer.getLengthEncodedBytes(offset)
@@ -105,12 +105,12 @@ class MysqlBinaryRowPacket extends MysqlPacketPayload {
       }
 
       final column = colDefs[index];
-      final parsed = decodeBinaryColumnValue(
+      final parsed = MysqlBinaryValueDecoder.decode(
         column.type.value,
         byteData,
         buffer,
         offset,
-        unsigned: column.flags & mysqlColumnFlagUnsigned != 0,
+        unsigned: column.flags & MysqlColumnFlags.unsigned != 0,
         charset: column.charset,
       );
       offset += parsed.bytesRead;

@@ -10,8 +10,8 @@ void main() {
   const table = 'laconic_sqlserver_features';
   QueryBuilder query() => db.table(table);
   setUpAll(() async {
-    await prepareDatabase();
-    db = createDatabase(maxConnections: 1);
+    await SqlserverTestDatabase.prepareDatabase();
+    db = SqlserverTestDatabase.createDatabase(maxConnections: 1);
   });
   setUp(() async {
     await db.statement('drop table if exists $table');
@@ -173,7 +173,7 @@ void main() {
   test(
     'TLS connects with an explicit development certificate opt-in',
     () async {
-      final settings = testConfig();
+      final settings = SqlserverTestDatabase.testConfig();
       final encrypted = Laconic(
         SqlserverDriver(
           SqlserverConfig(

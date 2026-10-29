@@ -77,7 +77,7 @@ class ColumnDefinition extends SchemaCommand {
     return this;
   }
 
-  /// Sets a literal default or a trusted `raw()` expression.
+  /// Sets a literal default or a trusted `Expression()` expression.
   ColumnDefinition defaultTo(Object? value) {
     hasDefault = true;
     defaultValue = value;

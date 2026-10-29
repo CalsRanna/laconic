@@ -10,7 +10,7 @@ void main() {
     final laconic = Laconic(SqliteDriver(config));
 
     setUpAll(() async {
-      await setupSqliteTestData(laconic);
+      await SqliteTestData.setUp(laconic);
     });
 
     tearDownAll(() async {
@@ -20,44 +20,51 @@ void main() {
     // ==================== Basic CRUD ====================
 
     test('select * from users', () async {
-      var users = await laconic.table(userTable).get();
+      var users = await laconic.table(SqliteTestData.userTable).get();
       expect(users.length, 3);
     });
 
     test('select * from users where id = 1', () async {
-      var users = await laconic.table(userTable).where('id', 1).get();
+      var users =
+          await laconic.table(SqliteTestData.userTable).where('id', 1).get();
       expect(users.length, 1);
       expect(users.first['name'], 'John');
     });
 
     test('insert into user', () async {
-      var id = await laconic.table(userTable).insertGetId({
+      var id = await laconic.table(SqliteTestData.userTable).insertGetId({
         'name': 'Tom',
         'age': 25,
         'gender': 'male',
       });
       expect(id, greaterThan(0));
-      var count = await laconic.table(userTable).count();
+      var count = await laconic.table(SqliteTestData.userTable).count();
       expect(count, 4);
-      await laconic.table(userTable).where('id', id).delete();
+      await laconic.table(SqliteTestData.userTable).where('id', id).delete();
     });
 
     test('update user set name = "Jones" where id = 1', () async {
-      await laconic.table(userTable).where('id', 1).update({'name': 'Jones'});
-      var user = await laconic.table(userTable).where('id', 1).first();
+      await laconic.table(SqliteTestData.userTable).where('id', 1).update({
+        'name': 'Jones',
+      });
+      var user =
+          await laconic.table(SqliteTestData.userTable).where('id', 1).first();
       expect(user['name'], 'Jones');
-      await laconic.table(userTable).where('id', 1).update({'name': 'John'});
+      await laconic.table(SqliteTestData.userTable).where('id', 1).update({
+        'name': 'John',
+      });
     });
 
     test('delete from user where id = 99', () async {
-      var countBefore = await laconic.table(userTable).count();
-      await laconic.table(userTable).where('id', 99).delete();
-      var countAfter = await laconic.table(userTable).count();
+      var countBefore = await laconic.table(SqliteTestData.userTable).count();
+      await laconic.table(SqliteTestData.userTable).where('id', 99).delete();
+      var countAfter = await laconic.table(SqliteTestData.userTable).count();
       expect(countBefore, countAfter);
     });
 
     test('table(users).get()', () async {
-      var users = await laconic.table(userTable).orderBy('id').get();
+      var users =
+          await laconic.table(SqliteTestData.userTable).orderBy('id').get();
       expect(users.length, 3);
       expect(users[0]['name'], 'John');
       expect(users[1]['name'], 'Jane');
@@ -65,99 +72,118 @@ void main() {
     });
 
     test('table(users).where("id", 1).first()', () async {
-      var user = await laconic.table(userTable).where('id', 1).first();
+      var user =
+          await laconic.table(SqliteTestData.userTable).where('id', 1).first();
       expect(user['name'], 'John');
       expect(user['age'], 25);
     });
 
     test('table(users).insertGetId() returns auto-increment ID', () async {
-      var id = await laconic.table(userTable).insertGetId({
+      var id = await laconic.table(SqliteTestData.userTable).insertGetId({
         'name': 'Tom',
         'age': 25,
         'gender': 'male',
       });
       expect(id, greaterThan(0));
-      var count = await laconic.table(userTable).count();
+      var count = await laconic.table(SqliteTestData.userTable).count();
       expect(count, 4);
-      await laconic.table(userTable).where('id', id).delete();
+      await laconic.table(SqliteTestData.userTable).where('id', id).delete();
     });
 
     test('table(users).where("id", 1).update()', () async {
-      final affected = await laconic.table(userTable).where('id', 1).update({
-        'age': 26,
-      });
+      final affected = await laconic
+          .table(SqliteTestData.userTable)
+          .where('id', 1)
+          .update({'age': 26});
       expect(affected, 1);
-      var user = await laconic.table(userTable).where('id', 1).first();
+      var user =
+          await laconic.table(SqliteTestData.userTable).where('id', 1).first();
       expect(user['age'], 26);
-      await laconic.table(userTable).where('id', 1).update({'age': 25});
+      await laconic.table(SqliteTestData.userTable).where('id', 1).update({
+        'age': 25,
+      });
     });
 
     test('table(users).where("id", 99).delete()', () async {
-      var countBefore = await laconic.table(userTable).count();
-      final affected = await laconic.table(userTable).where('id', 99).delete();
+      var countBefore = await laconic.table(SqliteTestData.userTable).count();
+      final affected =
+          await laconic
+              .table(SqliteTestData.userTable)
+              .where('id', 99)
+              .delete();
       expect(affected, 0);
-      var countAfter = await laconic.table(userTable).count();
+      var countAfter = await laconic.table(SqliteTestData.userTable).count();
       expect(countBefore, countAfter);
     });
 
     // ==================== Aggregates & Helpers ====================
 
     test('table(users).count()', () async {
-      var count = await laconic.table(userTable).count();
+      var count = await laconic.table(SqliteTestData.userTable).count();
       expect(count, 3);
     });
 
     test('table(users).exists()', () async {
-      var exists = await laconic.table(userTable).exists();
+      var exists = await laconic.table(SqliteTestData.userTable).exists();
       expect(exists, isTrue);
     });
 
     test('table(users).doesntExist()', () async {
-      var doesntExist = await laconic.table(userTable).doesntExist();
+      var doesntExist =
+          await laconic.table(SqliteTestData.userTable).doesntExist();
       expect(doesntExist, isFalse);
     });
 
     test('table(users).first() throws when no results', () async {
       expect(
-        () async => await laconic.table(userTable).where('id', 999).first(),
+        () async =>
+            await laconic
+                .table(SqliteTestData.userTable)
+                .where('id', 999)
+                .first(),
         throwsA(isA<LaconicException>()),
       );
     });
 
     test('table(users).value() returns value', () async {
-      var value = await laconic.table(userTable).where('id', 1).value('name');
+      var value = await laconic
+          .table(SqliteTestData.userTable)
+          .where('id', 1)
+          .value('name');
       expect(value, 'John');
     });
 
     test('table(users).pluck() returns list', () async {
-      var names = await laconic.table(userTable).pluck('name') as List<Object?>;
+      var names =
+          await laconic.table(SqliteTestData.userTable).pluck('name')
+              as List<Object?>;
       expect(names.length, 3);
     });
 
     test('table(users).pluck(key: "id") returns map', () async {
       var map =
-          await laconic.table(userTable).pluck('name', key: 'id')
+          await laconic.table(SqliteTestData.userTable).pluck('name', key: 'id')
               as Map<Object?, Object?>;
       expect(map.length, 3);
     });
 
     test('table(users).avg("age")', () async {
-      var avg = await laconic.table(userTable).avg('age');
+      var avg = await laconic.table(SqliteTestData.userTable).avg('age');
       expect(avg, closeTo(30.0, 0.1));
     });
 
     test('table(users).sum("age")', () async {
-      var sum = await laconic.table(userTable).sum('age');
+      var sum = await laconic.table(SqliteTestData.userTable).sum('age');
       expect(sum, 90.0);
     });
 
     test('table(users).max("age")', () async {
-      var max = await laconic.table(userTable).max('age');
+      var max = await laconic.table(SqliteTestData.userTable).max('age');
       expect(max, 35.0);
     });
 
     test('table(users).min("age")', () async {
-      var min = await laconic.table(userTable).min('age');
+      var min = await laconic.table(SqliteTestData.userTable).min('age');
       expect(min, 25.0);
     });
 
@@ -165,31 +191,41 @@ void main() {
 
     test('increment without amount', () async {
       final affected = await laconic
-          .table(userTable)
+          .table(SqliteTestData.userTable)
           .where('id', 1)
           .increment('age');
       expect(affected, 1);
-      var user = await laconic.table(userTable).where('id', 1).first();
+      var user =
+          await laconic.table(SqliteTestData.userTable).where('id', 1).first();
       expect(user['age'], 26);
-      await laconic.table(userTable).where('id', 1).update({'age': 25});
+      await laconic.table(SqliteTestData.userTable).where('id', 1).update({
+        'age': 25,
+      });
     });
 
     test('increment with amount', () async {
-      await laconic.table(userTable).where('id', 1).increment('age', amount: 5);
-      var user = await laconic.table(userTable).where('id', 1).first();
+      await laconic
+          .table(SqliteTestData.userTable)
+          .where('id', 1)
+          .increment('age', amount: 5);
+      var user =
+          await laconic.table(SqliteTestData.userTable).where('id', 1).first();
       expect(user['age'], 30);
-      await laconic.table(userTable).where('id', 1).update({'age': 25});
+      await laconic.table(SqliteTestData.userTable).where('id', 1).update({
+        'age': 25,
+      });
     });
 
     test('increment with extra', () async {
       await laconic
-          .table(userTable)
+          .table(SqliteTestData.userTable)
           .where('id', 1)
           .increment('age', extra: {'name': 'Johnny'});
-      var user = await laconic.table(userTable).where('id', 1).first();
+      var user =
+          await laconic.table(SqliteTestData.userTable).where('id', 1).first();
       expect(user['age'], 26);
       expect(user['name'], 'Johnny');
-      await laconic.table(userTable).where('id', 1).update({
+      await laconic.table(SqliteTestData.userTable).where('id', 1).update({
         'age': 25,
         'name': 'John',
       });
@@ -197,20 +233,29 @@ void main() {
 
     test('decrement without amount', () async {
       final affected = await laconic
-          .table(userTable)
+          .table(SqliteTestData.userTable)
           .where('id', 2)
           .decrement('age');
       expect(affected, 1);
-      var user = await laconic.table(userTable).where('id', 2).first();
+      var user =
+          await laconic.table(SqliteTestData.userTable).where('id', 2).first();
       expect(user['age'], 29);
-      await laconic.table(userTable).where('id', 2).update({'age': 30});
+      await laconic.table(SqliteTestData.userTable).where('id', 2).update({
+        'age': 30,
+      });
     });
 
     test('decrement with amount', () async {
-      await laconic.table(userTable).where('id', 2).decrement('age', amount: 5);
-      var user = await laconic.table(userTable).where('id', 2).first();
+      await laconic
+          .table(SqliteTestData.userTable)
+          .where('id', 2)
+          .decrement('age', amount: 5);
+      var user =
+          await laconic.table(SqliteTestData.userTable).where('id', 2).first();
       expect(user['age'], 25);
-      await laconic.table(userTable).where('id', 2).update({'age': 30});
+      await laconic.table(SqliteTestData.userTable).where('id', 2).update({
+        'age': 30,
+      });
     });
 
     // ==================== WHERE Conditions ====================
@@ -218,7 +263,7 @@ void main() {
     test('select with specific columns', () async {
       var users =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .select(['name', 'age'])
               .where('id', 1)
               .get();
@@ -229,7 +274,7 @@ void main() {
 
     test('select with whereIn', () async {
       var users =
-          await laconic.table(userTable).whereIn('name', [
+          await laconic.table(SqliteTestData.userTable).whereIn('name', [
             'John',
             'Jane',
           ]).get();
@@ -238,24 +283,31 @@ void main() {
 
     test('select with whereNotIn', () async {
       var users =
-          await laconic.table(userTable).whereNotIn('name', ['John']).get();
+          await laconic.table(SqliteTestData.userTable).whereNotIn('name', [
+            'John',
+          ]).get();
       expect(users.length, 2);
     });
 
     test('select with whereNull', () async {
-      var users = await laconic.table(userTable).whereNull('age').get();
+      var users =
+          await laconic.table(SqliteTestData.userTable).whereNull('age').get();
       expect(users.length, 0);
     });
 
     test('select with whereNotNull', () async {
-      var users = await laconic.table(userTable).whereNotNull('age').get();
+      var users =
+          await laconic
+              .table(SqliteTestData.userTable)
+              .whereNotNull('age')
+              .get();
       expect(users.length, 3);
     });
 
     test('select with whereBetween', () async {
       var users =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .whereBetween('age', min: 20, max: 30)
               .get();
       expect(users.length, 2);
@@ -264,36 +316,44 @@ void main() {
     test('select with whereNotBetween', () async {
       var users =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .whereNotBetween('age', min: 20, max: 30)
               .get();
       expect(users.length, 1);
     });
 
     test('select with orderBy', () async {
-      var users = await laconic.table(userTable).orderBy('age').get();
+      var users =
+          await laconic.table(SqliteTestData.userTable).orderBy('age').get();
       expect(users[0]['age'], 25);
       expect(users[1]['age'], 30);
       expect(users[2]['age'], 35);
     });
 
     test('select with limit', () async {
-      var users = await laconic.table(userTable).limit(2).get();
+      var users = await laconic.table(SqliteTestData.userTable).limit(2).get();
       expect(users.length, 2);
     });
 
     test('select with offset', () async {
-      var users = await laconic.table(userTable).offset(1).limit(2).get();
+      var users =
+          await laconic
+              .table(SqliteTestData.userTable)
+              .offset(1)
+              .limit(2)
+              .get();
       expect(users.length, 2);
     });
 
     test('select with groupBy', () async {
-      var users = await laconic.table(userTable).groupBy('gender').get();
+      var users =
+          await laconic.table(SqliteTestData.userTable).groupBy('gender').get();
       expect(users.length, 2);
     });
 
     test('select with distinct', () async {
-      var users = await laconic.table(userTable).distinct().get();
+      var users =
+          await laconic.table(SqliteTestData.userTable).distinct().get();
       expect(users.length, 3);
     });
 
@@ -302,7 +362,7 @@ void main() {
     test('when true applies condition', () async {
       var users =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .when(true, (builder) => builder.where('age', 25))
               .get();
       expect(users.length, 1);
@@ -312,7 +372,7 @@ void main() {
     test('when false skips condition', () async {
       var users =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .when(false, (builder) => builder.where('age', 25))
               .get();
       expect(users.length, 3);
@@ -321,7 +381,7 @@ void main() {
     test('when with otherwise', () async {
       var users =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .when(
                 false,
                 (builder) => builder.where('age', 25),
@@ -335,7 +395,7 @@ void main() {
     test('addSelect adds columns', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .select(['name'])
               .addSelect(['age'])
               .where('id', 1)
@@ -348,7 +408,7 @@ void main() {
     test('whereColumn with equals', () async {
       var results =
           await laconic
-              .table(postTable)
+              .table(SqliteTestData.postTable)
               .whereColumn('user_id', 'user_id')
               .get();
       expect(results.length, 3);
@@ -357,7 +417,7 @@ void main() {
     test('whereColumn with not equals', () async {
       var results =
           await laconic
-              .table(postTable)
+              .table(SqliteTestData.postTable)
               .whereColumn('user_id', 'id', comparator: '!=')
               .get();
       expect(results.length, 2);
@@ -365,19 +425,25 @@ void main() {
 
     test('whereAll with matching value', () async {
       var results =
-          await laconic.table(postTable).whereAll(['user_id', 'id'], 1).get();
+          await laconic.table(SqliteTestData.postTable).whereAll([
+            'user_id',
+            'id',
+          ], 1).get();
       expect(results.length, 1);
     });
 
     test('whereAny with matching value', () async {
       var results =
-          await laconic.table(postTable).whereAny(['user_id', 'id'], 2).get();
+          await laconic.table(SqliteTestData.postTable).whereAny([
+            'user_id',
+            'id',
+          ], 2).get();
       expect(results.length, 2);
     });
 
     test('whereNone with non-matching value', () async {
       var results =
-          await laconic.table(userTable).whereNone([
+          await laconic.table(SqliteTestData.userTable).whereNone([
             'name',
             'gender',
           ], 'John').get();
@@ -387,7 +453,7 @@ void main() {
     test('whereBetweenColumns', () async {
       var users =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .whereBetweenColumns('age', minColumn: 'age', maxColumn: 'age')
               .get();
       expect(users.length, 3);
@@ -396,7 +462,7 @@ void main() {
     test('whereNotBetweenColumns', () async {
       var users =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .whereNotBetweenColumns('age', minColumn: 'age', maxColumn: 'age')
               .get();
       expect(users.length, 0);
@@ -407,9 +473,12 @@ void main() {
     test('join with on condition', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${SqliteTestData.userTable} u')
               .select(['u.name', 'p.title'])
-              .join('$postTable p', (join) => join.on('u.id', 'p.user_id'))
+              .join(
+                '${SqliteTestData.postTable} p',
+                (join) => join.on('u.id', 'p.user_id'),
+              )
               .orderBy('u.name')
               .orderBy('p.title')
               .get();
@@ -419,9 +488,12 @@ void main() {
     test('join with multiple conditions', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${SqliteTestData.userTable} u')
               .select(['u.name', 'p.title'])
-              .join('$postTable p', (join) => join.on('u.id', 'p.user_id'))
+              .join(
+                '${SqliteTestData.postTable} p',
+                (join) => join.on('u.id', 'p.user_id'),
+              )
               .where('u.age', 25)
               .get();
       expect(results.length, 2);
@@ -430,10 +502,10 @@ void main() {
     test('join with orOn condition', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${SqliteTestData.userTable} u')
               .select(['u.name', 'p.title'])
               .join(
-                '$postTable p',
+                '${SqliteTestData.postTable} p',
                 (join) => join.on('u.id', 'p.user_id').orOn('u.id', 'p.id'),
               )
               .orderBy('u.name')
@@ -445,10 +517,10 @@ void main() {
     test('join with where condition', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${SqliteTestData.userTable} u')
               .select(['u.name', 'p.title'])
               .join(
-                '$postTable p',
+                '${SqliteTestData.postTable} p',
                 (join) => join.on('u.id', 'p.user_id').where('p.user_id', 1),
               )
               .orderBy('p.title')
@@ -460,10 +532,10 @@ void main() {
     test('join with orWhere condition', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${SqliteTestData.userTable} u')
               .select(['u.name', 'p.title'])
               .join(
-                '$postTable p',
+                '${SqliteTestData.postTable} p',
                 (join) => join
                     .on('u.id', 'p.user_id')
                     .where('p.user_id', 1)
@@ -479,10 +551,10 @@ void main() {
     test('join with complex conditions', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${SqliteTestData.userTable} u')
               .select(['u.name', 'p.title'])
               .join(
-                '$postTable p',
+                '${SqliteTestData.postTable} p',
                 (join) => join
                     .on('u.id', 'p.user_id')
                     .where('u.age', 25, comparator: '>')
@@ -496,9 +568,12 @@ void main() {
     test('leftJoin returns all users including those without posts', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${SqliteTestData.userTable} u')
               .select(['u.name', 'p.title'])
-              .leftJoin('$postTable p', (join) => join.on('u.id', 'p.user_id'))
+              .leftJoin(
+                '${SqliteTestData.postTable} p',
+                (join) => join.on('u.id', 'p.user_id'),
+              )
               .orderBy('u.name')
               .get();
       expect(results.length, greaterThanOrEqualTo(3));
@@ -507,37 +582,43 @@ void main() {
     test('crossJoin creates cartesian product', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${SqliteTestData.userTable} u')
               .select(['u.name', 'p.title'])
-              .crossJoin('$postTable p')
+              .crossJoin('${SqliteTestData.postTable} p')
               .orderBy('u.name')
               .get();
       expect(results.length, 9);
     });
 
     test('join with whereNull condition', () async {
-      await laconic.table(postTable).insert([
+      await laconic.table(SqliteTestData.postTable).insert([
         {'user_id': 999, 'title': 'Orphan Post', 'content': 'Test'},
       ]);
 
       var results =
           await laconic
-              .table('$postTable p')
+              .table('${SqliteTestData.postTable} p')
               .select(['p.title', 'u.name'])
-              .leftJoin('$userTable u', (join) => join.on('p.user_id', 'u.id'))
+              .leftJoin(
+                '${SqliteTestData.userTable} u',
+                (join) => join.on('p.user_id', 'u.id'),
+              )
               .get();
       expect(results.any((r) => r['title'] == 'Orphan Post'), isTrue);
 
-      await laconic.table(postTable).where('title', 'Orphan Post').delete();
+      await laconic
+          .table(SqliteTestData.postTable)
+          .where('title', 'Orphan Post')
+          .delete();
     });
 
     test('join with whereNotNull condition', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${SqliteTestData.userTable} u')
               .select(['u.name', 'p.title'])
               .join(
-                '$postTable p',
+                '${SqliteTestData.postTable} p',
                 (join) =>
                     join.on('u.id', 'p.user_id').whereNotNull('p.content'),
               )
@@ -549,10 +630,10 @@ void main() {
     test('join with whereIn condition', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${SqliteTestData.userTable} u')
               .select(['u.name', 'p.title'])
               .join(
-                '$postTable p',
+                '${SqliteTestData.postTable} p',
                 (join) =>
                     join.on('u.id', 'p.user_id').whereIn('p.user_id', [1, 2]),
               )
@@ -564,10 +645,10 @@ void main() {
     test('join with whereNotIn condition', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${SqliteTestData.userTable} u')
               .select(['u.name', 'p.title'])
               .join(
-                '$postTable p',
+                '${SqliteTestData.postTable} p',
                 (join) =>
                     join.on('u.id', 'p.user_id').whereNotIn('p.user_id', [2]),
               )
@@ -580,10 +661,10 @@ void main() {
     test('join with multiple new conditions', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${SqliteTestData.userTable} u')
               .select(['u.name', 'p.title'])
               .join(
-                '$postTable p',
+                '${SqliteTestData.postTable} p',
                 (join) => join
                     .on('u.id', 'p.user_id')
                     .whereIn('p.user_id', [1, 2, 3])
@@ -598,7 +679,10 @@ void main() {
 
     test('selectRaw adds raw expression to select clause', () async {
       final results =
-          await laconic.table(userTable).selectRaw('COUNT(*) as total').get();
+          await laconic
+              .table(SqliteTestData.userTable)
+              .selectRaw('COUNT(*) as total')
+              .get();
       expect(results.length, 1);
       expect(results.first['total'], greaterThan(0));
     });
@@ -606,7 +690,7 @@ void main() {
     test('selectRaw combines with regular select', () async {
       final results =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .select(['id', 'name'])
               .selectRaw('age + 1 as next_age')
               .where('id', 1)
@@ -617,29 +701,34 @@ void main() {
 
     test('whereRaw adds raw where condition', () async {
       final results =
-          await laconic.table(userTable).whereRaw('id = ?', [1]).get();
+          await laconic.table(SqliteTestData.userTable).whereRaw('id = ?', [
+            1,
+          ]).get();
       expect(results.length, 1);
       expect(results.first['name'], 'John');
     });
 
     test('whereRaw without bindings', () async {
-      final results = await laconic.table(userTable).whereRaw('1 = 1').get();
+      final results =
+          await laconic.table(SqliteTestData.userTable).whereRaw('1 = 1').get();
       expect(results.length, 3);
     });
 
     test('orWhereRaw combines with regular where', () async {
       final results =
-          await laconic.table(userTable).where('id', 1).orWhereRaw('id = ?', [
-            2,
-          ]).get();
+          await laconic
+              .table(SqliteTestData.userTable)
+              .where('id', 1)
+              .orWhereRaw('id = ?', [2])
+              .get();
       expect(results.length, 2);
     });
 
-    test('where accepts raw() expression as value', () async {
+    test('where accepts Expression() expression as value', () async {
       final results =
           await laconic
-              .table(userTable)
-              .where('age', raw('25 + 5'), comparator: '>')
+              .table(SqliteTestData.userTable)
+              .where('age', Expression('25 + 5'), comparator: '>')
               .get();
       // age > 30 matches Jack (35) only
       expect(results.length, 1);
@@ -649,7 +738,7 @@ void main() {
     test('whereRaw combined with regular where uses AND', () async {
       final results =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .whereRaw('id > ?', [0])
               .where('age', 30)
               .get();
@@ -658,13 +747,13 @@ void main() {
     });
 
     test('havingRaw filters aggregated results', () async {
-      await laconic.table(userTable).insert([
+      await laconic.table(SqliteTestData.userTable).insert([
         {'name': 'Duplicate', 'age': 30},
       ]);
 
       final results =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .selectRaw('age, COUNT(*) as cnt')
               .groupBy('age')
               .havingRaw('COUNT(*) > ?', [1])
@@ -674,13 +763,16 @@ void main() {
       expect(results.any((r) => r['age'] == 30 && r['cnt'] == 2), isTrue);
 
       // Cleanup
-      await laconic.table(userTable).where('name', 'Duplicate').delete();
+      await laconic
+          .table(SqliteTestData.userTable)
+          .where('name', 'Duplicate')
+          .delete();
     });
 
     test('orHavingRaw combines with having', () async {
       final results =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .selectRaw('age, COUNT(*) as cnt')
               .groupBy('age')
               .having('age', 25)
@@ -691,13 +783,16 @@ void main() {
 
     test('orderByRaw with RANDOM', () async {
       final results =
-          await laconic.table(userTable).orderByRaw('RANDOM()').get();
+          await laconic
+              .table(SqliteTestData.userTable)
+              .orderByRaw('RANDOM()')
+              .get();
       expect(results.length, 3);
     });
 
     test('orderByRaw with bindings', () async {
       final results =
-          await laconic.table(userTable).orderByRaw(
+          await laconic.table(SqliteTestData.userTable).orderByRaw(
             'CASE WHEN age > ? THEN 0 ELSE 1 END',
             [25],
           ).get();
@@ -709,7 +804,7 @@ void main() {
     test('groupByRaw groups by expression', () async {
       final results =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .selectRaw('age >= 30 as is_older, COUNT(*) as cnt')
               .groupByRaw('age >= 30')
               .orderBy('is_older')
@@ -717,13 +812,13 @@ void main() {
       expect(results.length, 2); // true and false groups
     });
 
-    test('having accepts raw() expression as value', () async {
+    test('having accepts Expression() expression as value', () async {
       final results =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .selectRaw('age, COUNT(*) as cnt')
               .groupBy('age')
-              .having('cnt', raw('2'), comparator: '>')
+              .having('cnt', Expression('2'), comparator: '>')
               .get();
       // No age has count > 2 in base data
       expect(results.length, 0);
@@ -733,7 +828,10 @@ void main() {
 
     test('whereYear filters by year', () async {
       var results =
-          await laconic.table(userTable).whereYear('created_at', 2024).get();
+          await laconic
+              .table(SqliteTestData.userTable)
+              .whereYear('created_at', 2024)
+              .get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jane'), isTrue);
@@ -741,7 +839,10 @@ void main() {
 
     test('whereMonth filters by month', () async {
       var results =
-          await laconic.table(userTable).whereMonth('created_at', 6).get();
+          await laconic
+              .table(SqliteTestData.userTable)
+              .whereMonth('created_at', 6)
+              .get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
@@ -749,7 +850,10 @@ void main() {
 
     test('whereDay filters by day', () async {
       var results =
-          await laconic.table(userTable).whereDay('created_at', 15).get();
+          await laconic
+              .table(SqliteTestData.userTable)
+              .whereDay('created_at', 15)
+              .get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
@@ -758,7 +862,7 @@ void main() {
     test('whereDate filters by full date', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .whereDate('created_at', '2024-07-20')
               .get();
       expect(results.length, 1);
@@ -768,7 +872,7 @@ void main() {
     test('whereTime filters by time', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .whereTime('created_at', '10:30:00')
               .get();
       expect(results.length, 2);
@@ -779,7 +883,7 @@ void main() {
     test('orWhereDate combines with where', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .where('age', 25)
               .orWhereDate('created_at', '2024-07-20')
               .get();
@@ -791,7 +895,7 @@ void main() {
     test('orWhereYear combines with where', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .where('name', 'Jack')
               .orWhereYear('created_at', 2024)
               .get();
@@ -801,7 +905,7 @@ void main() {
     test('orWhereMonth combines with where', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .where('age', 25)
               .orWhereMonth('created_at', 7)
               .get();
@@ -813,7 +917,7 @@ void main() {
     test('orWhereDay combines with where', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .where('age', 30)
               .orWhereDay('created_at', 15)
               .get();
@@ -823,7 +927,7 @@ void main() {
     test('orWhereTime combines with where', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .where('age', 35)
               .orWhereTime('created_at', '10:30:00')
               .get();
@@ -835,20 +939,20 @@ void main() {
     test('date filters accept comparison operators', () async {
       final after =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .whereDate('created_at', '2024-07-01', comparator: '>')
               .get();
       expect(after.map((r) => r['name']), ['Jane']);
 
       final years =
           await laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .whereYear('created_at', 2024, comparator: '>=')
               .get();
       expect(years.length, 2);
       expect(
         await laconic
-            .table(userTable)
+            .table(SqliteTestData.userTable)
             .whereYear('created_at', 2025, comparator: '>=')
             .count(),
         0,
@@ -858,7 +962,7 @@ void main() {
     test('locking clauses are ignored on SQLite', () async {
       final sql =
           laconic
-              .table(userTable)
+              .table(SqliteTestData.userTable)
               .where('id', 1)
               .lockForUpdate()
               .sharedLock()
@@ -869,7 +973,7 @@ void main() {
       expect(sql, isNot(contains('for share')));
       expect(sql, isNot(contains('nowait')));
       expect(
-        await laconic.table(userTable).lockForUpdate().get(),
+        await laconic.table(SqliteTestData.userTable).lockForUpdate().get(),
         hasLength(3),
       );
     });
@@ -928,14 +1032,21 @@ void main() {
 
     test('binary comparisons and lateral joins are unsupported on SQLite', () {
       expect(
-        () => laconic.table(userTable).whereBinary('name', 'John').toSql(),
+        () =>
+            laconic
+                .table(SqliteTestData.userTable)
+                .whereBinary('name', 'John')
+                .toSql(),
         throwsA(isA<LaconicException>()),
       );
       expect(
         () =>
             laconic
-                .table(userTable)
-                .joinLateral((q) => q.from(postTable).select(['id']), 'p')
+                .table(SqliteTestData.userTable)
+                .joinLateral(
+                  (q) => q.from(SqliteTestData.postTable).select(['id']),
+                  'p',
+                )
                 .toSql(),
         throwsA(isA<LaconicException>()),
       );
@@ -943,19 +1054,24 @@ void main() {
 
     test('updateFrom is unsupported on SQLite', () async {
       await expectLater(
-        laconic.table(userTable).where('id', 1).updateFrom(postTable, {
-          'name': 'x',
-        }),
+        laconic.table(SqliteTestData.userTable).where('id', 1).updateFrom(
+          SqliteTestData.postTable,
+          {'name': 'x'},
+        ),
         throwsA(isA<LaconicException>()),
       );
     });
 
     test('inRandomOrder uses the SQLite random function', () async {
       final sql =
-          laconic.table(userTable).inRandomOrder().toSql().toLowerCase();
+          laconic
+              .table(SqliteTestData.userTable)
+              .inRandomOrder()
+              .toSql()
+              .toLowerCase();
       expect(sql, contains('random()'));
       expect(
-        await laconic.table(userTable).inRandomOrder().get(),
+        await laconic.table(SqliteTestData.userTable).inRandomOrder().get(),
         hasLength(3),
       );
     });
@@ -1000,7 +1116,7 @@ void main() {
     test('join supports raw and nested conditions', () async {
       final rows =
           await laconic
-              .table('$userTable u')
+              .table('${SqliteTestData.userTable} u')
               .select(['u.name', 'p.title'])
               .join('posts p', (join) {
                 join

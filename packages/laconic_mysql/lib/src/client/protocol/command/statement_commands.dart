@@ -65,14 +65,14 @@ class MysqlStatementExecuteCommand extends MysqlPacketPayload {
   }
 
   int _parameterType(Object? value) {
-    if (value == null) return mysqlColumnTypeNull;
-    if (value is bool) return mysqlColumnTypeTiny;
-    if (value is int) return mysqlColumnTypeLongLong;
-    if (value is double) return mysqlColumnTypeDouble;
-    if (value is DateTime) return mysqlColumnTypeDateTime;
-    if (value is Uint8List) return mysqlColumnTypeBlob;
-    if (value is BigInt) return mysqlColumnTypeNewDecimal;
-    if (value is String) return mysqlColumnTypeVarString;
+    if (value == null) return MysqlColumnType.nullCode;
+    if (value is bool) return MysqlColumnType.tinyCode;
+    if (value is int) return MysqlColumnType.longLongCode;
+    if (value is double) return MysqlColumnType.doubleCode;
+    if (value is DateTime) return MysqlColumnType.dateTimeCode;
+    if (value is Uint8List) return MysqlColumnType.blobCode;
+    if (value is BigInt) return MysqlColumnType.newDecimalCode;
+    if (value is String) return MysqlColumnType.varStringCode;
     throw MysqlClientException(
       'Unsupported prepared-statement parameter type: ${value.runtimeType}',
     );

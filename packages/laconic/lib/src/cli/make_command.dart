@@ -35,7 +35,7 @@ class MakeMigrationCommand extends Command<int> {
       usageException('Provide one lower_snake_case migration name.');
     }
     try {
-      final file = await generateMigration(
+      final file = await MigrationGenerator.generate(
         directory: Directory(
           p.normalize(p.join(project.path, globalResults!.option('path')!)),
         ),

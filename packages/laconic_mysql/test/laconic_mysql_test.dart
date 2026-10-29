@@ -17,7 +17,7 @@ void main() {
     final laconic = Laconic(MysqlDriver(mysqlConfig));
 
     setUpAll(() async {
-      await setupMysqlTestData(laconic);
+      await MysqlTestData.setUp(laconic);
     });
 
     tearDownAll(() async {
@@ -27,44 +27,51 @@ void main() {
     // ==================== Basic CRUD ====================
 
     test('select * from users', () async {
-      var users = await laconic.table(userTable).get();
+      var users = await laconic.table(MysqlTestData.userTable).get();
       expect(users.length, 3);
     });
 
     test('select * from users where id = 1', () async {
-      var users = await laconic.table(userTable).where('id', 1).get();
+      var users =
+          await laconic.table(MysqlTestData.userTable).where('id', 1).get();
       expect(users.length, 1);
       expect(users.first['name'], 'John');
     });
 
     test('insert into user', () async {
-      var id = await laconic.table(userTable).insertGetId({
+      var id = await laconic.table(MysqlTestData.userTable).insertGetId({
         'name': 'Tom',
         'age': 25,
         'gender': 'male',
       });
       expect(id, greaterThan(0));
-      var count = await laconic.table(userTable).count();
+      var count = await laconic.table(MysqlTestData.userTable).count();
       expect(count, 4);
-      await laconic.table(userTable).where('id', id).delete();
+      await laconic.table(MysqlTestData.userTable).where('id', id).delete();
     });
 
     test('update user set name = "Jones" where id = 1', () async {
-      await laconic.table(userTable).where('id', 1).update({'name': 'Jones'});
-      var user = await laconic.table(userTable).where('id', 1).first();
+      await laconic.table(MysqlTestData.userTable).where('id', 1).update({
+        'name': 'Jones',
+      });
+      var user =
+          await laconic.table(MysqlTestData.userTable).where('id', 1).first();
       expect(user['name'], 'Jones');
-      await laconic.table(userTable).where('id', 1).update({'name': 'John'});
+      await laconic.table(MysqlTestData.userTable).where('id', 1).update({
+        'name': 'John',
+      });
     });
 
     test('delete from user where id = 99', () async {
-      var countBefore = await laconic.table(userTable).count();
-      await laconic.table(userTable).where('id', 99).delete();
-      var countAfter = await laconic.table(userTable).count();
+      var countBefore = await laconic.table(MysqlTestData.userTable).count();
+      await laconic.table(MysqlTestData.userTable).where('id', 99).delete();
+      var countAfter = await laconic.table(MysqlTestData.userTable).count();
       expect(countBefore, countAfter);
     });
 
     test('table(users).get()', () async {
-      var users = await laconic.table(userTable).orderBy('id').get();
+      var users =
+          await laconic.table(MysqlTestData.userTable).orderBy('id').get();
       expect(users.length, 3);
       expect(users[0]['name'], 'John');
       expect(users[1]['name'], 'Jane');
@@ -72,43 +79,51 @@ void main() {
     });
 
     test('table(users).where("id", 1).first()', () async {
-      var user = await laconic.table(userTable).where('id', 1).first();
+      var user =
+          await laconic.table(MysqlTestData.userTable).where('id', 1).first();
       expect(user['name'], 'John');
       expect(user['age'], 25);
     });
 
     test('table(users).insert()', () async {
-      var id = await laconic.table(userTable).insertGetId({
+      var id = await laconic.table(MysqlTestData.userTable).insertGetId({
         'name': 'Tom',
         'age': 25,
         'gender': 'male',
       });
       expect(id, greaterThan(0));
-      var count = await laconic.table(userTable).count();
+      var count = await laconic.table(MysqlTestData.userTable).count();
       expect(count, 4);
-      await laconic.table(userTable).where('id', id).delete();
+      await laconic.table(MysqlTestData.userTable).where('id', id).delete();
     });
 
     test('table(users).where("id", 1).update()', () async {
-      final affected = await laconic.table(userTable).where('id', 1).update({
-        'age': 26,
-      });
+      final affected = await laconic
+          .table(MysqlTestData.userTable)
+          .where('id', 1)
+          .update({'age': 26});
       expect(affected, 1);
-      var user = await laconic.table(userTable).where('id', 1).first();
+      var user =
+          await laconic.table(MysqlTestData.userTable).where('id', 1).first();
       expect(user['age'], 26);
-      await laconic.table(userTable).where('id', 1).update({'age': 25});
+      await laconic.table(MysqlTestData.userTable).where('id', 1).update({
+        'age': 25,
+      });
     });
 
     test(
       'update returns matched rows for unchanged and missing records',
       () async {
-        await laconic.table(userTable).where('id', 1).update({'age': 25});
-
-        final unchanged = await laconic.table(userTable).where('id', 1).update({
+        await laconic.table(MysqlTestData.userTable).where('id', 1).update({
           'age': 25,
         });
+
+        final unchanged = await laconic
+            .table(MysqlTestData.userTable)
+            .where('id', 1)
+            .update({'age': 25});
         final missing = await laconic
-            .table(userTable)
+            .table(MysqlTestData.userTable)
             .where('id', 999999)
             .update({'age': 25});
 
@@ -118,10 +133,11 @@ void main() {
     );
 
     test('table(users).where("id", 99).delete()', () async {
-      var countBefore = await laconic.table(userTable).count();
-      final affected = await laconic.table(userTable).where('id', 99).delete();
+      var countBefore = await laconic.table(MysqlTestData.userTable).count();
+      final affected =
+          await laconic.table(MysqlTestData.userTable).where('id', 99).delete();
       expect(affected, 0);
-      var countAfter = await laconic.table(userTable).count();
+      var countAfter = await laconic.table(MysqlTestData.userTable).count();
       expect(countBefore, countAfter);
     });
 
@@ -129,7 +145,7 @@ void main() {
 
     test('whereIn with multiple values', () async {
       var users =
-          await laconic.table(userTable).whereIn('name', [
+          await laconic.table(MysqlTestData.userTable).whereIn('name', [
             'John',
             'Jane',
           ]).get();
@@ -138,19 +154,25 @@ void main() {
 
     test('whereIn with single value', () async {
       var users =
-          await laconic.table(userTable).whereIn('name', ['John']).get();
+          await laconic.table(MysqlTestData.userTable).whereIn('name', [
+            'John',
+          ]).get();
       expect(users.length, 1);
       expect(users.first['name'], 'John');
     });
 
     test('whereIn with empty list', () async {
-      var users = await laconic.table(userTable).whereIn('name', []).get();
+      var users =
+          await laconic
+              .table(MysqlTestData.userTable)
+              .whereIn('name', [])
+              .get();
       expect(users.length, 0);
     });
 
     test('whereNotIn excludes specified values', () async {
       var users =
-          await laconic.table(userTable).whereNotIn('name', [
+          await laconic.table(MysqlTestData.userTable).whereNotIn('name', [
             'John',
             'Jane',
           ]).get();
@@ -159,24 +181,33 @@ void main() {
     });
 
     test('whereNotIn with empty list returns all', () async {
-      var users = await laconic.table(userTable).whereNotIn('name', []).get();
+      var users =
+          await laconic
+              .table(MysqlTestData.userTable)
+              .whereNotIn('name', [])
+              .get();
       expect(users.length, 3);
     });
 
     test('whereNull finds null values', () async {
-      var users = await laconic.table(userTable).whereNull('age').get();
+      var users =
+          await laconic.table(MysqlTestData.userTable).whereNull('age').get();
       expect(users.length, 0);
     });
 
     test('whereNotNull finds non-null values', () async {
-      var users = await laconic.table(userTable).whereNotNull('age').get();
+      var users =
+          await laconic
+              .table(MysqlTestData.userTable)
+              .whereNotNull('age')
+              .get();
       expect(users.length, 3);
     });
 
     test('whereBetween filters correctly', () async {
       var users =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .whereBetween('age', min: 20, max: 30)
               .get();
       expect(users.length, 2);
@@ -185,7 +216,7 @@ void main() {
     test('whereBetween with exact bounds', () async {
       var users =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .whereBetween('age', min: 25, max: 30)
               .get();
       expect(users.length, 2);
@@ -194,7 +225,7 @@ void main() {
     test('whereNotBetween excludes range', () async {
       var users =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .whereNotBetween('age', min: 20, max: 30)
               .get();
       expect(users.length, 1);
@@ -202,37 +233,42 @@ void main() {
     });
 
     test('distinct removes duplicates', () async {
-      var users = await laconic.table(userTable).distinct().get();
+      var users = await laconic.table(MysqlTestData.userTable).distinct().get();
       expect(users.length, 3);
     });
 
     test('distinct with where clause', () async {
       var users =
-          await laconic.table(userTable).where('age', 25).distinct().get();
+          await laconic
+              .table(MysqlTestData.userTable)
+              .where('age', 25)
+              .distinct()
+              .get();
       expect(users.length, 1);
     });
 
     // ==================== Insert ====================
 
     test('insertGetId returns auto-increment ID', () async {
-      var id = await laconic.table(postTable).insertGetId({
+      var id = await laconic.table(MysqlTestData.postTable).insertGetId({
         'user_id': 1,
         'title': 'Test Post',
         'content': 'Test content',
       });
       expect(id, greaterThan(0));
 
-      var user = await laconic.table(postTable).where('id', id).first();
+      var user =
+          await laconic.table(MysqlTestData.postTable).where('id', id).first();
       expect(user['title'], 'Test Post');
       expect(user['content'], 'Test content');
 
-      await laconic.table(postTable).where('id', id).delete();
+      await laconic.table(MysqlTestData.postTable).where('id', id).delete();
     });
 
     test('complex query with multiple new methods', () async {
       var results =
           await laconic
-              .table(postTable)
+              .table(MysqlTestData.postTable)
               .select(['user_id', 'title'])
               .whereIn('user_id', [1, 2])
               .whereNotNull('title')
@@ -245,28 +281,28 @@ void main() {
     // ==================== Aggregates ====================
 
     test('avg returns average of column values', () async {
-      var avgAge = await laconic.table(userTable).avg('age');
+      var avgAge = await laconic.table(MysqlTestData.userTable).avg('age');
       expect(avgAge, closeTo(30.0, 0.1));
     });
 
     test('sum returns sum of column values', () async {
-      var totalAge = await laconic.table(userTable).sum('age');
+      var totalAge = await laconic.table(MysqlTestData.userTable).sum('age');
       expect(totalAge, 90.0);
     });
 
     test('max returns maximum value', () async {
-      var maxAge = await laconic.table(userTable).max('age');
+      var maxAge = await laconic.table(MysqlTestData.userTable).max('age');
       expect(maxAge, 35.0);
     });
 
     test('min returns minimum value', () async {
-      var minAge = await laconic.table(userTable).min('age');
+      var minAge = await laconic.table(MysqlTestData.userTable).min('age');
       expect(minAge, 25.0);
     });
 
     test('aggregate functions work with where clause', () async {
       var avgAge = await laconic
-          .table(userTable)
+          .table(MysqlTestData.userTable)
           .where('gender', 'male')
           .avg('age');
       expect(avgAge, closeTo(30.0, 0.1));
@@ -275,24 +311,38 @@ void main() {
     // ==================== Exists ====================
 
     test('exists returns true when records exist', () async {
-      var hasUsers = await laconic.table(userTable).where('age', 25).exists();
+      var hasUsers =
+          await laconic
+              .table(MysqlTestData.userTable)
+              .where('age', 25)
+              .exists();
       expect(hasUsers, isTrue);
     });
 
     test('exists returns false when no records exist', () async {
-      var hasUsers = await laconic.table(userTable).where('age', 999).exists();
+      var hasUsers =
+          await laconic
+              .table(MysqlTestData.userTable)
+              .where('age', 999)
+              .exists();
       expect(hasUsers, isFalse);
     });
 
     test('doesntExist returns true when no records exist', () async {
       var noUsers =
-          await laconic.table(userTable).where('age', 999).doesntExist();
+          await laconic
+              .table(MysqlTestData.userTable)
+              .where('age', 999)
+              .doesntExist();
       expect(noUsers, isTrue);
     });
 
     test('doesntExist returns false when records exist', () async {
       var noUsers =
-          await laconic.table(userTable).where('age', 25).doesntExist();
+          await laconic
+              .table(MysqlTestData.userTable)
+              .where('age', 25)
+              .doesntExist();
       expect(noUsers, isFalse);
     });
 
@@ -300,7 +350,10 @@ void main() {
 
     test('pluck returns list of column values', () async {
       var names =
-          await laconic.table(userTable).orderBy('name').pluck('name')
+          await laconic
+                  .table(MysqlTestData.userTable)
+                  .orderBy('name')
+                  .pluck('name')
               as List<Object?>;
       expect(names.length, 3);
       expect(names[0], 'Jack');
@@ -310,7 +363,7 @@ void main() {
 
     test('pluck with key returns map', () async {
       var nameMap =
-          await laconic.table(userTable).pluck('name', key: 'id')
+          await laconic.table(MysqlTestData.userTable).pluck('name', key: 'id')
               as Map<Object?, Object?>;
       expect(nameMap.length, 3);
       expect(nameMap[1], 'John');
@@ -320,21 +373,30 @@ void main() {
 
     test('pluck works with where clause', () async {
       var names =
-          await laconic.table(userTable).where('gender', 'male').pluck('name')
+          await laconic
+                  .table(MysqlTestData.userTable)
+                  .where('gender', 'male')
+                  .pluck('name')
               as List<Object?>;
       expect(names.length, 2);
     });
 
     test('value returns single column value', () async {
       var name =
-          await laconic.table(userTable).where('id', 1).value('name')
+          await laconic
+                  .table(MysqlTestData.userTable)
+                  .where('id', 1)
+                  .value('name')
               as String?;
       expect(name, 'John');
     });
 
     test('value returns null when no record found', () async {
       var name =
-          await laconic.table(userTable).where('id', 999).value('name')
+          await laconic
+                  .table(MysqlTestData.userTable)
+                  .where('id', 999)
+                  .value('name')
               as String?;
       expect(name, isNull);
     });
@@ -343,31 +405,41 @@ void main() {
 
     test('increment increases column value', () async {
       final affected = await laconic
-          .table(userTable)
+          .table(MysqlTestData.userTable)
           .where('id', 1)
           .increment('age');
       expect(affected, 1);
-      var user = await laconic.table(userTable).where('id', 1).first();
+      var user =
+          await laconic.table(MysqlTestData.userTable).where('id', 1).first();
       expect(user['age'], 26);
-      await laconic.table(userTable).where('id', 1).update({'age': 25});
+      await laconic.table(MysqlTestData.userTable).where('id', 1).update({
+        'age': 25,
+      });
     });
 
     test('increment with custom amount', () async {
-      await laconic.table(userTable).where('id', 1).increment('age', amount: 5);
-      var user = await laconic.table(userTable).where('id', 1).first();
+      await laconic
+          .table(MysqlTestData.userTable)
+          .where('id', 1)
+          .increment('age', amount: 5);
+      var user =
+          await laconic.table(MysqlTestData.userTable).where('id', 1).first();
       expect(user['age'], 30);
-      await laconic.table(userTable).where('id', 1).update({'age': 25});
+      await laconic.table(MysqlTestData.userTable).where('id', 1).update({
+        'age': 25,
+      });
     });
 
     test('increment with extra columns', () async {
       await laconic
-          .table(userTable)
+          .table(MysqlTestData.userTable)
           .where('id', 1)
           .increment('age', extra: {'name': 'John_updated'});
-      var user = await laconic.table(userTable).where('id', 1).first();
+      var user =
+          await laconic.table(MysqlTestData.userTable).where('id', 1).first();
       expect(user['age'], 26);
       expect(user['name'], 'John_updated');
-      await laconic.table(userTable).where('id', 1).update({
+      await laconic.table(MysqlTestData.userTable).where('id', 1).update({
         'age': 25,
         'name': 'John',
       });
@@ -375,20 +447,29 @@ void main() {
 
     test('decrement decreases column value', () async {
       final affected = await laconic
-          .table(userTable)
+          .table(MysqlTestData.userTable)
           .where('id', 2)
           .decrement('age');
       expect(affected, 1);
-      var user = await laconic.table(userTable).where('id', 2).first();
+      var user =
+          await laconic.table(MysqlTestData.userTable).where('id', 2).first();
       expect(user['age'], 29);
-      await laconic.table(userTable).where('id', 2).update({'age': 30});
+      await laconic.table(MysqlTestData.userTable).where('id', 2).update({
+        'age': 30,
+      });
     });
 
     test('decrement with custom amount', () async {
-      await laconic.table(userTable).where('id', 2).decrement('age', amount: 5);
-      var user = await laconic.table(userTable).where('id', 2).first();
+      await laconic
+          .table(MysqlTestData.userTable)
+          .where('id', 2)
+          .decrement('age', amount: 5);
+      var user =
+          await laconic.table(MysqlTestData.userTable).where('id', 2).first();
       expect(user['age'], 25);
-      await laconic.table(userTable).where('id', 2).update({'age': 30});
+      await laconic.table(MysqlTestData.userTable).where('id', 2).update({
+        'age': 30,
+      });
     });
 
     // ==================== Advanced WHERE ====================
@@ -396,7 +477,7 @@ void main() {
     test('addSelect adds columns to existing select', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .select(['name'])
               .addSelect(['age'])
               .where('id', 1)
@@ -409,7 +490,7 @@ void main() {
     test('when executes callback when condition is true', () async {
       var users =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .when(true, (builder) => builder.where('age', 25))
               .get();
       expect(users.length, 1);
@@ -419,7 +500,7 @@ void main() {
     test('when skips callback when condition is false', () async {
       var users =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .when(false, (builder) => builder.where('age', 25))
               .get();
       expect(users.length, 3);
@@ -428,7 +509,7 @@ void main() {
     test('when executes otherwise when condition is false', () async {
       var users =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .when(
                 false,
                 (builder) => builder.where('age', 25),
@@ -442,7 +523,7 @@ void main() {
     test('whereColumn compares two columns with equality', () async {
       var results =
           await laconic
-              .table(postTable)
+              .table(MysqlTestData.postTable)
               .whereColumn('user_id', 'user_id')
               .get();
       expect(results.length, 3);
@@ -451,7 +532,7 @@ void main() {
     test('whereColumn compares columns with comparator', () async {
       var results =
           await laconic
-              .table(postTable)
+              .table(MysqlTestData.postTable)
               .whereColumn('user_id', 'id', comparator: '!=')
               .get();
       expect(results.length, 2);
@@ -459,20 +540,26 @@ void main() {
 
     test('whereAll requires all columns to match', () async {
       var results =
-          await laconic.table(postTable).whereAll(['user_id', 'id'], 1).get();
+          await laconic.table(MysqlTestData.postTable).whereAll([
+            'user_id',
+            'id',
+          ], 1).get();
       expect(results.length, 1);
     });
 
     test('whereAny matches if any column matches', () async {
       var results =
-          await laconic.table(postTable).whereAny(['user_id', 'id'], 2).get();
+          await laconic.table(MysqlTestData.postTable).whereAny([
+            'user_id',
+            'id',
+          ], 2).get();
       expect(results.length, 2);
     });
 
     test('whereAny with like comparator', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .whereAny(['name', 'gender'], '%oh%', comparator: 'like')
               .get();
       expect(results.length, 1);
@@ -481,7 +568,7 @@ void main() {
 
     test('whereNone excludes records where any column matches', () async {
       var results =
-          await laconic.table(userTable).whereNone([
+          await laconic.table(MysqlTestData.userTable).whereNone([
             'name',
             'gender',
           ], 'John').get();
@@ -491,7 +578,7 @@ void main() {
     test('whereBetweenColumns checks value between two columns', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .whereBetweenColumns('age', minColumn: 'age', maxColumn: 'age')
               .get();
       expect(results.length, 3);
@@ -500,7 +587,7 @@ void main() {
     test('whereNotBetweenColumns checks value not between columns', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .whereNotBetweenColumns('age', minColumn: 'age', maxColumn: 'age')
               .get();
       expect(results.length, 0);
@@ -511,9 +598,12 @@ void main() {
     test('join with on condition', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${MysqlTestData.userTable} u')
               .select(['u.name', 'p.title'])
-              .join('$postTable p', (join) => join.on('u.id', 'p.user_id'))
+              .join(
+                '${MysqlTestData.postTable} p',
+                (join) => join.on('u.id', 'p.user_id'),
+              )
               .orderBy('u.name')
               .orderBy('p.title')
               .get();
@@ -523,10 +613,10 @@ void main() {
     test('join with orOn condition', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${MysqlTestData.userTable} u')
               .select(['u.name', 'p.title'])
               .join(
-                '$postTable p',
+                '${MysqlTestData.postTable} p',
                 (join) => join.on('u.id', 'p.user_id').orOn('u.id', 'p.id'),
               )
               .get();
@@ -536,10 +626,10 @@ void main() {
     test('join with where condition', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${MysqlTestData.userTable} u')
               .select(['u.name', 'p.title'])
               .join(
-                '$postTable p',
+                '${MysqlTestData.postTable} p',
                 (join) => join.on('u.id', 'p.user_id').where('p.user_id', 1),
               )
               .get();
@@ -550,9 +640,12 @@ void main() {
     test('leftJoin returns all users including those without posts', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${MysqlTestData.userTable} u')
               .select(['u.name', 'p.title'])
-              .leftJoin('$postTable p', (join) => join.on('u.id', 'p.user_id'))
+              .leftJoin(
+                '${MysqlTestData.postTable} p',
+                (join) => join.on('u.id', 'p.user_id'),
+              )
               .orderBy('u.name')
               .get();
       expect(results.length, greaterThanOrEqualTo(3));
@@ -561,9 +654,9 @@ void main() {
     test('crossJoin creates cartesian product', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${MysqlTestData.userTable} u')
               .select(['u.name', 'p.title'])
-              .crossJoin('$postTable p')
+              .crossJoin('${MysqlTestData.postTable} p')
               .orderBy('u.name')
               .get();
       expect(results.length, 9);
@@ -572,10 +665,10 @@ void main() {
     test('join with whereIn condition', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${MysqlTestData.userTable} u')
               .select(['u.name', 'p.title'])
               .join(
-                '$postTable p',
+                '${MysqlTestData.postTable} p',
                 (join) =>
                     join.on('u.id', 'p.user_id').whereIn('p.user_id', [1, 2]),
               )
@@ -587,10 +680,10 @@ void main() {
     test('join with whereNotIn condition', () async {
       var results =
           await laconic
-              .table('$userTable u')
+              .table('${MysqlTestData.userTable} u')
               .select(['u.name', 'p.title'])
               .join(
-                '$postTable p',
+                '${MysqlTestData.postTable} p',
                 (join) =>
                     join.on('u.id', 'p.user_id').whereNotIn('p.user_id', [2]),
               )
@@ -604,7 +697,10 @@ void main() {
 
     test('whereYear filters by year', () async {
       var results =
-          await laconic.table(userTable).whereYear('created_at', 2024).get();
+          await laconic
+              .table(MysqlTestData.userTable)
+              .whereYear('created_at', 2024)
+              .get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jane'), isTrue);
@@ -612,7 +708,10 @@ void main() {
 
     test('whereMonth filters by month', () async {
       var results =
-          await laconic.table(userTable).whereMonth('created_at', 6).get();
+          await laconic
+              .table(MysqlTestData.userTable)
+              .whereMonth('created_at', 6)
+              .get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
@@ -620,7 +719,10 @@ void main() {
 
     test('whereDay filters by day', () async {
       var results =
-          await laconic.table(userTable).whereDay('created_at', 15).get();
+          await laconic
+              .table(MysqlTestData.userTable)
+              .whereDay('created_at', 15)
+              .get();
       expect(results.length, 2);
       expect(results.any((r) => r['name'] == 'John'), isTrue);
       expect(results.any((r) => r['name'] == 'Jack'), isTrue);
@@ -629,7 +731,7 @@ void main() {
     test('whereDate filters by full date', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .whereDate('created_at', '2024-07-20')
               .get();
       expect(results.length, 1);
@@ -639,7 +741,7 @@ void main() {
     test('whereTime filters by time', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .whereTime('created_at', '10:30:00')
               .get();
       expect(results.length, 2);
@@ -650,7 +752,7 @@ void main() {
     test('date filters accept comparison operators', () async {
       var after =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .whereDate('created_at', '2024-07-01', comparator: '>')
               .get();
       expect(after.length, 1);
@@ -658,7 +760,7 @@ void main() {
 
       var years =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .whereYear('created_at', 2024, comparator: '>=')
               .get();
       expect(years.length, 2);
@@ -666,11 +768,15 @@ void main() {
 
     test('inRandomOrder uses the MySQL random function', () async {
       expect(
-        laconic.table(userTable).inRandomOrder().toSql().toLowerCase(),
+        laconic
+            .table(MysqlTestData.userTable)
+            .inRandomOrder()
+            .toSql()
+            .toLowerCase(),
         contains('rand()'),
       );
       expect(
-        await laconic.table(userTable).inRandomOrder().get(),
+        await laconic.table(MysqlTestData.userTable).inRandomOrder().get(),
         hasLength(3),
       );
     });
@@ -678,7 +784,7 @@ void main() {
     test('lock supports raw clauses', () async {
       expect(
         laconic
-            .table(userTable)
+            .table(MysqlTestData.userTable)
             .where('id', 1)
             .lock('for update nowait')
             .toSql()
@@ -686,7 +792,11 @@ void main() {
         contains('for update nowait'),
       );
       expect(
-        laconic.table(userTable).lock(false).toSql().toLowerCase(),
+        laconic
+            .table(MysqlTestData.userTable)
+            .lock(false)
+            .toSql()
+            .toLowerCase(),
         contains('lock in share mode'),
       );
     });
@@ -748,34 +858,55 @@ void main() {
 
     test('index hints compile', () {
       expect(
-        laconic.table(userTable).useIndex('idx_name').toSql().toLowerCase(),
+        laconic
+            .table(MysqlTestData.userTable)
+            .useIndex('idx_name')
+            .toSql()
+            .toLowerCase(),
         contains('use index (idx_name)'),
       );
       expect(
-        laconic.table(userTable).forceIndex('idx_name').toSql().toLowerCase(),
+        laconic
+            .table(MysqlTestData.userTable)
+            .forceIndex('idx_name')
+            .toSql()
+            .toLowerCase(),
         contains('force index (idx_name)'),
       );
       expect(
-        laconic.table(userTable).ignoreIndex('idx_name').toSql().toLowerCase(),
+        laconic
+            .table(MysqlTestData.userTable)
+            .ignoreIndex('idx_name')
+            .toSql()
+            .toLowerCase(),
         contains('ignore index (idx_name)'),
       );
       expect(
-        () => laconic.table(userTable).useIndex('bad name'),
+        () => laconic.table(MysqlTestData.userTable).useIndex('bad name'),
         throwsA(isA<LaconicException>()),
       );
     });
 
     test('whereBinary is case-sensitive', () async {
       expect(
-        await laconic.table(userTable).whereBinary('name', 'John').count(),
+        await laconic
+            .table(MysqlTestData.userTable)
+            .whereBinary('name', 'John')
+            .count(),
         1,
       );
       expect(
-        await laconic.table(userTable).whereBinary('name', 'john').count(),
+        await laconic
+            .table(MysqlTestData.userTable)
+            .whereBinary('name', 'john')
+            .count(),
         0,
       );
       expect(
-        await laconic.table(userTable).whereNotBinary('name', 'john').count(),
+        await laconic
+            .table(MysqlTestData.userTable)
+            .whereNotBinary('name', 'john')
+            .count(),
         3,
       );
     });
@@ -783,9 +914,9 @@ void main() {
     test('straightJoin compiles and executes', () async {
       expect(
         laconic
-            .table('$userTable u')
+            .table('${MysqlTestData.userTable} u')
             .straightJoin(
-              '$postTable p',
+              '${MysqlTestData.postTable} p',
               (join) => join.on('u.id', 'p.user_id'),
             )
             .toSql()
@@ -795,10 +926,10 @@ void main() {
 
       final rows =
           await laconic
-              .table('$userTable u')
+              .table('${MysqlTestData.userTable} u')
               .select(['u.id'])
               .straightJoin(
-                '$postTable p',
+                '${MysqlTestData.postTable} p',
                 (join) => join.on('u.id', 'p.user_id'),
               )
               .get();
@@ -808,11 +939,11 @@ void main() {
     test('leftJoinLateral counts related rows', () async {
       final rows =
           await laconic
-              .table('$userTable u')
+              .table('${MysqlTestData.userTable} u')
               .select(['u.id', 'p.cnt'])
               .leftJoinLateral(
                 (q) => q
-                    .from('$postTable p2')
+                    .from('${MysqlTestData.postTable} p2')
                     .selectRaw('count(*) as cnt')
                     .whereColumn('p2.user_id', 'u.id'),
                 'p',
@@ -825,9 +956,10 @@ void main() {
 
     test('updateFrom is unsupported on MySQL', () async {
       await expectLater(
-        laconic.table(userTable).where('id', 1).updateFrom(postTable, {
-          'name': 'x',
-        }),
+        laconic.table(MysqlTestData.userTable).where('id', 1).updateFrom(
+          MysqlTestData.postTable,
+          {'name': 'x'},
+        ),
         throwsA(isA<LaconicException>()),
       );
     });
@@ -835,7 +967,7 @@ void main() {
     test('join supports raw and nested conditions', () async {
       final rows =
           await laconic
-              .table('$userTable u')
+              .table('${MysqlTestData.userTable} u')
               .select(['u.name', 'p.title'])
               .join('posts p', (join) {
                 join
@@ -850,7 +982,7 @@ void main() {
     test('orWhereDate combines with where', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .where('age', 25)
               .orWhereDate('created_at', '2024-07-20')
               .get();
@@ -862,7 +994,7 @@ void main() {
     test('orWhereYear combines with where', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .where('name', 'Jack')
               .orWhereYear('created_at', 2024)
               .get();
@@ -872,7 +1004,7 @@ void main() {
     test('orWhereMonth combines with where', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .where('age', 25)
               .orWhereMonth('created_at', 7)
               .get();
@@ -884,7 +1016,7 @@ void main() {
     test('orWhereDay combines with where', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .where('age', 30)
               .orWhereDay('created_at', 15)
               .get();
@@ -894,7 +1026,7 @@ void main() {
     test('orWhereTime combines with where', () async {
       var results =
           await laconic
-              .table(userTable)
+              .table(MysqlTestData.userTable)
               .where('age', 35)
               .orWhereTime('created_at', '10:30:00')
               .get();
@@ -909,7 +1041,7 @@ void main() {
         () async {
           // Explicit id 1 collides with the seeded John row (ER_DUP_ENTRY).
           try {
-            await laconic.table(userTable).insertGetId({
+            await laconic.table(MysqlTestData.userTable).insertGetId({
               'id': 1,
               'name': 'John',
               'age': 25,

@@ -2,7 +2,7 @@ import 'package:laconic/laconic.dart';
 import 'package:laconic_postgresql/laconic_postgresql.dart';
 import '../../laconic/test/regressions/query_regressions.dart';
 
-void main() => queryRegressions(
+void main() => QueryRegressions.register(
   () => Laconic(
     PostgresqlDriver(
       const PostgresqlConfig(

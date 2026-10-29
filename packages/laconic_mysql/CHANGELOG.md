@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Scope internal protocol constants, authentication helpers, and binary value
+  decoding to classes. Keep connection and query behavior unchanged.
+
 - Implement core Schema Builder operations, namespace-aware inspection, and
   SQL-mode-independent string defaults. Declare non-transactional migration DDL.
 

@@ -50,7 +50,7 @@ class JoinClause {
     _conditions.add({
       'type': 'on',
       'left': leftColumn,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'right': rightColumn,
       'boolean': boolean,
     });
@@ -92,7 +92,7 @@ class JoinClause {
   /// })
   /// ```
   JoinClause where(String column, Object? value, {String comparator = '='}) {
-    final operator = validateOperator(comparator);
+    final operator = SqlOperator.validate(comparator);
 
     if (value == null &&
         (operator == '=' || operator == '!=' || operator == '<>')) {
@@ -124,7 +124,7 @@ class JoinClause {
   /// })
   /// ```
   JoinClause orWhere(String column, Object? value, {String comparator = '='}) {
-    final operator = validateOperator(comparator);
+    final operator = SqlOperator.validate(comparator);
 
     if (value == null &&
         (operator == '=' || operator == '!=' || operator == '<>')) {
@@ -266,7 +266,7 @@ class JoinClause {
     _conditions.add({
       'type': 'column',
       'first': first,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'second': second,
       'boolean': 'and',
     });
@@ -286,7 +286,7 @@ class JoinClause {
     _conditions.add({
       'type': 'column',
       'first': first,
-      'comparator': validateOperator(comparator),
+      'comparator': SqlOperator.validate(comparator),
       'second': second,
       'boolean': 'or',
     });

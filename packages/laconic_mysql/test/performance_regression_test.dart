@@ -4,21 +4,21 @@ import 'package:laconic_mysql/laconic_mysql.dart';
 import 'package:laconic_mysql/src/client/connection/connection.dart';
 import 'package:test/test.dart';
 
-Laconic _database({String database = 'testdb', bool tls = false}) => Laconic(
-  MysqlDriver(
-    MysqlConfig(
-      host: '127.0.0.1',
-      database: database,
-      username: 'root',
-      password: 'root',
-      maxConnections: 1,
-      useSsl: tls,
-      allowBadCertificates: tls,
-    ),
-  ),
-);
-
 void main() {
+  Laconic database({String database = 'testdb', bool tls = false}) => Laconic(
+    MysqlDriver(
+      MysqlConfig(
+        host: '127.0.0.1',
+        database: database,
+        username: 'root',
+        password: 'root',
+        maxConnections: 1,
+        useSsl: tls,
+        allowBadCertificates: tls,
+      ),
+    ),
+  );
+
   test(
     'concurrent commands on a single connection receive their own responses',
     () async {
@@ -88,7 +88,7 @@ void main() {
   test(
     'transaction queries share the cache without racing preparation',
     () async {
-      final db = _database();
+      final db = database();
       addTearDown(db.close);
       await db.transaction(() async {
         final rows = await Future.wait(
@@ -112,8 +112,8 @@ void main() {
   test(
     'a second driver retains its database inside another driver transaction',
     () async {
-      final a = _database();
-      final b = _database(database: 'information_schema');
+      final a = database();
+      final b = database(database: 'information_schema');
       addTearDown(a.close);
       addTearDown(b.close);
       await a.transaction(() async {
@@ -132,7 +132,7 @@ void main() {
   );
 
   test('TLS can return 4 MiB within the default command timeout', () async {
-    final db = _database(tls: true);
+    final db = database(tls: true);
     addTearDown(db.close);
     final rows = await db.select("SELECT REPEAT('x', ?) AS payload", [
       4 * 1024 * 1024,

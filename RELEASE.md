@@ -5,6 +5,8 @@
 
 ## 1. 发布前条件
 
+- [ ] 移除 `raw()` 属于 breaking change：确定核心下一主版本，并协调驱动最低核心版本；升级调用为 `Expression()`，CLI 调用和配置按 MIGRATIONS.md 迁移
+
 - [ ] 为 Schema Builder、Migration 和 CLI 确定核心发布版本，并同步所有驱动的最低核心依赖版本；已发布的 6.0.0 不包含这些 API
 - [ ] 记录 `implements SqlGrammar` 实现者必须补齐新增成员的兼容性变更
 - [ ] 为核心新增的 `compileAggregateExpression` 确定发布版本，并同步新驱动的最低核心依赖版本；SQL Server 驱动不能使用缺少该钩子的旧核心

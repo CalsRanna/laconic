@@ -70,7 +70,7 @@ class MysqlHandshakeRunner {
       payload.authPluginDataPart1,
       payload.authPluginDataPart2,
     );
-    if (_secure && (_serverCapabilities & mysqlCapFlagClientSsl == 0)) {
+    if (_secure && (_serverCapabilities & MysqlCapabilities.clientSsl == 0)) {
       throw const MysqlClientException(
         'Server does not support SSL. Disable secure mode explicitly or '
         'enable SSL on the server.',
@@ -218,7 +218,7 @@ class MysqlHandshakeRunner {
         _awaitingServerPublicKey = true;
         _sendExtraAuthData(
           sequenceId: packet.sequenceId + 1,
-          data: buildCachingSha2PublicKeyRequest(),
+          data: MysqlCachingSha2Auth.publicKeyRequest(),
           appendNullTerminator: false,
         );
         return false;
@@ -249,7 +249,7 @@ class MysqlHandshakeRunner {
     }
     _sendExtraAuthData(
       sequenceId: sequenceId,
-      data: buildCachingSha2EncryptedPassword(_password, nonce, publicKey),
+      data: MysqlCachingSha2Auth.encryptPassword(_password, nonce, publicKey),
       appendNullTerminator: false,
     );
   }

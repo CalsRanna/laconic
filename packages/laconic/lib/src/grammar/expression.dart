@@ -1,12 +1,12 @@
 /// A raw SQL expression that is output as-is during SQL compilation,
 /// without parameterization or identifier wrapping.
 ///
-/// Use [raw] to create instances.
+/// Use [Expression.new] to create instances.
 ///
 /// Example:
 /// ```dart
 /// query.selectRaw('COUNT(*) as count');
-/// query.where('created_at', raw('NOW()'), comparator: '>');
+/// query.where('created_at', Expression('NOW()'), comparator: '>');
 /// query.orderByRaw('RANDOM()');
 /// ```
 class Expression {
@@ -19,12 +19,3 @@ class Expression {
   @override
   String toString() => sql;
 }
-
-/// Creates an [Expression] wrapping a raw SQL string.
-///
-/// Example:
-/// ```dart
-/// query.selectRaw('COALESCE(name, \'N/A\') as name');
-/// query.where('created_at', raw("datetime('now')"), comparator: '>');
-/// ```
-Expression raw(String sql) => Expression(sql);

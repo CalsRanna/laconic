@@ -2,24 +2,24 @@ import 'package:laconic/laconic.dart';
 import 'package:laconic_postgresql/laconic_postgresql.dart';
 import 'package:test/test.dart';
 
-Laconic _database({String database = 'testdb'}) => Laconic(
-  PostgresqlDriver(
-    PostgresqlConfig(
-      host: '127.0.0.1',
-      port: 5433,
-      database: database,
-      username: 'postgres',
-      password: 'postgres',
-      useSsl: false,
-    ),
-  ),
-);
-
 void main() {
+  Laconic database({String database = 'testdb'}) => Laconic(
+    PostgresqlDriver(
+      PostgresqlConfig(
+        host: '127.0.0.1',
+        port: 5433,
+        database: database,
+        username: 'postgres',
+        password: 'postgres',
+        useSsl: false,
+      ),
+    ),
+  );
+
   test(
     'repeated queries reuse a server statement and eviction deallocates plans',
     () async {
-      final db = _database();
+      final db = database();
       addTearDown(db.close);
       const sql = r'SELECT $1::int AS laconic_repeat';
       final initialPid =
@@ -53,7 +53,7 @@ void main() {
   test(
     'transaction statement cache is shared concurrently then disposed',
     () async {
-      final db = _database();
+      final db = database();
       addTearDown(db.close);
       const sql = r'SELECT $1::int AS laconic_tx_value';
       await db.transaction(() async {
@@ -87,7 +87,7 @@ void main() {
   );
 
   test('rollback and query errors release transaction statements', () async {
-    final db = _database();
+    final db = database();
     addTearDown(db.close);
     const sql = r'SELECT $1::int AS laconic_rollback_value';
     await expectLater(
@@ -112,8 +112,8 @@ void main() {
   test(
     'a second driver retains its database inside another driver transaction',
     () async {
-      final a = _database();
-      final b = _database(database: 'postgres');
+      final a = database();
+      final b = database(database: 'postgres');
       addTearDown(a.close);
       addTearDown(b.close);
       await a.transaction(() async {
@@ -134,7 +134,7 @@ void main() {
   test(
     'real PostgreSQL accepts quoted, native, mixed and JSON placeholders',
     () async {
-      final db = _database();
+      final db = database();
       addTearDown(db.close);
       final row =
           (await db.select(

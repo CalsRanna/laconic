@@ -1,77 +1,79 @@
 import 'dart:typed_data';
 import 'package:laconic_mysql/src/client/exceptions.dart';
 
-const mysqlColumnTypeDecimal = 0x00;
-const mysqlColumnTypeTiny = 0x01;
-const mysqlColumnTypeShort = 0x02;
-const mysqlColumnTypeLong = 0x03;
-const mysqlColumnTypeFloat = 0x04;
-const mysqlColumnTypeDouble = 0x05;
-const mysqlColumnTypeNull = 0x06;
-const mysqlColumnTypeTimestamp = 0x07;
-const mysqlColumnTypeLongLong = 0x08;
-const mysqlColumnTypeInt24 = 0x09;
-const mysqlColumnTypeDate = 0x0a;
-const mysqlColumnTypeTime = 0x0b;
-const mysqlColumnTypeDateTime = 0x0c;
-const mysqlColumnTypeYear = 0x0d;
-const mysqlColumnTypeNewDate = 0x0e;
-const mysqlColumnTypeVarChar = 0x0f;
-const mysqlColumnTypeBit = 0x10;
-const mysqlColumnTypeTimestamp2 = 0x11;
-const mysqlColumnTypeDateTime2 = 0x12;
-const mysqlColumnTypeTime2 = 0x13;
-const mysqlColumnTypeNewDecimal = 0xf6;
-const mysqlColumnTypeEnum = 0xf7;
-const mysqlColumnTypeSet = 0xf8;
-const mysqlColumnTypeTinyBlob = 0xf9;
-const mysqlColumnTypeMediumBlob = 0xfa;
-const mysqlColumnTypeLongBlob = 0xfb;
-const mysqlColumnTypeBlob = 0xfc;
-const mysqlColumnTypeVarString = 0xfd;
-const mysqlColumnTypeString = 0xfe;
-const mysqlColumnTypeGeometry = 0xff;
-const mysqlColumnTypeJson = 0xf5;
-
-const mysqlColumnFlagUnsigned = 0x0020;
+abstract final class MysqlColumnFlags {
+  static const unsigned = 0x0020;
+}
 
 class MysqlColumnType {
+  static const decimalCode = 0x00;
+  static const tinyCode = 0x01;
+  static const shortCode = 0x02;
+  static const longCode = 0x03;
+  static const floatCode = 0x04;
+  static const doubleCode = 0x05;
+  static const nullCode = 0x06;
+  static const timestampCode = 0x07;
+  static const longLongCode = 0x08;
+  static const int24Code = 0x09;
+  static const dateCode = 0x0a;
+  static const timeCode = 0x0b;
+  static const dateTimeCode = 0x0c;
+  static const yearCode = 0x0d;
+  static const newDateCode = 0x0e;
+  static const varCharCode = 0x0f;
+  static const bitCode = 0x10;
+  static const timestamp2Code = 0x11;
+  static const dateTime2Code = 0x12;
+  static const time2Code = 0x13;
+  static const newDecimalCode = 0xf6;
+  static const enumCode = 0xf7;
+  static const setCode = 0xf8;
+  static const tinyBlobCode = 0xf9;
+  static const mediumBlobCode = 0xfa;
+  static const longBlobCode = 0xfb;
+  static const blobCode = 0xfc;
+  static const varStringCode = 0xfd;
+  static const stringCode = 0xfe;
+  static const geometryCode = 0xff;
+  static const jsonCode = 0xf5;
+
   final int _value;
 
   const MysqlColumnType._(int value) : _value = value;
   factory MysqlColumnType.create(int value) => MysqlColumnType._(value);
   int get value => _value;
 
-  static const decimalType = MysqlColumnType._(mysqlColumnTypeDecimal);
-  static const tinyType = MysqlColumnType._(mysqlColumnTypeTiny);
-  static const shortType = MysqlColumnType._(mysqlColumnTypeShort);
-  static const longType = MysqlColumnType._(mysqlColumnTypeLong);
-  static const floatType = MysqlColumnType._(mysqlColumnTypeFloat);
-  static const doubleType = MysqlColumnType._(mysqlColumnTypeDouble);
-  static const nullType = MysqlColumnType._(mysqlColumnTypeNull);
-  static const timestampType = MysqlColumnType._(mysqlColumnTypeTimestamp);
-  static const longLongType = MysqlColumnType._(mysqlColumnTypeLongLong);
-  static const int24Type = MysqlColumnType._(mysqlColumnTypeInt24);
-  static const dateType = MysqlColumnType._(mysqlColumnTypeDate);
-  static const timeType = MysqlColumnType._(mysqlColumnTypeTime);
-  static const dateTimeType = MysqlColumnType._(mysqlColumnTypeDateTime);
-  static const yearType = MysqlColumnType._(mysqlColumnTypeYear);
-  static const newDateType = MysqlColumnType._(mysqlColumnTypeNewDate);
-  static const varCharType = MysqlColumnType._(mysqlColumnTypeVarChar);
-  static const bitType = MysqlColumnType._(mysqlColumnTypeBit);
-  static const timestamp2Type = MysqlColumnType._(mysqlColumnTypeTimestamp2);
-  static const dateTime2Type = MysqlColumnType._(mysqlColumnTypeDateTime2);
-  static const time2Type = MysqlColumnType._(mysqlColumnTypeTime2);
-  static const newDecimalType = MysqlColumnType._(mysqlColumnTypeNewDecimal);
-  static const enumType = MysqlColumnType._(mysqlColumnTypeEnum);
-  static const setType = MysqlColumnType._(mysqlColumnTypeSet);
-  static const tinyBlobType = MysqlColumnType._(mysqlColumnTypeTinyBlob);
-  static const mediumBlobType = MysqlColumnType._(mysqlColumnTypeMediumBlob);
-  static const longBlobType = MysqlColumnType._(mysqlColumnTypeLongBlob);
-  static const blobType = MysqlColumnType._(mysqlColumnTypeBlob);
-  static const varStringType = MysqlColumnType._(mysqlColumnTypeVarString);
-  static const stringType = MysqlColumnType._(mysqlColumnTypeString);
-  static const geometryType = MysqlColumnType._(mysqlColumnTypeGeometry);
+  static const decimalType = MysqlColumnType._(decimalCode);
+  static const tinyType = MysqlColumnType._(tinyCode);
+  static const shortType = MysqlColumnType._(shortCode);
+  static const longType = MysqlColumnType._(longCode);
+  static const floatType = MysqlColumnType._(floatCode);
+  static const doubleType = MysqlColumnType._(doubleCode);
+  static const nullType = MysqlColumnType._(nullCode);
+  static const timestampType = MysqlColumnType._(timestampCode);
+  static const longLongType = MysqlColumnType._(longLongCode);
+  static const int24Type = MysqlColumnType._(int24Code);
+  static const dateType = MysqlColumnType._(dateCode);
+  static const timeType = MysqlColumnType._(timeCode);
+  static const dateTimeType = MysqlColumnType._(dateTimeCode);
+  static const yearType = MysqlColumnType._(yearCode);
+  static const newDateType = MysqlColumnType._(newDateCode);
+  static const varCharType = MysqlColumnType._(varCharCode);
+  static const bitType = MysqlColumnType._(bitCode);
+  static const timestamp2Type = MysqlColumnType._(timestamp2Code);
+  static const dateTime2Type = MysqlColumnType._(dateTime2Code);
+  static const time2Type = MysqlColumnType._(time2Code);
+  static const newDecimalType = MysqlColumnType._(newDecimalCode);
+  static const enumType = MysqlColumnType._(enumCode);
+  static const setType = MysqlColumnType._(setCode);
+  static const tinyBlobType = MysqlColumnType._(tinyBlobCode);
+  static const mediumBlobType = MysqlColumnType._(mediumBlobCode);
+  static const longBlobType = MysqlColumnType._(longBlobCode);
+  static const blobType = MysqlColumnType._(blobCode);
+  static const varStringType = MysqlColumnType._(varStringCode);
+  static const stringType = MysqlColumnType._(stringCode);
+  static const geometryType = MysqlColumnType._(geometryCode);
 
   T? convertStringValueToProvidedType<T>(String? value, [int? columnLength]) {
     if (value == null) {
@@ -83,7 +85,7 @@ class MysqlColumnType {
     }
 
     if (T == bool) {
-      if (_value == mysqlColumnTypeTiny && columnLength == 1) {
+      if (_value == tinyCode && columnLength == 1) {
         return int.parse(value) > 0 as T;
       } else {
         throw MysqlProtocolException(
@@ -96,12 +98,12 @@ class MysqlColumnType {
     if (T == int) {
       switch (_value) {
         // types convertible to dart int
-        case mysqlColumnTypeTiny:
-        case mysqlColumnTypeShort:
-        case mysqlColumnTypeLong:
-        case mysqlColumnTypeLongLong:
-        case mysqlColumnTypeInt24:
-        case mysqlColumnTypeYear:
+        case tinyCode:
+        case shortCode:
+        case longCode:
+        case longLongCode:
+        case int24Code:
+        case yearCode:
           return int.parse(value) as T;
         default:
           throw MysqlProtocolException(
@@ -112,13 +114,13 @@ class MysqlColumnType {
 
     if (T == double) {
       switch (_value) {
-        case mysqlColumnTypeTiny:
-        case mysqlColumnTypeShort:
-        case mysqlColumnTypeLong:
-        case mysqlColumnTypeLongLong:
-        case mysqlColumnTypeInt24:
-        case mysqlColumnTypeFloat:
-        case mysqlColumnTypeDouble:
+        case tinyCode:
+        case shortCode:
+        case longCode:
+        case longLongCode:
+        case int24Code:
+        case floatCode:
+        case doubleCode:
           return double.parse(value) as T;
         default:
           throw MysqlProtocolException(
@@ -129,13 +131,13 @@ class MysqlColumnType {
 
     if (T == num) {
       switch (_value) {
-        case mysqlColumnTypeTiny:
-        case mysqlColumnTypeShort:
-        case mysqlColumnTypeLong:
-        case mysqlColumnTypeLongLong:
-        case mysqlColumnTypeInt24:
-        case mysqlColumnTypeFloat:
-        case mysqlColumnTypeDouble:
+        case tinyCode:
+        case shortCode:
+        case longCode:
+        case longLongCode:
+        case int24Code:
+        case floatCode:
+        case doubleCode:
           return num.parse(value) as T;
         default:
           throw MysqlProtocolException(
@@ -151,36 +153,36 @@ class MysqlColumnType {
 
   Type getBestMatchDartType(int columnLength) {
     switch (_value) {
-      case mysqlColumnTypeString:
-      case mysqlColumnTypeVarString:
-      case mysqlColumnTypeVarChar:
-      case mysqlColumnTypeEnum:
-      case mysqlColumnTypeSet:
-      case mysqlColumnTypeDecimal:
-      case mysqlColumnTypeNewDecimal:
-      case mysqlColumnTypeJson:
+      case stringCode:
+      case varStringCode:
+      case varCharCode:
+      case enumCode:
+      case setCode:
+      case decimalCode:
+      case newDecimalCode:
+      case jsonCode:
         return String;
-      case mysqlColumnTypeLongBlob:
-      case mysqlColumnTypeMediumBlob:
-      case mysqlColumnTypeBlob:
-      case mysqlColumnTypeTinyBlob:
-      case mysqlColumnTypeGeometry:
-      case mysqlColumnTypeBit:
+      case longBlobCode:
+      case mediumBlobCode:
+      case blobCode:
+      case tinyBlobCode:
+      case geometryCode:
+      case bitCode:
         return Uint8List;
-      case mysqlColumnTypeTiny:
+      case tinyCode:
         if (columnLength == 1) {
           return bool;
         } else {
           return int;
         }
-      case mysqlColumnTypeShort:
-      case mysqlColumnTypeLong:
-      case mysqlColumnTypeLongLong:
-      case mysqlColumnTypeInt24:
-      case mysqlColumnTypeYear:
+      case shortCode:
+      case longCode:
+      case longLongCode:
+      case int24Code:
+      case yearCode:
         return int;
-      case mysqlColumnTypeFloat:
-      case mysqlColumnTypeDouble:
+      case floatCode:
+      case doubleCode:
         return double;
       default:
         return String;

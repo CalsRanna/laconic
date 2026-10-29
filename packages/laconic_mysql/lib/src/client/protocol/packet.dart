@@ -2,8 +2,6 @@ import 'dart:typed_data';
 
 import 'package:buffer/buffer.dart' show ByteDataWriter;
 
-const mysqlMaxPhysicalPacketPayload = 0x00ffffff;
-
 typedef MysqlPacketHeader = ({int payloadLength, int sequenceId});
 
 abstract class MysqlPacketPayload {
@@ -11,6 +9,8 @@ abstract class MysqlPacketPayload {
 }
 
 class MysqlPacket {
+  static const maxPhysicalPayload = 0x00ffffff;
+
   int sequenceId;
   int payloadLength;
   MysqlPacketPayload payload;
@@ -55,8 +55,8 @@ class MysqlPacket {
     while (offset < payloadData.lengthInBytes) {
       final remaining = payloadData.lengthInBytes - offset;
       final chunkLength =
-          remaining > mysqlMaxPhysicalPacketPayload
-              ? mysqlMaxPhysicalPacketPayload
+          remaining > MysqlPacket.maxPhysicalPayload
+              ? MysqlPacket.maxPhysicalPayload
               : remaining;
 
       buffer.writeUint8(chunkLength & 0xff);
@@ -74,7 +74,7 @@ class MysqlPacket {
     }
 
     if (payloadData.isEmpty ||
-        payloadData.lengthInBytes % mysqlMaxPhysicalPacketPayload == 0) {
+        payloadData.lengthInBytes % MysqlPacket.maxPhysicalPayload == 0) {
       buffer.writeUint8(0);
       buffer.writeUint8(0);
       buffer.writeUint8(0);

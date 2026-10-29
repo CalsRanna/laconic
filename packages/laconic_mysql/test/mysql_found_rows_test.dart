@@ -13,12 +13,12 @@ void main() {
       authPluginDataPart1: Uint8List(8),
       authPluginDataPart2: Uint8List(12),
       capabilityFlags:
-          mysqlCapFlagClientProtocol41 |
-          mysqlCapFlagClientFoundRows |
-          mysqlCapFlagClientConnectWithDB |
-          mysqlCapFlagClientSecureConnection |
-          mysqlCapFlagClientPluginAuth |
-          mysqlCapFlagClientSsl,
+          MysqlCapabilities.clientProtocol41 |
+          MysqlCapabilities.clientFoundRows |
+          MysqlCapabilities.clientConnectWithDB |
+          MysqlCapabilities.clientSecureConnection |
+          MysqlCapabilities.clientPluginAuth |
+          MysqlCapabilities.clientSsl,
       charset: 45,
       statusFlags: Uint8List(2),
       authPluginName: 'mysql_native_password',
@@ -35,19 +35,19 @@ void main() {
     );
 
     expect(
-      handshake.capabilityFlags & mysqlCapFlagClientFoundRows,
-      mysqlCapFlagClientFoundRows,
+      handshake.capabilityFlags & MysqlCapabilities.clientFoundRows,
+      MysqlCapabilities.clientFoundRows,
     );
     expect(
-      sslRequest.capabilityFlags & mysqlCapFlagClientFoundRows,
-      mysqlCapFlagClientFoundRows,
+      sslRequest.capabilityFlags & MysqlCapabilities.clientFoundRows,
+      MysqlCapabilities.clientFoundRows,
     );
     expect(
-      handshake.capabilityFlags & mysqlCapFlagClientMultiStatements,
+      handshake.capabilityFlags & MysqlCapabilities.clientMultiStatements,
       isZero,
     );
     expect(
-      sslRequest.capabilityFlags & mysqlCapFlagClientMultiStatements,
+      sslRequest.capabilityFlags & MysqlCapabilities.clientMultiStatements,
       isZero,
     );
 
@@ -58,7 +58,8 @@ void main() {
       authPluginDataPart1: Uint8List(8),
       authPluginDataPart2: Uint8List(12),
       capabilityFlags:
-          mysqlCapFlagClientProtocol41 | mysqlCapFlagClientSecureConnection,
+          MysqlCapabilities.clientProtocol41 |
+          MysqlCapabilities.clientSecureConnection,
       charset: 45,
       statusFlags: Uint8List(2),
       authPluginName: 'mysql_native_password',

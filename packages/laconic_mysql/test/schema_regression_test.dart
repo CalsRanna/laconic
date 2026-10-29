@@ -2,7 +2,7 @@ import 'package:laconic/laconic.dart';
 import 'package:laconic_mysql/laconic_mysql.dart';
 import '../../laconic/test/regressions/schema_regressions.dart';
 
-void main() => schemaRegressions(
+void main() => SchemaRegressions.register(
   () => Laconic(
     MysqlDriver(
       const MysqlConfig(

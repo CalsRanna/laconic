@@ -78,7 +78,7 @@ class MysqlInitialHandshakePacket extends MysqlPacketPayload {
     // length of auth-plugin-data
     int authPluginDataLength = 0;
 
-    if (capabilityFlags & mysqlCapFlagClientPluginAuth != 0) {
+    if (capabilityFlags & MysqlCapabilities.clientPluginAuth != 0) {
       authPluginDataLength = byteData.getUint8(offset);
     }
 
@@ -89,7 +89,7 @@ class MysqlInitialHandshakePacket extends MysqlPacketPayload {
 
     Uint8List? authPluginDataPart2;
 
-    if (capabilityFlags & mysqlCapFlagClientSecureConnection != 0) {
+    if (capabilityFlags & MysqlCapabilities.clientSecureConnection != 0) {
       int length = max(13, authPluginDataLength - 8);
 
       authPluginDataPart2 = Uint8List.sublistView(
@@ -103,7 +103,7 @@ class MysqlInitialHandshakePacket extends MysqlPacketPayload {
 
     String? authPluginName;
 
-    if (capabilityFlags & mysqlCapFlagClientPluginAuth != 0) {
+    if (capabilityFlags & MysqlCapabilities.clientPluginAuth != 0) {
       authPluginName = buffer.getUtf8NullTerminatedString(offset).value;
     }
 
@@ -126,15 +126,14 @@ class MysqlInitialHandshakePacket extends MysqlPacketPayload {
   }
 }
 
-const _supportedHandshakeCapabilities =
-    mysqlCapFlagClientProtocol41 |
-    mysqlCapFlagClientFoundRows |
-    mysqlCapFlagClientConnectWithDB |
-    mysqlCapFlagClientSecureConnection |
-    mysqlCapFlagClientPluginAuth |
-    mysqlCapFlagClientPluginAuthLenEncClientData;
-
 class MysqlHandshakeResponse41Packet extends MysqlPacketPayload {
+  static const _supportedHandshakeCapabilities =
+      MysqlCapabilities.clientProtocol41 |
+      MysqlCapabilities.clientFoundRows |
+      MysqlCapabilities.clientConnectWithDB |
+      MysqlCapabilities.clientSecureConnection |
+      MysqlCapabilities.clientPluginAuth |
+      MysqlCapabilities.clientPluginAuthLenEncClientData;
   int capabilityFlags;
   int maxPacketSize;
   int characterSet;
@@ -168,15 +167,17 @@ class MysqlHandshakeResponse41Packet extends MysqlPacketPayload {
     assert(challenge.length == 20);
 
     final passwordBytes = utf8.encode(password);
-    final authData = xor(
-      sha1(passwordBytes),
-      sha1(challenge + sha1(sha1(passwordBytes))),
+    final authData = MysqlAuthCrypto.xor(
+      MysqlAuthCrypto.sha1(passwordBytes),
+      MysqlAuthCrypto.sha1(
+        challenge + MysqlAuthCrypto.sha1(MysqlAuthCrypto.sha1(passwordBytes)),
+      ),
     );
 
     return MysqlHandshakeResponse41Packet(
       capabilityFlags:
           (_supportedHandshakeCapabilities |
-              (secure ? mysqlCapFlagClientSsl : 0)) &
+              (secure ? MysqlCapabilities.clientSsl : 0)) &
           initialHandshakePayload.capabilityFlags,
       maxPacketSize: 50 * 1024 * 1024,
       authPluginName: initialHandshakePayload.authPluginName!,
@@ -198,15 +199,18 @@ class MysqlHandshakeResponse41Packet extends MysqlPacketPayload {
     assert(challenge.length == 20);
 
     final passwordBytes = utf8.encode(password);
-    final authData = xor(
-      sha256(passwordBytes),
-      sha256(sha256(sha256(passwordBytes)) + challenge),
+    final authData = MysqlAuthCrypto.xor(
+      MysqlAuthCrypto.sha256(passwordBytes),
+      MysqlAuthCrypto.sha256(
+        MysqlAuthCrypto.sha256(MysqlAuthCrypto.sha256(passwordBytes)) +
+            challenge,
+      ),
     );
 
     return MysqlHandshakeResponse41Packet(
       capabilityFlags:
           (_supportedHandshakeCapabilities |
-              (secure ? mysqlCapFlagClientSsl : 0)) &
+              (secure ? MysqlCapabilities.clientSsl : 0)) &
           initialHandshakePayload.capabilityFlags,
       maxPacketSize: 50 * 1024 * 1024,
       authPluginName: initialHandshakePayload.authPluginName!,
@@ -221,7 +225,7 @@ class MysqlHandshakeResponse41Packet extends MysqlPacketPayload {
     final buffer = ByteDataWriter(endian: Endian.little);
 
     if (database == null) {
-      capabilityFlags &= ~mysqlCapFlagClientConnectWithDB;
+      capabilityFlags &= ~MysqlCapabilities.clientConnectWithDB;
     }
 
     buffer.writeUint32(capabilityFlags);
@@ -231,18 +235,18 @@ class MysqlHandshakeResponse41Packet extends MysqlPacketPayload {
     buffer.write(utf8.encode(username));
     buffer.writeUint8(0);
 
-    if (capabilityFlags & mysqlCapFlagClientSecureConnection != 0) {
+    if (capabilityFlags & MysqlCapabilities.clientSecureConnection != 0) {
       buffer.writeVariableEncInt(authResponse.lengthInBytes);
       buffer.write(authResponse);
     }
 
     if (database != null &&
-        capabilityFlags & mysqlCapFlagClientConnectWithDB != 0) {
+        capabilityFlags & MysqlCapabilities.clientConnectWithDB != 0) {
       buffer.write(utf8.encode(database!));
       buffer.writeUint8(0);
     }
 
-    if (capabilityFlags & mysqlCapFlagClientPluginAuth != 0) {
+    if (capabilityFlags & MysqlCapabilities.clientPluginAuth != 0) {
       buffer.write(utf8.encode(authPluginName));
       buffer.writeUint8(0);
     }
@@ -251,10 +255,10 @@ class MysqlHandshakeResponse41Packet extends MysqlPacketPayload {
   }
 }
 
-const _supportedSslCapabilities =
-    _supportedHandshakeCapabilities | mysqlCapFlagClientSsl;
-
 class MysqlSslRequestPacket extends MysqlPacketPayload {
+  static const _supportedSslCapabilities =
+      MysqlHandshakeResponse41Packet._supportedHandshakeCapabilities |
+      MysqlCapabilities.clientSsl;
   int capabilityFlags;
   int maxPacketSize;
   int characterSet;
@@ -283,7 +287,7 @@ class MysqlSslRequestPacket extends MysqlPacketPayload {
   @override
   Uint8List encode() {
     if (!connectWithDB) {
-      capabilityFlags &= ~mysqlCapFlagClientConnectWithDB;
+      capabilityFlags &= ~MysqlCapabilities.clientConnectWithDB;
     }
 
     final buffer = ByteDataWriter(endian: Endian.little);

@@ -16,7 +16,7 @@ void main() {
   });
   tearDown(() => temporary.delete(recursive: true));
 
-  Future<int> cli(List<String> args) => runMigrationCli(
+  Future<int> cli(List<String> args) => MigrationCli.run(
     args,
     workingDirectory: temporary,
     output: output,
@@ -45,7 +45,7 @@ void main() {
   );
 
   test(
-    'make generates a migration with a valid stable name and factory',
+    'make generates a migration with a valid stable name and public class',
     () async {
       expect(
         await cli([
@@ -67,7 +67,7 @@ void main() {
         p.basename(files.single.path),
         matches(r'^\d{20}_create_items\.dart$'),
       );
-      expect(source, contains('Migration migration()'));
+      expect(source, contains('class DatabaseMigration extends Migration'));
       expect(source, contains(p.basenameWithoutExtension(files.single.path)));
       expect(source, contains('database.schema.create("items"'));
       expect(source, contains('database.schema.drop("items")'));
@@ -93,7 +93,7 @@ void main() {
 
   test('generation never overwrites an existing migration', () async {
     final stamp = DateTime.utc(2026, 10, 29, 10, 11, 12, 123, 456);
-    final file = await generateMigration(
+    final file = await MigrationGenerator.generate(
       directory: temporary,
       name: 'custom_change',
       timestamp: stamp,
@@ -102,7 +102,7 @@ void main() {
     final original = await file.readAsString();
     expect(original, contains('UnimplementedError'));
     await expectLater(
-      generateMigration(
+      MigrationGenerator.generate(
         directory: temporary,
         name: 'custom_change',
         timestamp: stamp,
