@@ -1,4 +1,4 @@
-import 'package:laconic/src/exception.dart';
+import '../exception.dart';
 
 /// Keyword operators that are safe to interpolate into SQL.
 const Set<String> _wordOperators = {

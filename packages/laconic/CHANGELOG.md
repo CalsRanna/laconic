@@ -1,5 +1,12 @@
 ## Unreleased
 
+- Organize core internals into database, query, grammar, schema, migrations,
+  and CLI modules. Separate schema commands, migration status, SQL debug
+  formatting, and CLI parsing/execution. Keep public exports, fluent methods,
+  and CLI behavior unchanged; `lib/src` implementation paths have moved.
+- Group tests by responsibility and share mock drivers/grammars through test
+  support files; driver packages reuse suites from `test/regressions`.
+
 - Fold the unreleased migration package into the core. Import `Migration`,
   `MigrationStatus`, and `Migrator` from `package:laconic/laconic.dart`, use
   `package:laconic/cli.dart` for CLI APIs, and replace `dart run laconic_migrations`

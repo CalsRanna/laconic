@@ -1,5 +1,11 @@
 words = [
+    "CLI",
+    "DDL",
+    "Mariadb",
+    "Postgresql",
+    "havings",
     "laravel",
     "mysql",
+    "pubspec",
     "tls",
 ]

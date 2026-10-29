@@ -135,22 +135,33 @@ PostgreSQL 使用 `PostgresqlPlaceholders` 做单次扫描的占位符转换，�
 
 ```
 packages/laconic/lib/
-├── laconic.dart                    # Barrel 文件：导出所有公共 API
+├── laconic.dart                    # 公共数据库 API；不导入 CLI I/O
+├── cli.dart                        # runMigrationCli / runMigrationCommand
 └── src/
-    ├── laconic.dart                # Laconic 类（入口点、selectStream、beforeQuery/afterQuery）
-    ├── database_driver.dart        # DatabaseDriver 抽象接口（select/selectStream/statement/...）
-    ├── exception.dart              # LaconicException（message + driver + code）
-    ├── expression.dart             # Expression 类 + 顶层 raw() 函数（原始 SQL 嵌入）
-    ├── operator.dart               # 比较运算符白名单校验
-    ├── pagination.dart             # LaconicPage / LaconicSimplePage / LaconicCursorPage
-    ├── query.dart                  # LaconicQuery（SQL + 绑定，用于日志记录）
-    ├── result.dart                 # LaconicResult（columns + values，[] 访问器，toMap()）
-    ├── grammar/
-    │   ├── grammar.dart            # SqlGrammar 抽象类（SELECT/UNION/写入/子查询能力）
-    │   └── compiled_query.dart     # CompiledQuery {sql, bindings}
-    └── query_builder/
-        ├── query_builder.dart      # QueryBuilder（约 3800 行，130+ 个可链式调用的方法）
-        └── join_clause.dart        # JoinClause（约 620 行，ON/WHERE/raw/nested 条件）
+    ├── laconic.dart                # 连接门面、查询钩子、QueryBuilder / SchemaBuilder 工厂
+    ├── exception.dart              # 共享 LaconicException
+    ├── database/                   # DatabaseDriver、LaconicQuery、LaconicResult
+    ├── query/
+    │   ├── query_builder.dart      # 链式查询 API 和可变查询状态
+    │   ├── join_clause.dart        # JOIN 条件构造器
+    │   ├── pagination.dart         # 分页结果类型
+    │   ├── operator.dart           # 内部比较运算符校验
+    │   └── query_debug.dart        # 内部 SQL 调试格式化，不用于执行
+    ├── grammar/                    # SqlGrammar、CompiledQuery、Expression / raw()
+    ├── schema/
+    │   ├── blueprint.dart          # 收集表结构命令的流式 API
+    │   ├── schema_command.dart     # sealed SchemaCommand 和列、索引、外键、变更模型
+    │   └── schema_builder.dart     # 编译并执行 Schema 操作
+    ├── migrations/                # Migration、MigrationStatus、Migrator
+    └── cli/
+        ├── migration_cli.dart     # 两个公共 CLI 函数的组装入口
+        ├── command_runner.dart    # 命令解析、校验、请求模型、退出码
+        ├── make_command.dart      # make 命令
+        ├── migration_executor.dart # 在注入连接上执行迁移并输出结果
+        ├── migration_project.dart # 发现项目文件、生成注册入口、管理子进程
+        ├── migration_generator.dart # 生成单个迁移文件
+        ├── dart_source.dart       # 生成 Dart 源码时使用的字符串编码
+        └── cli_exception.dart     # CLI 错误和退出码
 
 packages/laconic_sqlite/lib/src/
 ├── sqlite_config.dart              # SqliteConfig {path}
@@ -179,6 +190,14 @@ packages/laconic_postgresql/lib/src/
 
 ## 关键设计模式
 
+### 核心包内部依赖
+
+- 通过 `lib/laconic.dart` 和 `lib/cli.dart` 保持公共入口稳定；`lib/src` 按职责组织，包内实现使用相对导入。
+- 数据库 API 不反向依赖 CLI；CLI 通过传入的 Laconic 连接使用查询、Schema 和 Migration。
+- QueryBuilder 的公开链式方法保持为类成员；纯调试格式化委托给内部辅助函数。
+- SchemaCommand 的 sealed 子类型保持在同一个库，Blueprint 只负责收集这些命令。
+- 公共入口只导出用户和驱动需要的类型；CLI 请求、源码生成和 SQL 调试辅助函数不导出。
+
 ### Schema Builder 与 Migration
 
 - 核心 `Laconic.schema` 返回 `SchemaBuilder`，`Blueprint` 用类型化命令描述表结构。
@@ -187,7 +206,7 @@ packages/laconic_postgresql/lib/src/
 - 编译器保持无状态、无 I/O；一次操作先完整编译再逐条执行。查询钩子由现有 Laconic 执行入口统一触发。
 - 核心包内置迁移引擎 `lib/src/migrations/`，从 `laconic.dart` 导出 Migration/MigrationStatus/Migrator；每个普通迁移按 grammar 的 `supportsSchemaTransactions` 声明处理事务。MySQL/MariaDB 不自动开启 DDL 事务。
 - Migration CLI 位于独立的 `cli.dart` 入口和 `lib/src/cli/`，支持 make/migrate/rollback/status。项目配置导出 createDatabase()，迁移文件导出 migration()；通过临时静态 import 入口运行，不使用反射。可执行入口为 `bin/laconic.dart`，使用 `dart run laconic`。核心仅增加 args/cli_util/io/path 工具依赖，dependencies 和 dev_dependencies 均不引入具体数据库驱动。
-- 跨方言 Schema/Migration 行为测试位于核心 `test/schema_regressions.dart` 和 `test/migrator_regressions.dart`，由各驱动的测试入口调用。核心 `test/migration_cli_test.dart` 测试无驱动 CLI 行为；SQLite 包负责 CLI 数据库与子进程集成测试，迁移示例也位于 SQLite 包。
+- 跨方言 Schema/Migration 行为测试位于核心 `test/regressions/schema_regressions.dart` 和 `test/regressions/migrator_regressions.dart`，由各驱动的测试入口调用。核心 `test/cli/migration_cli_test.dart` 测试无驱动 CLI 行为；SQLite 包负责 CLI 数据库与子进程集成测试，迁移示例也位于 SQLite 包。
 - 详细 API、限制和第三方扩展契约见根目录 SCHEMA.md。版本号暂保留原发布线，发布前须按 RELEASE.md 协调新 API 的最低版本。
 
 ### 语法模式（策略模式）
@@ -209,7 +228,7 @@ MySQL 和 PostgreSQL 驱动使用 Dart 的 `runZoned` 配合区域值，通过�
 `selectSub` / `fromSub` / `fromRaw` / `joinSub` / `whereIn(subquery)` / `where` 子查询值 / `insertUsing` 都通过 `_compileSubquery()` 得到 `CompiledQuery`。SELECT 子查询在 PostgreSQL 上由 `inlineSubquery()` 归一化为 `?`，再由外层 SELECT 统一编号；FROM/JOIN/WHERE 子查询由各语法层按当前 `bindings.length` 偏移重编号。JOIN 子查询通过 `tableBindings` 传递。
 
 ### 分页与流式
-分页结果类型位于 `src/pagination.dart`。`paginate` 执行 count + data 两条查询；`simplePaginate` / `cursorPaginate` 只取 `perPage + 1` 行判断是否有下一页。`cursor()` 依赖驱动的 `selectStream()`；`lazy()` 使用 offset 分块，`lazyById()` 使用 keyset 游标。SQLite 流式读取期间独占单连接，MySQL/PostgreSQL 流式读取期间持有一个池连接。
+分页结果类型位于 `src/query/pagination.dart`。`paginate` 执行 count + data 两条查询；`simplePaginate` / `cursorPaginate` 只取 `perPage + 1` 行判断是否有下一页。`cursor()` 依赖驱动的 `selectStream()`；`lazy()` 使用 offset 分块，`lazyById()` 使用 keyset 游标。SQLite 流式读取期间独占单连接，MySQL/PostgreSQL 流式读取期间持有一个池连接。
 
 ## WHERE 子句类型系统
 
@@ -254,7 +273,7 @@ MySQL 和 PostgreSQL 驱动使用 Dart 的 `runZoned` 配合区域值，通过�
 ## 约定
 
 ### 添加新的 WHERE 类型
-1. 在 `QueryBuilder`（`packages/laconic/lib/src/query_builder/query_builder.dart`）中添加公共方法
+1. 在 `QueryBuilder`（`packages/laconic/lib/src/query/query_builder.dart`）中添加公共方法
    - 向 `_wheres` 追加一个 map，包含新的 `type` 字符串、`boolean` 和类型特定的键
    - 值含子查询时使用 `_compileSubquery()`，需要路径时使用 `_splitJsonColumn()` / `_normalizeJsonPath()`
 2. 在 **所有** 语法层的 `_compileWheres()` 方法中添加编译逻辑：
@@ -265,7 +284,7 @@ MySQL 和 PostgreSQL 驱动使用 Dart 的 `runZoned` 配合区域值，通过�
 3. 如果类型有 OR 变体，按照已有的 `or*` 模式添加
 4. 如果 `increment()`/`decrement()` 应支持该类型，更新它们的 WHERE 编译
 5. 方言不支持时抛出清晰的 `LaconicException`，不要静默按其他语义执行
-6. 跨方言行为加入 `packages/laconic/test/query_regressions.dart`；单方言行为加入对应驱动测试文件
+6. 跨方言行为加入 `packages/laconic/test/regressions/query_regressions.dart`；单方言行为加入对应驱动测试文件
 
 ### 添加新的数据库驱动
 1. 创建 `packages/laconic_newdb/`，其中 `pubspec.yaml` 依赖 `laconic: ^6.0.0`
@@ -299,12 +318,13 @@ MySQL 和 PostgreSQL 驱动使用 Dart 的 `runZoned` 配合区域值，通过�
 ## 测试策略
 
 ### 测试文件布局
-- `packages/laconic/test/laconic_test.dart` — 使用 `MockGrammar` + `MockDriver` 的核心测试（无真实数据库，约 28 个测试）
-- `packages/laconic/test/query_regressions.dart` — 三个真实驱动共享的跨方言行为测试
+- `packages/laconic/test/laconic_test.dart` — 使用 `MockGrammar` + `MockDriver` 的核心测试（无真实数据库；共享夹具位于 `test/support/mock_database.dart`）
+- `packages/laconic/test/regressions/query_regressions.dart` — 各真实驱动共享的跨方言行为测试
 - `packages/laconic_sqlite/test/laconic_sqlite_test.dart` — SQLite 集成测试（约 156 个测试）
 - `packages/laconic_mysql/test/laconic_mysql_test.dart` — MySQL 集成测试（约 190 个测试，需要 Docker）
 - `packages/laconic_postgresql/test/laconic_postgresql_test.dart` — PostgreSQL 集成测试（约 151 个测试，需要 Docker）
-- 每个驱动包的 `query_regression_test.dart` 调用共享的 `query_regressions.dart`
+- `test/database`、`test/schema`、`test/cli` 按职责组织核心单元测试；跨方言套件位于 `test/regressions`，由各驱动测试入口调用。
+- 每个驱动包的 `query_regression_test.dart` 调用共享的 `test/regressions/query_regressions.dart`
 
 ### 测试辅助文件
 每个数据库包都有一个 `test/test_helper.dart`，包含：

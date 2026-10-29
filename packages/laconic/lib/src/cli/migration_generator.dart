@@ -1,12 +1,10 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:io/io.dart';
 import 'package:path/path.dart' as p;
 
 import 'cli_exception.dart';
-
-String dartString(String value) => jsonEncode(value).replaceAll(r'$', r'\$');
+import 'dart_source.dart';
 
 Future<File> generateMigration({
   required Directory directory,

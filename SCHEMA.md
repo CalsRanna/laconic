@@ -120,7 +120,7 @@ schema dump 或 Laravel 全部 Blueprint 方法。可以通过现有 `db.stateme
    默认值、建表/改表编译方法。
 3. 明确设置 `supportsSchemaTransactions`；默认值为 false。这个声明只适用于
    普通迁移 DDL，具体 migration 可以关闭自动事务。
-4. 复用 `packages/laconic/test/schema_regressions.dart` 的行为测试，并添加数据库特有用例。
+4. 复用 `packages/laconic/test/regressions/schema_regressions.dart` 的行为测试，并添加数据库特有用例。
 
 公共类型从 `package:laconic/laconic.dart` 导出。第三方不需要导入 `src`，
 也不需要修改核心包或 Migration 包里的注册表。

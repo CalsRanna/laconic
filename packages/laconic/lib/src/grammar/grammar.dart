@@ -1,7 +1,8 @@
-import 'package:laconic/src/exception.dart';
-import 'package:laconic/src/grammar/compiled_query.dart';
-import 'package:laconic/src/expression.dart';
-import 'package:laconic/src/schema/blueprint.dart';
+import '../exception.dart';
+import '../schema/blueprint.dart';
+import '../schema/schema_command.dart';
+import 'compiled_query.dart';
+import 'expression.dart';
 
 /// Abstract base class for SQL grammar implementations.
 ///

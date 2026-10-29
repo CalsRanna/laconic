@@ -1,9 +1,9 @@
-import 'package:laconic/src/database_driver.dart';
-import 'package:laconic/src/query.dart';
-import 'package:laconic/src/grammar/grammar.dart';
-import 'package:laconic/src/query_builder/query_builder.dart';
-import 'package:laconic/src/schema/schema_builder.dart';
-import 'package:laconic/src/result.dart';
+import 'database/database_driver.dart';
+import 'database/query.dart';
+import 'database/result.dart';
+import 'grammar/grammar.dart';
+import 'query/query_builder.dart';
+import 'schema/schema_builder.dart';
 
 /// The main entry point for building and executing database queries.
 ///

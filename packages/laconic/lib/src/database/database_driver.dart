@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:laconic/src/grammar/grammar.dart';
-import 'package:laconic/src/result.dart';
+import '../grammar/grammar.dart';
+import 'result.dart';
 
 /// Abstract interface for database drivers.
 ///

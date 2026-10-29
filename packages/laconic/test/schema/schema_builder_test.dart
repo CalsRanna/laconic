@@ -1,7 +1,7 @@
 import 'package:laconic/laconic.dart';
 import 'package:test/test.dart';
 
-import 'laconic_test.dart' show MockDriver, MockGrammar;
+import '../support/mock_database.dart';
 
 class CustomGrammar extends MockGrammar {
   @override

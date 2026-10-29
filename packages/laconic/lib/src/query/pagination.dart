@@ -1,4 +1,4 @@
-import 'package:laconic/src/result.dart';
+import '../database/result.dart';
 
 /// A page of results with a total row count.
 class LaconicPage {

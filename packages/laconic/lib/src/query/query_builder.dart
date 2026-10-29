@@ -1,14 +1,13 @@
-import 'dart:typed_data';
-
-import 'package:laconic/src/exception.dart';
-import 'package:laconic/src/expression.dart';
-import 'package:laconic/src/laconic.dart';
-import 'package:laconic/src/operator.dart';
-import 'package:laconic/src/pagination.dart';
-import 'package:laconic/src/grammar/grammar.dart';
-import 'package:laconic/src/grammar/compiled_query.dart';
-import 'package:laconic/src/query_builder/join_clause.dart';
-import 'package:laconic/src/result.dart';
+import '../database/result.dart';
+import '../exception.dart';
+import '../grammar/compiled_query.dart';
+import '../grammar/expression.dart';
+import '../grammar/grammar.dart';
+import '../laconic.dart';
+import 'join_clause.dart';
+import 'operator.dart';
+import 'pagination.dart';
+import 'query_debug.dart';
 
 /// Fluent query builder for constructing and executing database queries.
 class QueryBuilder {
@@ -3592,10 +3591,10 @@ class QueryBuilder {
   /// Intended for debugging and logging only; the result is not a safe way to
   /// execute a query. Use [toSql] and [getBindings] for execution.
   String toRawSql() {
-    final compiled = _compileForDebug();
-    return _grammar.numberedPlaceholders
-        ? _interpolateNumberedBindings(compiled.sql, compiled.bindings)
-        : _interpolateQuestionBindings(compiled.sql, compiled.bindings);
+    return interpolateQuery(
+      _compileForDebug(),
+      numberedPlaceholders: _grammar.numberedPlaceholders,
+    );
   }
 
   /// Dumps the compiled SQL and bindings to the console and returns [this]
@@ -3627,91 +3626,6 @@ class QueryBuilder {
   Never ddRawSql() {
     dumpRawSql();
     throw LaconicException('QueryBuilder.ddRawSql() called — execution halted');
-  }
-
-  static final RegExp _numberedPlaceholder = RegExp(r'\$(\d+)');
-
-  String _interpolateNumberedBindings(String sql, List<Object?> bindings) {
-    return sql.replaceAllMapped(_numberedPlaceholder, (match) {
-      final index = int.parse(match[1]!) - 1;
-      if (index < 0 || index >= bindings.length) {
-        return match[0]!;
-      }
-      return _literal(bindings[index]);
-    });
-  }
-
-  String _interpolateQuestionBindings(String sql, List<Object?> bindings) {
-    final output = StringBuffer();
-    var bindingIndex = 0;
-    var i = 0;
-
-    while (i < sql.length) {
-      final code = sql.codeUnitAt(i);
-      if (sql.startsWith('--', i)) {
-        final end = sql.indexOf('\n', i + 2);
-        final next = end == -1 ? sql.length : end;
-        output.write(sql.substring(i, next));
-        i = next;
-        continue;
-      }
-      if (sql.startsWith('/*', i)) {
-        final end = sql.indexOf('*/', i + 2);
-        final next = end == -1 ? sql.length : end + 2;
-        output.write(sql.substring(i, next));
-        i = next;
-        continue;
-      }
-      if (code == 39 || code == 34 || code == 96) {
-        final quote = code;
-        output.writeCharCode(quote);
-        i++;
-        while (i < sql.length) {
-          final current = sql.codeUnitAt(i);
-          output.writeCharCode(current);
-          i++;
-          if (current == quote) {
-            if (i < sql.length && sql.codeUnitAt(i) == quote) {
-              output.writeCharCode(quote);
-              i++;
-            } else {
-              break;
-            }
-          }
-        }
-        continue;
-      }
-      if (code == 63) {
-        if (bindingIndex < bindings.length) {
-          output.write(_literal(bindings[bindingIndex++]));
-        } else {
-          output.write('?');
-        }
-        i++;
-        continue;
-      }
-      output.writeCharCode(code);
-      i++;
-    }
-
-    return output.toString();
-  }
-
-  static String _literal(Object? value) {
-    if (value == null) return 'NULL';
-    if (value is Expression) return value.sql;
-    if (value is bool) return value ? '1' : '0';
-    if (value is num || value is BigInt) return value.toString();
-    if (value is DateTime) {
-      final iso = value.toIso8601String();
-      return "'${iso.substring(0, 19).replaceFirst('T', ' ')}'";
-    }
-    if (value is Uint8List) {
-      final hex =
-          value.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
-      return "x'$hex'";
-    }
-    return "'${value.toString().replaceAll("'", "''")}'";
   }
 
   /// Compiles the current query state into a [CompiledQuery] for

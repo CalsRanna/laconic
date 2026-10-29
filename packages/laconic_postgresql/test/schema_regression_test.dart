@@ -1,6 +1,6 @@
 import 'package:laconic/laconic.dart';
 import 'package:laconic_postgresql/laconic_postgresql.dart';
-import '../../laconic/test/schema_regressions.dart';
+import '../../laconic/test/regressions/schema_regressions.dart';
 
 void main() => schemaRegressions(
   () => Laconic(

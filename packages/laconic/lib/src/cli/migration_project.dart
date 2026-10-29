@@ -7,7 +7,7 @@ import 'package:io/io.dart';
 import 'package:path/path.dart' as p;
 
 import 'cli_exception.dart';
-import 'generator.dart';
+import 'dart_source.dart';
 
 Future<int> runProjectMigrations({
   required Directory project,

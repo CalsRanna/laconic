@@ -1,6 +1,6 @@
 import 'package:laconic/laconic.dart';
 import 'package:laconic_postgresql/laconic_postgresql.dart';
-import '../../laconic/test/query_regressions.dart';
+import '../../laconic/test/regressions/query_regressions.dart';
 
 void main() => queryRegressions(
   () => Laconic(

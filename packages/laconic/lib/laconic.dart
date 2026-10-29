@@ -45,18 +45,25 @@
 /// ```
 library;
 
-export 'src/database_driver.dart';
-export 'src/exception.dart';
 export 'src/laconic.dart';
-export 'src/migrations/migration.dart';
-export 'src/migrations/migrator.dart';
-export 'src/pagination.dart';
-export 'src/query.dart';
+export 'src/exception.dart';
+
+export 'src/database/database_driver.dart';
+export 'src/database/query.dart';
+export 'src/database/result.dart';
+
+export 'src/query/join_clause.dart';
+export 'src/query/pagination.dart';
+export 'src/query/query_builder.dart';
+
 export 'src/grammar/compiled_query.dart';
+export 'src/grammar/expression.dart';
 export 'src/grammar/grammar.dart';
-export 'src/query_builder/join_clause.dart';
-export 'src/query_builder/query_builder.dart';
-export 'src/expression.dart';
-export 'src/result.dart';
+
 export 'src/schema/blueprint.dart';
 export 'src/schema/schema_builder.dart';
+export 'src/schema/schema_command.dart';
+
+export 'src/migrations/migration.dart';
+export 'src/migrations/migration_status.dart';
+export 'src/migrations/migrator.dart';

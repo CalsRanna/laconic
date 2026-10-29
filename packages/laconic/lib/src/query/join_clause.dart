@@ -1,7 +1,7 @@
-import 'package:laconic/src/exception.dart';
-import 'package:laconic/src/laconic.dart';
-import 'package:laconic/src/operator.dart';
-import 'package:laconic/src/query_builder/query_builder.dart';
+import '../exception.dart';
+import '../laconic.dart';
+import 'operator.dart';
+import 'query_builder.dart';
 
 /// Helper class for building JOIN clause conditions.
 ///

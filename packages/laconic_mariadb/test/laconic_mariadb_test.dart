@@ -1,4 +1,4 @@
-import '../../laconic/test/driver_regressions.dart';
+import '../../laconic/test/regressions/driver_regressions.dart';
 import 'test_helper.dart';
 
 void main() => driverRegressions(

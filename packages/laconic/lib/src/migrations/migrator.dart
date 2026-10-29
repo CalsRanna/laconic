@@ -1,9 +1,10 @@
+import '../database/result.dart';
 import '../exception.dart';
 import '../laconic.dart';
-import '../query_builder/query_builder.dart';
-import '../result.dart';
+import '../query/query_builder.dart';
 
 import 'migration.dart';
+import 'migration_status.dart';
 
 /// Runs explicitly registered migrations and records successful operations.
 ///
