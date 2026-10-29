@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Fix `count` and existence queries using bound `groupByRaw` expressions.
+- Count rows selected by `groupLimit`, honor an additional global `limit`, and
+  apply `paginate` / `simplePaginate` offsets to the combined result. Direct
+  `offset` calls with `groupLimit` retain their per-partition behavior.
 - Fix `cursorPaginate` to group existing OR conditions before applying the
   cursor and filter the complete result of `union` / `unionAll` queries.
 - Add `SqlGrammar.compileInlineSubquery` so SELECT subqueries can transform SQL

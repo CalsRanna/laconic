@@ -1,3 +1,11 @@
+## Unreleased
+
+- Decode unsigned BIGINT text results above the signed 64-bit range as `BigInt`,
+  matching binary query results, including streamed rows.
+- Support `offset` without an explicit `limit`.
+- Inherit grouped-count and `groupLimit` pagination fixes from the matching
+  unreleased core; the current driver/core release mapping remains unchanged.
+
 ## 5.0.0
 
 ### Breaking changes and migration

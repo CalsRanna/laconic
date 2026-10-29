@@ -160,11 +160,16 @@ class SqliteDriver implements DatabaseDriver {
 
   Stream<LaconicResult> _streamRows(String sql, List<Object?> params) async* {
     try {
-      final stmt = _prepare(sql);
-      final rows = stmt.select(params);
-      final columns = rows.columnNames;
-      for (final row in rows) {
-        yield LaconicResult.fromRows(columns, [row.values.toList()]).single;
+      final stmt = _db.prepare(sql);
+      try {
+        final cursor = stmt.selectCursor(params);
+        while (cursor.moveNext()) {
+          yield LaconicResult.fromRows(cursor.columnNames, [
+            cursor.current.values.toList(),
+          ]).single;
+        }
+      } finally {
+        stmt.close();
       }
     } catch (e) {
       if (e is LaconicException) rethrow;

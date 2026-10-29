@@ -748,6 +748,10 @@ class PostgresqlGrammar extends SqlGrammar {
         if (value is! List) {
           throw LaconicException('JSON overlaps requires a list of values');
         }
+        if (value.isEmpty) {
+          parts.add('$boolean${not ? '1 = 1' : '1 = 0'}');
+          continue;
+        }
         final path = where['path'] as String?;
         String target;
         if (path == null || path == r'$') {
@@ -765,15 +769,11 @@ class PostgresqlGrammar extends SqlGrammar {
                   : 'jsonb_extract_path((${where['column']})::jsonb, '
                       '${placeholders.join(', ')})';
         }
-        if (value.isEmpty) {
-          parts.add('$boolean${not ? '1 = 1' : '1 = 0'}');
-        } else {
-          parts.add(
-            '$boolean${not ? 'not ' : ''}'
-            '($target ?| \$${bindings.length + 1}::text[])',
-          );
-          bindings.add(_pgTextArray(value));
-        }
+        parts.add(
+          '$boolean${not ? 'not ' : ''}'
+          '($target ?| \$${bindings.length + 1}::text[])',
+        );
+        bindings.add(_pgTextArray(value));
       } else if (type == 'fullText') {
         final columns = where['columns'] as List<String>;
         final options = where['options'] as Map<String, dynamic>;

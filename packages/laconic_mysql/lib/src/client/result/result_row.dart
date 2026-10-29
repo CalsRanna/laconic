@@ -107,7 +107,13 @@ class MysqlResultRow {
     }
 
     final type = column.type.getBestMatchDartType(column.columnLength);
-    if (type == int) return int.parse(value);
+    if (type == int) {
+      if (column.type.value == mysqlColumnTypeLongLong &&
+          column.flags & mysqlColumnFlagUnsigned != 0) {
+        return int.tryParse(value) ?? BigInt.parse(value);
+      }
+      return int.parse(value);
+    }
     if (type == double) return double.parse(value);
     if (type == num) return num.parse(value);
     if (type == bool) return int.parse(value) > 0;

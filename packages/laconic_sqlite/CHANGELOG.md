@@ -1,3 +1,13 @@
+## Unreleased
+
+- Read `selectStream` results through a native cursor instead of buffering all
+  rows. Each stream owns its statement and closes it on completion, error or
+  cancellation.
+- Support `offset` without an explicit `limit`.
+- Avoid unused JSON path bindings for empty overlap/non-overlap lists.
+- Inherit grouped-count and `groupLimit` pagination fixes from the matching
+  unreleased core; the current driver/core release mapping remains unchanged.
+
 ## 4.0.0
 
 ### Breaking changes and migration

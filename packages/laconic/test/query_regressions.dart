@@ -315,6 +315,38 @@ void queryRegressions(Laconic Function() createDatabase) {
     expect(totals.map((r) => '${r['total']}').toList(), ['2', '3']);
   });
 
+  test('bound raw groups support count and existence queries', () async {
+    final grouped = query().groupByRaw('active + ?', [0]);
+    expect(await grouped.count(), 2);
+    expect(await grouped.exists(), isTrue);
+    expect(await grouped.clone().distinct().count(), 2);
+    expect(await grouped.clone().havingRaw('count(*) > ?', [2]).count(), 1);
+    expect(
+      await grouped.clone().havingRaw('count(*) > ?', [2]).exists(),
+      isTrue,
+    );
+    expect(await grouped.clone().where('id', 99).count(), 0);
+    expect(await grouped.clone().where('id', 99).exists(), isFalse);
+    expect(
+      await query()
+          .whereExists(
+            (q) => q.from(table).groupByRaw('active + ?', [0]).havingRaw(
+              'count(*) > ?',
+              [2],
+            ),
+          )
+          .count(),
+      5,
+    );
+  });
+
+  test('offset works without an explicit limit', () async {
+    expect(await query().orderBy('id').offset(2).pluck('id'), [3, 4, 5]);
+    expect(await query().orderBy('id').skip(0).pluck('id'), [1, 2, 3, 4, 5]);
+    expect(await query().orderBy('id').offset(2).limit(0).get(), isEmpty);
+    expect(ids(await union().offset(1).get()), [3]);
+  });
+
   test('update and insert accept raw expression values', () async {
     await query().where('id', 1).update({'label': raw("'raw-label'")});
     try {
@@ -1081,6 +1113,109 @@ void queryRegressions(Laconic Function() createDatabase) {
       [3],
     );
   });
+
+  test(
+    'empty JSON overlaps retain path and surrounding binding semantics',
+    () async {
+      expect(
+        await db
+            .table(jsonTable)
+            .whereJsonOverlaps('payload->tags', [])
+            .count(),
+        0,
+      );
+      expect(
+        await db
+            .table(jsonTable)
+            .whereJsonDoesntOverlap('payload->tags', [])
+            .count(),
+        3,
+      );
+      expect(
+        ids(
+          await db
+              .table(jsonTable)
+              .where('id', 1)
+              .orWhereJsonOverlaps('payload->tags', [])
+              .where('id', 3)
+              .get(),
+        ),
+        [1],
+      );
+      expect(
+        ids(
+          await db
+              .table(jsonTable)
+              .where('id', 1)
+              .orWhereJsonDoesntOverlap('payload->tags', [])
+              .where('id', 3)
+              .orderBy('id')
+              .get(),
+        ),
+        [1, 3],
+      );
+    },
+  );
+
+  test('groupLimit supports counts and a global row limit', () async {
+    final q = db.table(groupLimitTable).groupLimit(1, 'grp').orderBy('val');
+    expect(await q.count(), 2);
+    expect(await q.count('val'), 2);
+    expect((await q.clone().limit(1).get()).length, 1);
+    expect(await q.clone().limit(0).get(), isEmpty);
+    expect(
+      await db
+          .table(groupLimitTable)
+          .groupLimit(2, 'grp')
+          .orderBy('val')
+          .offset(1)
+          .count(),
+      2,
+    );
+  });
+
+  test(
+    'groupLimit pagination applies page offsets to the outer result',
+    () async {
+      final q = db
+          .table(groupLimitTable)
+          .select(['id', 'val'])
+          .groupLimit(1, 'grp')
+          .orderByRaw('val + ?', [0]);
+      final sql = q.toSql();
+      final bindings = q.getBindings();
+      final first = await q.paginate(1, perPage: 1);
+      final second = await q.paginate(2, perPage: 1);
+      expect(first.total, 2);
+      expect(first.lastPage, 2);
+      expect(first.data.length, 1);
+      expect(first.hasMorePages, isTrue);
+      expect(second.total, 2);
+      expect(second.data.length, 1);
+      expect(second.hasMorePages, isFalse);
+      expect((ids(first.data) + ids(second.data))..sort(), [1, 4]);
+      expect((await q.paginate(3, perPage: 1)).data, isEmpty);
+
+      final simpleFirst = await q.simplePaginate(1, perPage: 1);
+      final simpleSecond = await q.simplePaginate(2, perPage: 1);
+      expect(simpleFirst.data.length, 1);
+      expect(simpleFirst.hasMorePages, isTrue);
+      expect(simpleSecond.data.length, 1);
+      expect(simpleSecond.hasMorePages, isFalse);
+      expect((ids(simpleFirst.data) + ids(simpleSecond.data))..sort(), [1, 4]);
+      expect(q.toSql(), sql);
+      expect(q.getBindings(), bindings);
+
+      final skipped = db
+          .table(groupLimitTable)
+          .groupLimit(2, 'grp')
+          .orderBy('val')
+          .offset(1);
+      final skippedPage = await skipped.paginate(1, perPage: 10);
+      expect(skippedPage.total, 2);
+      expect(ids(skippedPage.data)..sort(), [2, 5]);
+    },
+  );
 
   test('groupLimit limits rows per partition', () async {
     List<Object?> sortedIds(List<LaconicResult> rows) =>

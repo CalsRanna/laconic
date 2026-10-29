@@ -70,6 +70,8 @@ class SqliteGrammar extends SqlGrammar {
     if (limit != null) {
       buffer.write(' limit ?');
       bindings.add(limit);
+    } else if (offset != null) {
+      buffer.write(' limit -1');
     }
 
     if (offset != null) {
@@ -550,6 +552,10 @@ class SqliteGrammar extends SqlGrammar {
         if (value is! List) {
           throw LaconicException('JSON overlaps requires a list of values');
         }
+        if (value.isEmpty) {
+          parts.add('$boolean${not ? '1 = 1' : '1 = 0'}');
+          continue;
+        }
         final path = where['path'] as String?;
         final source =
             path == null
@@ -563,15 +569,11 @@ class SqliteGrammar extends SqlGrammar {
           placeholders.add('?');
           bindings.add(item);
         }
-        if (placeholders.isEmpty) {
-          parts.add('$boolean${not ? '1 = 1' : '1 = 0'}');
-        } else {
-          parts.add(
-            '$boolean${not ? 'not ' : ''}exists '
-            '(select 1 from $source where json_each.value in '
-            '(${placeholders.join(', ')}))',
-          );
-        }
+        parts.add(
+          '$boolean${not ? 'not ' : ''}exists '
+          '(select 1 from $source where json_each.value in '
+          '(${placeholders.join(', ')}))',
+        );
       } else if (type == 'fullText') {
         final table = (where['table'] as String?)?.trim() ?? '';
         if (table.isEmpty) {

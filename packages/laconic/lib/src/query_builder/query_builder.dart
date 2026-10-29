@@ -92,16 +92,25 @@ class QueryBuilder {
       );
     }
 
-    if (_groups.isNotEmpty || _unions.isNotEmpty || (_distinct && isStar)) {
-      final query = clone()..reorder();
+    if (_groups.isNotEmpty ||
+        _unions.isNotEmpty ||
+        (_distinct && isStar) ||
+        _groupLimit != null) {
+      final query = clone();
+      if (_groupLimit == null) {
+        query.reorder();
+        query._offset = null;
+      }
       query._limit = null;
-      query._offset = null;
       query._locks.clear();
       if (_unions.isEmpty &&
           _groups.isNotEmpty &&
           _columns.length == 1 &&
           _columns.first == '*') {
-        query._columns = List.of(_groups);
+        // Group cardinality does not need the bound grouping expressions again.
+        query._columns = ['1'];
+        query._distinct = false;
+        query._distinctOn = false;
       }
       final inner = query._compileSelect();
       final results = await _laconic.select(
@@ -890,6 +899,9 @@ class QueryBuilder {
   /// Limits the number of rows per partition of [column].
   ///
   /// Implemented with `row_number() over (partition by column ...)`.
+  /// An [offset] skips rows within each partition, while [limit] caps the
+  /// combined result. [paginate] and [simplePaginate] page the combined result
+  /// after applying these per-partition constraints.
   QueryBuilder groupLimit(int value, String column) {
     if (value < 0) {
       throw LaconicException('groupLimit must be zero or greater');
@@ -946,9 +958,10 @@ class QueryBuilder {
   /// Returns a page of results together with the total row count.
   Future<LaconicPage> paginate(int page, {int perPage = 15}) async {
     _validatePage(page, perPage);
-    final total = await clone().count();
+    final query = _paginationQuery();
+    final total = await query.clone().count();
     final lastPage = total == 0 ? 1 : (total + perPage - 1) ~/ perPage;
-    final data = await clone().forPage(page, perPage: perPage).get();
+    final data = await query.forPage(page, perPage: perPage).get();
     return LaconicPage(
       data: data,
       total: total,
@@ -962,7 +975,10 @@ class QueryBuilder {
   Future<LaconicSimplePage> simplePaginate(int page, {int perPage = 15}) async {
     _validatePage(page, perPage);
     final rows =
-        await clone().limit(perPage + 1).offset((page - 1) * perPage).get();
+        await _paginationQuery()
+            .limit(perPage + 1)
+            .offset((page - 1) * perPage)
+            .get();
     final hasMorePages = rows.length > perPage;
     final data = hasMorePages ? rows.sublist(0, perPage) : rows;
     return LaconicSimplePage(
@@ -1040,6 +1056,16 @@ class QueryBuilder {
 
   /// Number of rows used by pagination.
   Future<int> getCountForPagination() => count();
+
+  QueryBuilder _paginationQuery() {
+    final query = clone();
+    if (_groupLimit == null) return query;
+    query._limit = null;
+    return QueryBuilder(
+      laconic: _laconic,
+      table: _table,
+    ).fromSub(query, 'laconic_group_page').orderBy('laconic_row');
+  }
 
   void _validatePage(int page, int perPage) {
     if (page < 1) {
@@ -1284,9 +1310,7 @@ class QueryBuilder {
         !_distinct &&
         _columns.length == 1 &&
         _columns.first == '*') {
-      if (_groups.isNotEmpty) {
-        query._columns = List.of(_groups);
-      } else if (_havings.isEmpty) {
+      if (_groups.isNotEmpty || _havings.isEmpty) {
         query._columns = ['1'];
       }
     }
@@ -3723,8 +3747,9 @@ class QueryBuilder {
       buffer.write(' and laconic_row > $offset');
     }
     buffer.write(' order by laconic_row');
-    if (limitOverride != null) {
-      buffer.write(' limit $limitOverride');
+    final limit = limitOverride ?? _limit;
+    if (limit != null) {
+      buffer.write(' limit $limit');
     }
 
     return CompiledQuery(

@@ -353,6 +353,32 @@ void main() {
     expect(notMatching, isEmpty);
   });
 
+  test('text and streaming results preserve unsigned BIGINT values', () async {
+    final laconic = Laconic(MysqlDriver(_config()));
+    addTearDown(laconic.close);
+    final values = <Object>[
+      0,
+      9223372036854775807,
+      BigInt.parse('9223372036854775808'),
+      BigInt.parse('18446744073709551615'),
+    ];
+    for (final value in values) {
+      final sql = 'SELECT CAST($value AS UNSIGNED) AS value';
+      expect((await laconic.select(sql)).single['value'], value);
+      expect(
+        (await laconic.select('$sql WHERE 1 = ?', [1])).single['value'],
+        value,
+      );
+      expect((await laconic.selectStream(sql).toList()).single['value'], value);
+    }
+    expect(
+      (await laconic.select(
+        'SELECT CAST(-9223372036854775808 AS SIGNED) AS value',
+      )).single['value'],
+      -9223372036854775808,
+    );
+  });
+
   test('packets larger than 16 MiB are fragmented and reassembled', () async {
     final laconic = Laconic(
       MysqlDriver(_config(commandTimeout: const Duration(seconds: 60))),

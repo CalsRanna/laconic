@@ -86,6 +86,8 @@ class MysqlGrammar extends SqlGrammar {
     if (limit != null) {
       buffer.write(' limit ?');
       bindings.add(limit);
+    } else if (offset != null) {
+      buffer.write(' limit 18446744073709551615');
     }
 
     if (offset != null) {

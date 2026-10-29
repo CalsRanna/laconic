@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Avoid unused JSON path bindings for empty overlap/non-overlap lists.
+- Inherit grouped-count and `groupLimit` pagination fixes from the matching
+  unreleased core.
 - Preserve reordered and repeated numbered parameters when embedding SELECT
   subqueries, including nested subqueries and adjacent bound expressions.
 - Requires the matching unreleased core with `SqlGrammar.compileInlineSubquery`.
