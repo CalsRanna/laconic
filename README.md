@@ -500,19 +500,50 @@ final laconic = Laconic(
 );
 ```
 
+### Query identifiers and write scopes
+
+Column and table names are quoted for the current dialect, including qualified
+names and aliases. Use `Expression`, `selectRaw`, `groupByRaw`, `havingRaw`, or
+`fromRaw` for SQL expressions; strings such as `COUNT(*)` are now identifiers.
+JSON selectors work in ordinary predicates and projections, and in update keys:
+
+```dart
+await laconic.table('users').where('settings->enabled', true).update({
+  'settings->name': 'Alice',
+  'settings->notifications->email': false,
+});
+final names = await laconic.table('users').pluck('settings->name');
+```
+
+`update`, `delete`, and increments retain JOIN, ORDER BY, LIMIT, and OFFSET when
+the dialect supports them. MySQL/MariaDB reject nonzero write offsets and
+JOIN combined with ORDER BY/LIMIT. MariaDB 10.11 also rejects ORDER BY/LIMIT
+on aliased deletes. SQL Server supports JOIN and TOP limits but
+rejects ordered writes and nonzero offsets. SQLite uses rowid and PostgreSQL
+uses row identities to select the write scope; scoped SQLite writes require a
+rowid table. Grouping, HAVING, UNION, DISTINCT, derived/raw FROM sources,
+`groupLimit`, index hints, and locks are rejected for writes instead of ignored.
+`updateOrInsert` updates at most one matching row.
+
 ### Chunking Large Results
 
 `chunkById` reads in ascending order of a unique, non-null cursor column
 (default `id`). It replaces existing ordering, applies an initial offset only
 to the first batch, and requires the cursor column in the selected result.
-`column` chooses the cursor; `alias` qualifies it with a table alias.
+`column` chooses the SQL cursor (for example `u.id`); `alias` names its selected
+result column (for example `cursor_id`).
 Existing OR filters and UNION branches are included in cursor pagination.
 All chunk sizes must be positive. `chunk()` and `each()` use OFFSET pagination;
-`chunkById()` advances by the last cursor value.
+`chunkById()` advances by the last cursor value. `chunk`, `each`, and `lazy`
+require an explicit `orderBy`. All chunked readers preserve the total limit and
+initial offset without mutating the original query. `chunk`/`chunkById` callbacks
+accept `(rows)` or `(rows, page)` (one-based); `each`/`eachById` accept `(row)` or
+`(row, index)` (zero-based). Return `false` to stop; these methods return `false`
+when stopped and `true` on completion. Existing one-argument async callbacks work.
 
 ```dart
 // Process 100 records at a time
-await laconic.table('users').chunk(100, (users) async {
+await laconic.table('users').orderBy('id').chunk(100, (users) async {
   for (final user in users) {
     await processUser(user);
   }
@@ -524,7 +555,7 @@ await laconic.table('users').chunkById(100, (users) async {
 });
 
 // Per-row callback with automatic chunking
-await laconic.table('users').each((user) async {
+await laconic.table('users').orderBy('id').each((user) async {
   await sendWelcomeEmail(user['email']);
 });
 

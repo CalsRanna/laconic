@@ -14,9 +14,9 @@ void main() {
         .limit(2);
     expect(
       q.toSql(),
-      'select * from users where json_contains(payload, ?, ?) and id = ? limit ?',
+      'select * from `users` where json_contains(`payload`, ?, ?) and `id` = ? limit ?',
     );
-    expect(q.getBindings(), ['"a"', r'$.tags', 3, 2]);
+    expect(q.getBindings(), ['"a"', r'$."tags"', 3, 2]);
   });
   test('MariaDB rejects lateral joins before a connection is opened', () {
     expect(
@@ -24,6 +24,24 @@ void main() {
       throwsA(isA<LaconicException>()),
     );
   });
+  test(
+    'MariaDB aliased deletes reject ordering and limits before execution',
+    () async {
+      final q = db.table('users as target').where('target.id', 1);
+      for (final scoped in [
+        q.clone().limit(1),
+        q.clone().orderBy('target.id'),
+      ]) {
+        await expectLater(scoped.delete(), throwsA(isA<LaconicException>()));
+      }
+      final lateral = q.clone().joinLateral(db.table('posts'), 'p');
+      await expectLater(
+        lateral.update({'name': 'test'}),
+        throwsA(isA<LaconicException>()),
+      );
+      await expectLater(lateral.delete(), throwsA(isA<LaconicException>()));
+    },
+  );
   test('grammar is shared between driver instances', () {
     final other = MariadbDriver(
       const MariadbConfig(database: 'other', password: 'unused'),

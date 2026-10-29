@@ -1,5 +1,12 @@
 ## Unreleased
 
+- Quote query identifiers and support JSON scalar selectors/path updates. Retain
+  joined, ordered, and paginated writes using rowid target subqueries (requires
+  a rowid table).
+- **Breaking:** adopt the matching unreleased core query compiler contract and
+  chunking semantics. Use `Expression`/`*Raw` for SQL expressions. Existing
+  version numbers are retained until a coordinated core/driver release.
+
 - Implement core Schema Builder operations, column inspection, and transactional
   migration DDL. Reject constraint alterations requiring a table rebuild.
 

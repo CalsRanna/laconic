@@ -15,4 +15,5 @@ void main() => QueryRegressions.register(
       ),
     ),
   ),
+  supportsWriteOffset: true,
 );

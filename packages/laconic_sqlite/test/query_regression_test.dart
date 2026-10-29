@@ -4,4 +4,5 @@ import '../../laconic/test/regressions/query_regressions.dart';
 
 void main() => QueryRegressions.register(
   () => Laconic(SqliteDriver(SqliteConfig(':memory:'))),
+  supportsWriteOffset: true,
 );

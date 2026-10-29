@@ -14,4 +14,5 @@ void main() => QueryRegressions.register(
       ),
     ),
   ),
+  supportsLimitedJoinWrites: false,
 );

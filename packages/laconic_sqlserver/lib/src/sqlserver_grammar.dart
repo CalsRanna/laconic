@@ -9,16 +9,49 @@ part 'sqlserver_schema.dart';
 /// Handles SQL Server SQL syntax with `?` placeholders for parameter binding.
 class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
   @override
+  String compileJsonSelector(String column, String path) =>
+      'json_value(${wrap(column)}, ${compileSchemaLiteral(jsonPath(path))})';
+
+  @override
+  String compileBasicPredicate(
+    String column,
+    String comparator,
+    Object? value,
+    List<Object?> bindings,
+  ) => super.compileBasicPredicate(
+    column,
+    comparator,
+    column.contains('->') && value is bool ? '$value' : value,
+    bindings,
+  );
+
+  @override
+  String compileJsonUpdate(
+    String source,
+    String path,
+    Object? value,
+    List<Object?> bindings,
+  ) {
+    final sqlValue =
+        value is Map || value is List
+            ? 'json_query(${parameter(jsonEncode(value), bindings)})'
+            : value is bool
+            ? 'cast(${parameter(value, bindings)} as bit)'
+            : parameter(value, bindings);
+    return 'json_modify($source, ${compileSchemaLiteral(jsonPath(path))}, $sqlValue)';
+  }
+
+  @override
   String get randomOrderExpression => 'newid()';
 
   @override
   CompiledQuery compileSelect({
     required String table,
-    required List<String> columns,
+    required List<Object> columns,
     required List<Map<String, dynamic>> wheres,
     required List<Map<String, dynamic>> joins,
     required List<Map<String, dynamic>> orders,
-    required List<String> groups,
+    required List<Object> groups,
     required List<Map<String, dynamic>> havings,
     required bool distinct,
     int? limit,
@@ -45,13 +78,15 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
     bindings.addAll(selectBindings);
     if (fromSubquery != null) {
       if (fromAlias != null) {
-        buffer.write(' from (${fromSubquery.sql}) as $fromAlias');
+        buffer.write(
+          ' from (${fromSubquery.sql}) as ${quoteSchemaIdentifier(fromAlias)}',
+        );
       } else {
         buffer.write(' from ${fromSubquery.sql}');
       }
       bindings.addAll(fromSubquery.bindings);
     } else {
-      buffer.write(' from $table');
+      buffer.write(' from ${wrapTable(table)}');
     }
 
     if (indexHints.isNotEmpty) {
@@ -126,8 +161,8 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
 
     final columns = data.first.keys.toList();
 
-    buffer.write('insert into $table (');
-    buffer.write(columns.join(', '));
+    buffer.write('insert into ${wrapTable(table)} (');
+    buffer.write(columns.map(wrap).join(', '));
     buffer.write(') values ');
 
     for (var i = 0; i < data.length; i++) {
@@ -157,50 +192,53 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
     required String table,
     required Map<String, Object?> data,
     required List<Map<String, dynamic>> wheres,
+    List<Map<String, dynamic>> joins = const [],
+    List<Map<String, dynamic>> orders = const [],
+    int? limit,
+    int? offset,
   }) {
-    final buffer = StringBuffer();
     final bindings = <Object?>[];
-
-    buffer.write('update $table set ');
-
-    final entries = data.entries.toList();
-    for (var i = 0; i < entries.length; i++) {
-      final value = entries[i].value;
-      buffer.write(
-        '${entries[i].key} = ${value is Expression ? value.sql : '?'}',
+    if (orders.isNotEmpty || (offset != null && offset != 0)) {
+      throw LaconicException(
+        'SQL Server writes do not support ORDER BY or OFFSET',
       );
-      if (value is! Expression) {
-        bindings.add(value);
-      }
-      if (i < entries.length - 1) {
-        buffer.write(', ');
-      }
     }
-
+    final top = limit == null ? '' : ' top ($limit)';
+    final assignments = compileAssignments(data, bindings);
+    final sql = StringBuffer(
+      'update$top ${tableReference(table)} set $assignments from ${wrapTable(table)}',
+    );
+    sql.write(_compileJoins(joins, bindings));
     if (wheres.isNotEmpty) {
-      buffer.write(' where ');
-      buffer.write(_compileWheres(wheres, bindings));
+      sql.write(' where ${_compileWheres(wheres, bindings)}');
     }
-
-    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
+    return CompiledQuery(sql: sql.toString(), bindings: bindings);
   }
 
   @override
   CompiledQuery compileDelete({
     required String table,
     required List<Map<String, dynamic>> wheres,
+    List<Map<String, dynamic>> joins = const [],
+    List<Map<String, dynamic>> orders = const [],
+    int? limit,
+    int? offset,
   }) {
-    final buffer = StringBuffer();
     final bindings = <Object?>[];
-
-    buffer.write('delete from $table');
-
-    if (wheres.isNotEmpty) {
-      buffer.write(' where ');
-      buffer.write(_compileWheres(wheres, bindings));
+    if (orders.isNotEmpty || (offset != null && offset != 0)) {
+      throw LaconicException(
+        'SQL Server writes do not support ORDER BY or OFFSET',
+      );
     }
-
-    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
+    final top = limit == null ? '' : ' top ($limit)';
+    final sql = StringBuffer(
+      'delete$top ${tableReference(table)} from ${wrapTable(table)}',
+    );
+    sql.write(_compileJoins(joins, bindings));
+    if (wheres.isNotEmpty) {
+      sql.write(' where ${_compileWheres(wheres, bindings)}');
+    }
+    return CompiledQuery(sql: sql.toString(), bindings: bindings);
   }
 
   @override
@@ -210,11 +248,11 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
     String idColumn = 'id',
   }) {
     final compiled = compileInsert(table: table, data: [data]);
-    final columns = data.keys.join(', ');
-    final prefix = 'insert into $table ($columns)';
+    final columns = data.keys.map(wrap).join(', ');
+    final prefix = 'insert into ${wrapTable(table)} ($columns)';
     return CompiledQuery(
       sql:
-          '$prefix output inserted.$idColumn${compiled.sql.substring(prefix.length)}',
+          '$prefix output inserted.${wrap(idColumn)}${compiled.sql.substring(prefix.length)}',
       bindings: compiled.bindings,
     );
   }
@@ -230,14 +268,16 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
 
-    buffer.write('update $table set $column = $column + ?');
+    buffer.write(
+      'update ${wrapTable(table)} set ${wrap(column)} = ${wrap(column)} + ?',
+    );
     bindings.add(amount);
 
     if (extra != null && extra.isNotEmpty) {
       for (final entry in extra.entries) {
         final value = entry.value;
         buffer.write(
-          ', ${entry.key} = ${value is Expression ? value.sql : '?'}',
+          ', ${wrap(entry.key)} = ${value is Expression ? value.sql : '?'}',
         );
         if (value is! Expression) {
           bindings.add(value);
@@ -264,14 +304,16 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
 
-    buffer.write('update $table set $column = $column - ?');
+    buffer.write(
+      'update ${wrapTable(table)} set ${wrap(column)} = ${wrap(column)} - ?',
+    );
     bindings.add(amount);
 
     if (extra != null && extra.isNotEmpty) {
       for (final entry in extra.entries) {
         final value = entry.value;
         buffer.write(
-          ', ${entry.key} = ${value is Expression ? value.sql : '?'}',
+          ', ${wrap(entry.key)} = ${value is Expression ? value.sql : '?'}',
         );
         if (value is! Expression) {
           bindings.add(value);
@@ -289,7 +331,10 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
 
   @override
   CompiledQuery compileTruncate({required String table}) {
-    return CompiledQuery(sql: 'truncate table $table', bindings: []);
+    return CompiledQuery(
+      sql: 'truncate table ${wrapTable(table)}',
+      bindings: [],
+    );
   }
 
   @override
@@ -347,19 +392,21 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
         })
         .join(', ');
     final on = uniqueBy
-        .map((c) => 'laconic_target.$c = laconic_source.$c')
+        .map((c) => 'laconic_target.${wrap(c)} = laconic_source.${wrap(c)}')
         .join(' and ');
     final sql = StringBuffer(
-      'merge into $table with (holdlock) as laconic_target '
-      'using (values $rows) as laconic_source (${columns.join(', ')}) on $on',
+      'merge into ${wrapTable(table)} with (holdlock) as laconic_target '
+      'using (values $rows) as laconic_source (${columns.map(wrap).join(', ')}) on $on',
     );
     if (updates.isNotEmpty) {
       sql.write(' when matched then update set ');
-      sql.write(updates.map((c) => '$c = laconic_source.$c').join(', '));
+      sql.write(
+        updates.map((c) => '${wrap(c)} = laconic_source.${wrap(c)}').join(', '),
+      );
     }
     sql.write(
-      ' when not matched then insert (${columns.join(', ')}) values '
-      '(${columns.map((c) => 'laconic_source.$c').join(', ')});',
+      ' when not matched then insert (${columns.map(wrap).join(', ')}) values '
+      '(${columns.map((c) => 'laconic_source.${wrap(c)}').join(', ')});',
     );
     return CompiledQuery(sql: sql.toString(), bindings: bindings);
   }
@@ -371,17 +418,24 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
     bool distinct = false,
   }) {
     final argument =
-        function.toUpperCase() == 'AVG' ? 'cast($column as float)' : column;
+        function.toUpperCase() == 'AVG'
+            ? 'cast(${wrap(column)} as float)'
+            : wrap(column);
     return '$function(${distinct ? 'DISTINCT ' : ''}$argument)';
   }
 
   /// Compiles column names for SELECT clause.
-  String _compileColumns(List<String> columns) {
+  String _compileColumns(List<Object> columns) {
     if (columns.isEmpty || (columns.length == 1 && columns[0] == '*')) {
       return '*';
     }
     return columns
-        .map((column) => column == '1' ? '1 as laconic_exists' : column)
+        .map(
+          (column) =>
+              column is Expression && column.sql == '1'
+                  ? '1 as laconic_exists'
+                  : wrap(column),
+        )
         .join(', ');
   }
 
@@ -394,7 +448,10 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
 
     for (final join in joins) {
       final type = join['type'] as String? ?? 'inner';
-      final table = join['table'] as String;
+      final table =
+          join['tableBindings'] == null
+              ? wrapTable(join['table'] as String)
+              : join['table'] as String;
       final conditions = join['conditions'] as List<Map<String, dynamic>>;
       final tableBindings = join['tableBindings'] as List<Object?>?;
       if (tableBindings != null) {
@@ -452,35 +509,24 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
       if (type == 'on') {
         // ON clause: column = column
         parts.add(
-          '$boolean${condition['left']} ${condition['comparator']} ${condition['right']}',
+          '$boolean${wrap(condition['left'] as String)} ${condition['comparator']} ${wrap(condition['right'] as String)}',
         );
       } else if (type == 'where') {
-        // WHERE clause within JOIN
-        final value = condition['value'];
-        if (value is Expression) {
-          parts.add(
-            '$boolean${condition['column']} ${condition['comparator']} ${value.sql}',
-          );
-        } else {
-          parts.add(
-            '$boolean${condition['column']} ${condition['comparator']} ?',
-          );
-          bindings.add(value);
-        }
+        parts.add(
+          '$boolean${compileBasicPredicate(condition['column'] as String, condition['comparator'] as String, condition['value'], bindings)}',
+        );
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
-          '$boolean${condition['first']} ${condition['comparator']} ${condition['second']}',
+          '$boolean${wrap(condition['first'] as String)} ${condition['comparator']} ${wrap(condition['second'] as String)}',
         );
       } else if (type == 'null') {
-        // WHERE column IS NULL or WHERE column IS NOT NULL
-        final column = condition['column'];
-        final not = condition['not'] as bool;
-        final nullKeyword = not ? 'is not null' : 'is null';
-        parts.add('$boolean$column $nullKeyword');
+        parts.add(
+          '$boolean${compileNullPredicate(condition['column'] as String, condition['not'] as bool)}',
+        );
       } else if (type == 'in') {
         // WHERE column IN (?, ?, ?) or WHERE column NOT IN (?, ?, ?)
-        final column = condition['column'];
+        final column = wrap(condition['column'] as String);
         final values = condition['values'] as List<Object?>;
         final not = condition['not'] as bool;
         final inKeyword = not ? 'not in' : 'in';
@@ -495,7 +541,7 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
         }
       } else if (type == 'between') {
         // WHERE column BETWEEN ? AND ? or WHERE column NOT BETWEEN ? AND ?
-        final column = condition['column'];
+        final column = wrap(condition['column'] as String);
         final values = condition['values'] as List<Object?>;
         final not = condition['not'] as bool;
         final betweenKeyword = not ? 'not between' : 'between';
@@ -503,8 +549,9 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
         bindings.addAll(values);
       } else if (type == 'betweenColumns') {
         // WHERE column BETWEEN column1 AND column2
-        final column = condition['column'];
-        final betweenColumns = condition['betweenColumns'] as List<String>;
+        final column = wrap(condition['column'] as String);
+        final betweenColumns =
+            (condition['betweenColumns'] as List<String>).map(wrap).toList();
         final not = condition['not'] as bool;
         final betweenKeyword = not ? 'not between' : 'between';
         parts.add(
@@ -543,30 +590,26 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
       final type = where['type'];
 
       if (type == 'basic') {
-        final value = where['value'];
-        if (value is Expression) {
-          parts.add(
-            '$boolean${where['column']} ${where['comparator']} ${value.sql}',
-          );
-        } else {
-          parts.add('$boolean${where['column']} ${where['comparator']} ?');
-          bindings.add(value);
-        }
+        parts.add(
+          '$boolean${compileBasicPredicate(where['column'] as String, where['comparator'] as String, where['value'], bindings)}',
+        );
       } else if (type == 'like') {
         final not = where['not'] as bool;
         final keyword = not ? 'not like' : 'like';
         final value = where['value'];
         if (value is Expression) {
           parts.add(
-            '${boolean}lower(${where['column']}) $keyword lower(${value.sql})',
+            '${boolean}lower(${wrap(where['column'] as String)}) $keyword lower(${value.sql})',
           );
         } else {
-          parts.add('${boolean}lower(${where['column']}) $keyword lower(?)');
+          parts.add(
+            '${boolean}lower(${wrap(where['column'] as String)}) $keyword lower(?)',
+          );
           bindings.add(value);
         }
       } else if (type == 'subquery') {
         parts.add(
-          '$boolean${where['column']} ${where['comparator']} (${where['sql']})',
+          '$boolean${wrap(where['column'] as String)} ${where['comparator']} (${where['sql']})',
         );
         bindings.addAll(where['bindings'] as List<Object?>);
       } else if (type == 'binary') {
@@ -576,12 +619,13 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
       } else if (type == 'jsonContainsKey') {
         final not = where['not'] as bool;
         parts.add(
-          '${boolean}coalesce(json_path_exists(cast(${where['column']} as nvarchar(max)), ?), 0) = ${not ? 0 : 1}',
+          '${boolean}coalesce(json_path_exists(cast(${wrap(where['column'] as String)} as nvarchar(max)), ?), 0) = ${not ? 0 : 1}',
         );
         bindings.add(where['path']);
       } else if (type == 'jsonLength') {
         final path = where['path'] as String?;
-        final column = "cast(${where['column']} as nvarchar(max))";
+        final column =
+            "cast(${wrap(where['column'] as String)} as nvarchar(max))";
         final source = path == null ? column : 'json_query($column, ?)';
         if (path != null) bindings.add(path);
         parts.add(
@@ -591,7 +635,7 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
         );
         bindings.add(where['value']);
       } else if (type == 'fullText') {
-        final columns = (where['columns'] as List<String>).join(', ');
+        final columns = (where['columns'] as List<String>).map(wrap).join(', ');
         final options = where['options'] as Map<String, dynamic>;
         if (options.keys.any((key) => key != 'mode') ||
             ![null, 'natural language', 'boolean'].contains(options['mode'])) {
@@ -608,11 +652,11 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
-          '$boolean${where['first']} ${where['comparator']} ${where['second']}',
+          '$boolean${wrap(where['first'] as String)} ${where['comparator']} ${wrap(where['second'] as String)}',
         );
       } else if (type == 'in') {
         // WHERE column IN (?, ?, ?) or WHERE column NOT IN (?, ?, ?)
-        final column = where['column'];
+        final column = wrap(where['column'] as String);
         final values = where['values'] as List<Object?>;
         final not = where['not'] as bool;
         final inKeyword = not ? 'not in' : 'in';
@@ -628,18 +672,16 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
       } else if (type == 'inSubquery') {
         final not = where['not'] as bool;
         parts.add(
-          '$boolean${where['column']} ${not ? 'not in' : 'in'} (${where['sql']})',
+          '$boolean${wrap(where['column'] as String)} ${not ? 'not in' : 'in'} (${where['sql']})',
         );
         bindings.addAll(where['bindings'] as List<Object?>);
       } else if (type == 'null') {
-        // WHERE column IS NULL or WHERE column IS NOT NULL
-        final column = where['column'];
-        final not = where['not'] as bool;
-        final nullKeyword = not ? 'is not null' : 'is null';
-        parts.add('$boolean$column $nullKeyword');
+        parts.add(
+          '$boolean${compileNullPredicate(where['column'] as String, where['not'] as bool)}',
+        );
       } else if (type == 'between') {
         // WHERE column BETWEEN ? AND ? or WHERE column NOT BETWEEN ? AND ?
-        final column = where['column'];
+        final column = wrap(where['column'] as String);
         final values = where['values'] as List<Object?>;
         final not = where['not'] as bool;
         final betweenKeyword = not ? 'not between' : 'between';
@@ -647,15 +689,16 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
         bindings.addAll(values);
       } else if (type == 'betweenColumns') {
         // WHERE column BETWEEN column1 AND column2
-        final column = where['column'];
-        final betweenColumns = where['betweenColumns'] as List<String>;
+        final column = wrap(where['column'] as String);
+        final betweenColumns =
+            (where['betweenColumns'] as List<String>).map(wrap).toList();
         final not = where['not'] as bool;
         final betweenKeyword = not ? 'not between' : 'between';
         parts.add(
           '$boolean$column $betweenKeyword ${betweenColumns[0]} and ${betweenColumns[1]}',
         );
       } else if (type == 'integerInRaw') {
-        final column = where['column'];
+        final column = wrap(where['column'] as String);
         final values = where['values'] as List<int>;
         final not = where['not'] as bool;
         if (values.isEmpty) {
@@ -668,7 +711,7 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
       } else if (type == 'rowValues') {
         parts.add('$boolean${_compileRowValues(where, bindings)}');
       } else if (type == 'valueBetween') {
-        final columns = where['columns'] as List<String>;
+        final columns = (where['columns'] as List<String>).map(wrap).toList();
         final not = where['not'] as bool;
         final keyword = not ? 'not between' : 'between';
         final value = where['value'];
@@ -684,15 +727,17 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
         final value = where['value'];
         if (value is Expression) {
           parts.add(
-            '$boolean${where['column']} is not distinct from ${value.sql}',
+            '$boolean${wrap(where['column'] as String)} is not distinct from ${value.sql}',
           );
         } else {
-          parts.add('$boolean${where['column']} is not distinct from ?');
+          parts.add(
+            '$boolean${wrap(where['column'] as String)} is not distinct from ?',
+          );
           bindings.add(value);
         }
       } else if (type == 'all') {
         // WHERE (col1 = ? AND col2 = ? AND col3 = ?)
-        final columns = where['columns'] as List<String>;
+        final columns = (where['columns'] as List<String>).map(wrap).toList();
         final comparator = where['comparator'];
         final value = where['value'];
         final conditions = columns
@@ -704,7 +749,7 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
         }
       } else if (type == 'any') {
         // WHERE (col1 = ? OR col2 = ? OR col3 = ?)
-        final columns = where['columns'] as List<String>;
+        final columns = (where['columns'] as List<String>).map(wrap).toList();
         final comparator = where['comparator'];
         final value = where['value'];
         final conditions = columns
@@ -716,7 +761,7 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
         }
       } else if (type == 'none') {
         // WHERE NOT (col1 = ? OR col2 = ? OR col3 = ?)
-        final columns = where['columns'] as List<String>;
+        final columns = (where['columns'] as List<String>).map(wrap).toList();
         final comparator = where['comparator'];
         final value = where['value'];
         final conditions = columns
@@ -752,7 +797,7 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
   }
 
   String _compileRowValues(Map<String, dynamic> where, List<Object?> bindings) {
-    final columns = where['columns'] as List<String>;
+    final columns = (where['columns'] as List<String>).map(wrap).toList();
     final values = where['values'] as List<Object?>;
     final operator = where['operator'] as String;
     String comparison(int i, String op) {
@@ -798,7 +843,7 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
     final overlaps = where['type'] == 'jsonOverlaps';
     final not = where['not'] as bool;
     final path = where['path'] as String?;
-    final column = "cast(${where['column']} as nvarchar(max))";
+    final column = "cast(${wrap(where['column'] as String)} as nvarchar(max))";
     // JSON_QUERY selects an array path; OPENJSON preserves scalar JSON types.
     final source = path == null ? column : 'json_query($column, ?)';
     final checks = <String>[];
@@ -835,6 +880,7 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
   /// Returns a complete SQL expression for a date-part extraction.
   /// The returned string already includes the column reference.
   String _dateExpression(String dateType, String column) {
+    column = wrap(column);
     switch (dateType) {
       case 'date':
         return 'cast($column as date)';
@@ -865,7 +911,9 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
         buffer.write(order['sql']);
         bindings.addAll(order['bindings'] as List<Object?>);
       } else {
-        buffer.write('${order['column']} ${order['direction']}');
+        buffer.write(
+          '${wrap(order['column'] as String)} ${order['direction']}',
+        );
       }
       if (i < orders.length - 1) {
         buffer.write(', ');
@@ -876,8 +924,8 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
   }
 
   /// Compiles GROUP BY clauses.
-  String _compileGroups(List<String> groups) {
-    return ' group by ${groups.join(', ')}';
+  String _compileGroups(List<Object> groups) {
+    return ' group by ${groups.map(wrap).join(', ')}';
   }
 
   /// Compiles HAVING clauses.
@@ -900,22 +948,24 @@ class SqlserverGrammar extends SqlGrammar with _SqlserverSchema {
       } else if (having['type'] == 'null') {
         final not = having['not'] as bool;
         parts.add(
-          '$boolean${having['column']} ${not ? 'is not null' : 'is null'}',
+          '$boolean${wrap(having['column'] as Object)} ${not ? 'is not null' : 'is null'}',
         );
       } else if (having['type'] == 'between') {
         final not = having['not'] as bool;
         parts.add(
-          '$boolean${having['column']} ${not ? 'not between' : 'between'} ? and ?',
+          '$boolean${wrap(having['column'] as Object)} ${not ? 'not between' : 'between'} ? and ?',
         );
         bindings.addAll(having['values'] as List<Object?>);
       } else {
         final value = having['value'];
         if (value is Expression) {
           parts.add(
-            '$boolean${having['column']} ${having['comparator']} ${value.sql}',
+            '$boolean${wrap(having['column'] as Object)} ${having['comparator']} ${value.sql}',
           );
         } else {
-          parts.add('$boolean${having['column']} ${having['comparator']} ?');
+          parts.add(
+            '$boolean${wrap(having['column'] as Object)} ${having['comparator']} ?',
+          );
           bindings.add(value);
         }
       }

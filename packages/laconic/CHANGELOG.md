@@ -1,5 +1,25 @@
 ## Unreleased
 
+- **Breaking:** quote query identifiers, qualified names, and aliases. Replace
+  SQL expressions passed as column/table strings with `Expression` or the
+  corresponding `*Raw` method. Ordinary JSON selectors now compile for scalar
+  predicates, projections, and path updates; sibling assignments preserve
+  unrelated properties and binding order.
+- Preserve JOIN, ORDER BY, LIMIT, and OFFSET for update/delete/increment operations
+  where supported. Reject unsupported write scopes before execution rather than
+  silently broadening them. `updateOrInsert` updates at most one matching row.
+- **Breaking:** `chunk`, `each`, and `lazy` require ordering. Chunked readers retain
+  total limits and initial offsets. `chunk`/`chunkById`/`each`/`eachById` return
+  `Future<bool>` and accept early-stop callbacks with optional page/index arguments.
+  Keyset `alias` now names the result column; change `alias: 'u'` to
+  `column: 'u.id'`, adding `alias: 'cursor_id'` only for an aliased projection.
+- **Driver contract:** SELECT/UNION columns and SELECT groups use `List<Object>`
+  for explicit expressions. UPDATE/DELETE compilers accept optional joins, orders,
+  limit, and offset. Third-party grammars must apply or reject these scopes and
+  implement identifier/JSON compilation. Release core and all five matching
+  drivers together with compatible major/minimum versions; current workspace
+  version numbers remain unchanged pending the release plan.
+
 - **Breaking:** remove the top-level `raw(sql)` helper. Use `Expression(sql)`
   (or `const Expression(sql)`) from the same public library instead.
 - **Breaking (unreleased CLI):** replace `runMigrationCli(...)` and

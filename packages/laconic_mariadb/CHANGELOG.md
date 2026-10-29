@@ -1,5 +1,12 @@
 ## Unreleased
 
+- Inherit identifier quoting, JSON selectors/path updates, and write scopes from
+  MySQL; reject nonzero write offsets and JOIN with ORDER BY/LIMIT. Compile
+  aliased DELETE using MariaDB 10.11 syntax and reject ORDER BY/LIMIT on it.
+- **Breaking:** adopt the matching unreleased core query compiler contract and
+  chunking semantics. Use `Expression`/`*Raw` for SQL expressions. Existing
+  version numbers are retained until a coordinated core/driver release.
+
 - Support core Schema Builder operations through the shared MySQL compilation
   implementation, verified against MariaDB.
 

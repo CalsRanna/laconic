@@ -7,5 +7,6 @@ void main() {
   QueryRegressions.register(
     SqlserverTestDatabase.createDatabase,
     supportsInsertOrIgnore: false,
+    supportsOrderedWrites: false,
   );
 }

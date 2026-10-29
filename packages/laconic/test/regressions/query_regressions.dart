@@ -1,5 +1,6 @@
 import 'package:laconic/laconic.dart';
 import 'package:test/test.dart';
+import 'query_semantics_regressions.dart';
 
 // The same behavior checks run against each real database driver.
 
@@ -7,7 +8,16 @@ abstract final class QueryRegressions {
   static void register(
     Laconic Function() createDatabase, {
     bool supportsInsertOrIgnore = true,
+    bool supportsOrderedWrites = true,
+    bool supportsWriteOffset = false,
+    bool supportsLimitedJoinWrites = true,
   }) {
+    QuerySemanticsRegressions.register(
+      createDatabase,
+      supportsOrderedWrites: supportsOrderedWrites,
+      supportsWriteOffset: supportsWriteOffset,
+      supportsLimitedJoinWrites: supportsLimitedJoinWrites,
+    );
     const table = 'laconic_query_regressions';
     const jsonTable = 'laconic_json_probe';
     const groupLimitTable = 'laconic_group_limit_probe';
@@ -138,7 +148,7 @@ abstract final class QueryRegressions {
           seen.addAll(ids(rows));
           rows.last.values[0] = -100;
           rows.clear();
-        }, alias: 't');
+        }, column: 't.id');
         expect(seen, [1, 2, 3, 4, 5]);
       },
     );
@@ -228,7 +238,7 @@ abstract final class QueryRegressions {
       expect(await matches.exists(), isTrue);
       expect(await matches.count(), 1);
       final projected = query()
-          .select(['active', 'COUNT(*) AS total'])
+          .select(['active', const Expression('COUNT(*) AS total')])
           .groupBy('active')
           .havingRaw('COUNT(*) > ?', [2]);
       expect(await projected.exists(), isTrue);
@@ -487,15 +497,24 @@ abstract final class QueryRegressions {
           await query()
               .selectRaw('active, count(*) as total')
               .groupBy('active')
-              .havingBetween('count(*)', min: 2, max: 3)
+              .havingBetween(const Expression('count(*)'), min: 2, max: 3)
               .orderBy('active')
               .get();
       expect(groups.length, 2);
       expect(groups.map((r) => '${r['total']}').toList(), ['2', '3']);
 
-      expect(await query().groupBy('active').havingNull('count(*)').count(), 0);
       expect(
-        await query().groupBy('active').havingNotNull('count(*)').count(),
+        await query()
+            .groupBy('active')
+            .havingNull(const Expression('count(*)'))
+            .count(),
+        0,
+      );
+      expect(
+        await query()
+            .groupBy('active')
+            .havingNotNull(const Expression('count(*)'))
+            .count(),
         2,
       );
 
@@ -504,8 +523,12 @@ abstract final class QueryRegressions {
               .groupBy('active')
               .havingNested(
                 (q) => q
-                    .having('count(*)', 2, comparator: '>=')
-                    .orHaving('count(*)', 3, comparator: '>='),
+                    .having(const Expression('count(*)'), 2, comparator: '>=')
+                    .orHaving(
+                      const Expression('count(*)'),
+                      3,
+                      comparator: '>=',
+                    ),
               )
               .count();
       expect(nested, 2);
@@ -607,8 +630,8 @@ abstract final class QueryRegressions {
 
     test('toRawSql substitutes bindings', () async {
       final sql = query().where('id', 1).where('label', "O'Reilly").toRawSql();
-      expect(sql, contains('id = 1'));
-      expect(sql, contains("label = 'O''Reilly'"));
+      expect(sql, contains('${db.grammar.wrap('id')} = 1'));
+      expect(sql, contains("${db.grammar.wrap('label')} = 'O''Reilly'"));
     });
 
     test('inOrderOf orders by the given values', () async {
@@ -1297,7 +1320,7 @@ abstract final class QueryRegressions {
       await q.chunkById(
         1,
         (rows) async => chunks.addAll(ids(rows)),
-        alias: 'g',
+        column: 'g.id',
       );
       expect(chunks, [3, 5]);
       expect(await q.lazyById(1, 'g.id').map((row) => row['id']).toList(), [
@@ -1308,7 +1331,7 @@ abstract final class QueryRegressions {
       await q.eachById(
         (row) async => each.add(row['id']),
         count: 1,
-        alias: 'g',
+        column: 'g.id',
       );
       expect(each, [3, 5]);
       final skipped = db

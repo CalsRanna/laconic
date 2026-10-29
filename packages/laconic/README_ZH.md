@@ -308,13 +308,40 @@ final laconic = Laconic(
 );
 ```
 
+### 标识符、JSON 路径与写入范围
+
+列名、表名、限定名称和别名会按数据库方言引用。SQL 表达式请使用 `Expression`、
+`selectRaw`、`groupByRaw`、`havingRaw` 或 `fromRaw`；`COUNT(*)` 这样的普通字符串
+现在会被视为列名。普通条件、查询列和更新键均支持 JSON 路径：
+
+```dart
+await laconic.table('users').where('settings->enabled', true).update({
+  'settings->name': 'Alice',
+  'settings->notifications->email': false,
+});
+final names = await laconic.table('users').pluck('settings->name');
+```
+
+`update`、`delete` 和增减操作会保留方言支持的 JOIN、排序、LIMIT 和 OFFSET。
+MySQL/MariaDB 拒绝非零写入 OFFSET，以及 JOIN 与排序/LIMIT 的组合；MariaDB 10.11
+带表别名的 DELETE 也不支持排序/LIMIT。SQL Server
+支持 JOIN 和 TOP 限制，拒绝排序写入及非零 OFFSET。SQLite 用 rowid、PostgreSQL
+用行标识子查询限定目标行，因此 SQLite 的这类写入需要 rowid 表。
+分组、HAVING、UNION、DISTINCT、派生/原始 FROM、`groupLimit`、索引提示和锁
+用于写入时会报错，不再被忽略。`updateOrInsert` 最多更新一条匹配记录。
+
 ### 大数据集分块处理
 
 `chunkById` 按唯一、非 null 的游标列升序读取，默认列为 `id`。它会替换已有排序，
 初始 offset 只作用于第一批，且查询结果必须包含游标列。
-`column` 指定游标列，`alias` 用于添加表别名前缀。游标过滤覆盖原有 OR 条件和完整 UNION。
+`column` 指定 SQL 游标列（如 `u.id`），`alias` 指定查询结果中的列名（如 `cursor_id`）。游标过滤覆盖原有 OR 条件和完整 UNION。
 所有分块大小必须为正数。`chunk()` 和 `each()` 使用 OFFSET 分页，
-`chunkById()` 使用上一批最后一行的游标值继续读取。
+`chunkById()` 使用上一批最后一行的游标值继续读取。`chunk`、`each` 和 `lazy`
+需要显式 `orderBy`。分块读取保留总 LIMIT 和初始 OFFSET，且不修改原查询。
+`chunk`/`chunkById` 回调接受 `(rows)` 或 `(rows, page)`，页码从 1 开始；
+`each`/`eachById` 接受 `(row)` 或 `(row, index)`，索引从 0 开始。
+回调可同步或异步，返回 `false` 提前停止；这些方法正常完成返回 `true`，提前停止返回
+`false`。现有单参数异步回调仍可使用。
 
 ```dart
 await laconic.table('users').select(['id', 'name']).chunkById(100, (rows) async {

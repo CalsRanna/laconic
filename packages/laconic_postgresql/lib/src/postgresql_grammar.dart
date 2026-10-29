@@ -11,6 +11,51 @@ part 'postgresql_schema.dart';
 /// - Positional parameters ($1, $2, etc.)
 /// - RETURNING clause for insertGetId
 class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
+  String _jsonSelector(String column, String path, {bool text = true}) {
+    final segments = jsonPathSegments(
+      path,
+    ).map((part) => compileSchemaLiteral('$part')).join(', ');
+    return 'jsonb_extract_path${text ? '_text' : ''}((${wrap(column)})::jsonb, $segments)';
+  }
+
+  @override
+  String compileJsonSelector(String column, String path) =>
+      _jsonSelector(column, path);
+
+  @override
+  String compileBasicPredicate(
+    String column,
+    String comparator,
+    Object? value,
+    List<Object?> bindings,
+  ) {
+    if (column.contains('->') &&
+        value is! String &&
+        value is! Expression &&
+        value != null) {
+      final selector = splitJsonSelector(column);
+      return '${_jsonSelector(selector.column, selector.path, text: false)} $comparator ${parameter(jsonEncode(value), bindings)}::jsonb';
+    }
+    return super.compileBasicPredicate(column, comparator, value, bindings);
+  }
+
+  @override
+  String compileJsonUpdate(
+    String source,
+    String path,
+    Object? value,
+    List<Object?> bindings,
+  ) {
+    final segments = jsonPathSegments(
+      path,
+    ).map((part) => compileSchemaLiteral('$part')).join(', ');
+    final sqlValue =
+        value is Expression
+            ? value.sql
+            : parameter(jsonEncode(value), bindings);
+    return 'jsonb_set(($source)::jsonb, array[$segments]::text[], ($sqlValue)::jsonb)';
+  }
+
   @override
   bool get numberedPlaceholders => true;
 
@@ -31,11 +76,11 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
   @override
   CompiledQuery compileSelect({
     required String table,
-    required List<String> columns,
+    required List<Object> columns,
     required List<Map<String, dynamic>> wheres,
     required List<Map<String, dynamic>> joins,
     required List<Map<String, dynamic>> orders,
-    required List<String> groups,
+    required List<Object> groups,
     required List<Map<String, dynamic>> havings,
     required bool distinct,
     int? limit,
@@ -54,7 +99,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
     buffer.write('select ');
     if (distinct) {
       if (distinctColumns != null && distinctColumns.isNotEmpty) {
-        buffer.write('distinct on (${distinctColumns.join(', ')}) ');
+        buffer.write('distinct on (${distinctColumns.map(wrap).join(', ')}) ');
       } else {
         buffer.write('distinct ');
       }
@@ -73,13 +118,15 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         offset: bindings.length,
       );
       if (fromAlias != null) {
-        buffer.write(' from (${embedded.sql}) as $fromAlias');
+        buffer.write(
+          ' from (${embedded.sql}) as ${quoteSchemaIdentifier(fromAlias)}',
+        );
       } else {
         buffer.write(' from ${embedded.sql}');
       }
       bindings.addAll(embedded.bindings);
     } else {
-      buffer.write(' from $table');
+      buffer.write(' from ${wrapTable(table)}');
     }
 
     if (joins.isNotEmpty) {
@@ -137,7 +184,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
   CompiledQuery compileUnion({
     required List<CompiledQuery> queries,
     required List<bool> all,
-    required List<String> columns,
+    required List<Object> columns,
     required List<Map<String, dynamic>> orders,
     List<Map<String, dynamic>> wheres = const [],
     int? limit,
@@ -176,7 +223,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
     );
     return CompiledQuery(
       sql: shifted.sql.replaceFirst(
-        'from laconic_union',
+        'from ${wrapTable('laconic_union')}',
         'from ($sql) as laconic_union',
       ),
       bindings: [...bindings, ...outer.bindings],
@@ -193,8 +240,8 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
 
     final columns = data.first.keys.toList();
 
-    buffer.write('insert into $table (');
-    buffer.write(columns.join(', '));
+    buffer.write('insert into ${wrapTable(table)} (');
+    buffer.write(columns.map(wrap).join(', '));
     buffer.write(') values ');
 
     for (var i = 0; i < data.length; i++) {
@@ -230,7 +277,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
     final compiled = compileInsert(table: table, data: [data]);
     // Add RETURNING clause for PostgreSQL
     return CompiledQuery(
-      sql: '${compiled.sql} returning $idColumn',
+      sql: '${compiled.sql} returning ${wrap(idColumn)}',
       bindings: compiled.bindings,
     );
   }
@@ -247,7 +294,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
     final bindings = <Object?>[];
 
     buffer.write(
-      'update $table set $column = $column + \$${bindings.length + 1}',
+      'update ${wrapTable(table)} set ${wrap(column)} = ${wrap(column)} + \$${bindings.length + 1}',
     );
     bindings.add(amount);
 
@@ -255,9 +302,9 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
       for (final entry in extra.entries) {
         final value = entry.value;
         if (value is Expression) {
-          buffer.write(', ${entry.key} = ${value.sql}');
+          buffer.write(', ${wrap(entry.key)} = ${value.sql}');
         } else {
-          buffer.write(', ${entry.key} = \$${bindings.length + 1}');
+          buffer.write(', ${wrap(entry.key)} = \$${bindings.length + 1}');
           bindings.add(value);
         }
       }
@@ -283,7 +330,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
     final bindings = <Object?>[];
 
     buffer.write(
-      'update $table set $column = $column - \$${bindings.length + 1}',
+      'update ${wrapTable(table)} set ${wrap(column)} = ${wrap(column)} - \$${bindings.length + 1}',
     );
     bindings.add(amount);
 
@@ -291,9 +338,9 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
       for (final entry in extra.entries) {
         final value = entry.value;
         if (value is Expression) {
-          buffer.write(', ${entry.key} = ${value.sql}');
+          buffer.write(', ${wrap(entry.key)} = ${value.sql}');
         } else {
-          buffer.write(', ${entry.key} = \$${bindings.length + 1}');
+          buffer.write(', ${wrap(entry.key)} = \$${bindings.length + 1}');
           bindings.add(value);
         }
       }
@@ -312,32 +359,25 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
     required String table,
     required Map<String, Object?> data,
     required List<Map<String, dynamic>> wheres,
+    List<Map<String, dynamic>> joins = const [],
+    List<Map<String, dynamic>> orders = const [],
+    int? limit,
+    int? offset,
   }) {
-    final buffer = StringBuffer();
     final bindings = <Object?>[];
-
-    buffer.write('update $table set ');
-
-    final entries = data.entries.toList();
-    for (var i = 0; i < entries.length; i++) {
-      final value = entries[i].value;
-      if (value is Expression) {
-        buffer.write('${entries[i].key} = ${value.sql}');
-      } else {
-        buffer.write('${entries[i].key} = \$${bindings.length + 1}');
-        bindings.add(value);
-      }
-      if (i < entries.length - 1) {
-        buffer.write(', ');
-      }
-    }
-
-    if (wheres.isNotEmpty) {
-      buffer.write(' where ');
-      buffer.write(_compileWheres(wheres, bindings));
-    }
-
-    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
+    final assignments = compileAssignments(data, bindings);
+    final sql = StringBuffer('update ${wrapTable(table)} set $assignments');
+    final scope = _compileWriteScope(
+      table,
+      wheres,
+      joins,
+      orders,
+      limit,
+      offset,
+      bindings,
+    );
+    if (scope.isNotEmpty) sql.write(' where $scope');
+    return CompiledQuery(sql: sql.toString(), bindings: bindings);
   }
 
   @override
@@ -347,57 +387,45 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
     required Map<String, Object?> data,
     required List<Map<String, dynamic>> wheres,
   }) {
-    final buffer = StringBuffer();
     final bindings = <Object?>[];
-
-    buffer.write('update $table set ');
-
-    final entries = data.entries.toList();
-    for (var i = 0; i < entries.length; i++) {
-      final value = entries[i].value;
-      if (value is Expression) {
-        buffer.write('${entries[i].key} = ${value.sql}');
-      } else {
-        buffer.write('${entries[i].key} = \$${bindings.length + 1}');
-        bindings.add(value);
-      }
-      if (i < entries.length - 1) {
-        buffer.write(', ');
-      }
-    }
-
-    buffer.write(' from $from');
-
+    final assignments = compileAssignments(data, bindings);
+    final sql = StringBuffer(
+      'update ${wrapTable(table)} set $assignments from ${wrapTable(from)}',
+    );
     if (wheres.isNotEmpty) {
-      buffer.write(' where ');
-      buffer.write(_compileWheres(wheres, bindings));
+      sql.write(' where ${_compileWheres(wheres, bindings)}');
     }
-
-    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
+    return CompiledQuery(sql: sql.toString(), bindings: bindings);
   }
 
   @override
   CompiledQuery compileDelete({
     required String table,
     required List<Map<String, dynamic>> wheres,
+    List<Map<String, dynamic>> joins = const [],
+    List<Map<String, dynamic>> orders = const [],
+    int? limit,
+    int? offset,
   }) {
-    final buffer = StringBuffer();
     final bindings = <Object?>[];
-
-    buffer.write('delete from $table');
-
-    if (wheres.isNotEmpty) {
-      buffer.write(' where ');
-      buffer.write(_compileWheres(wheres, bindings));
-    }
-
-    return CompiledQuery(sql: buffer.toString(), bindings: bindings);
+    final sql = StringBuffer('delete from ${wrapTable(table)}');
+    final scope = _compileWriteScope(
+      table,
+      wheres,
+      joins,
+      orders,
+      limit,
+      offset,
+      bindings,
+    );
+    if (scope.isNotEmpty) sql.write(' where $scope');
+    return CompiledQuery(sql: sql.toString(), bindings: bindings);
   }
 
   @override
   CompiledQuery compileTruncate({required String table}) {
     return CompiledQuery(
-      sql: 'truncate table $table restart identity',
+      sql: 'truncate table ${wrapTable(table)} restart identity',
       bindings: [],
     );
   }
@@ -420,7 +448,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
     required List<String> columns,
     required String sql,
   }) {
-    return 'insert into $table (${columns.join(', ')}) $sql '
+    return 'insert into ${wrapTable(table)} (${columns.map(wrap).join(', ')}) $sql '
         'on conflict do nothing';
   }
 
@@ -432,7 +460,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
     List<String>? update,
   }) {
     final compiled = compileInsert(table: table, data: data);
-    final conflictCols = uniqueBy.join(', ');
+    final conflictCols = uniqueBy.map(wrap).join(', ');
     final updateCols =
         update ?? data.first.keys.where((k) => !uniqueBy.contains(k)).toList();
     if (updateCols.isEmpty) {
@@ -441,7 +469,9 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         bindings: compiled.bindings,
       );
     }
-    final setClauses = updateCols.map((c) => '$c = excluded.$c').join(', ');
+    final setClauses = updateCols
+        .map((c) => '${wrap(c)} = excluded.${wrap(c)}')
+        .join(', ');
     return CompiledQuery(
       sql:
           '${compiled.sql} on conflict($conflictCols) do update set $setClauses',
@@ -449,12 +479,50 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
     );
   }
 
+  String _compileWriteScope(
+    String table,
+    List<Map<String, dynamic>> wheres,
+    List<Map<String, dynamic>> joins,
+    List<Map<String, dynamic>> orders,
+    int? limit,
+    int? offset,
+    List<Object?> bindings,
+  ) {
+    if (joins.isEmpty && orders.isEmpty && limit == null && offset == null) {
+      return _compileWheres(wheres, bindings);
+    }
+    final identity =
+        '(${tableReference(table)}.tableoid, ${tableReference(table)}.ctid)';
+    final query = compileSelect(
+      table: table,
+      columns: [
+        Expression('${tableReference(table)}.tableoid'),
+        Expression('${tableReference(table)}.ctid'),
+      ],
+      wheres: wheres,
+      joins: joins,
+      orders: orders,
+      groups: [],
+      havings: [],
+      distinct: false,
+      limit: limit,
+      offset: offset,
+    );
+    final embedded = PostgresqlPlaceholders.compile(
+      query.sql,
+      query.bindings,
+      offset: bindings.length,
+    );
+    bindings.addAll(embedded.bindings);
+    return '$identity in (${embedded.sql})';
+  }
+
   /// Compiles column names for SELECT clause.
-  String _compileColumns(List<String> columns) {
+  String _compileColumns(List<Object> columns) {
     if (columns.isEmpty || (columns.length == 1 && columns[0] == '*')) {
       return '*';
     }
-    return columns.join(', ');
+    return columns.map(wrap).join(', ');
   }
 
   /// Compiles JOIN clauses.
@@ -466,7 +534,10 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
 
     for (final join in joins) {
       final type = join['type'] as String? ?? 'inner';
-      final table = join['table'] as String;
+      final table =
+          join['tableBindings'] == null
+              ? wrapTable(join['table'] as String)
+              : join['table'] as String;
       final conditions = join['conditions'] as List<Map<String, dynamic>>;
       final tableBindings = join['tableBindings'] as List<Object?>?;
       var tableSql = table;
@@ -524,41 +595,28 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
       if (type == 'on') {
         // ON clause: column = column
         parts.add(
-          '$boolean${condition['left']} '
+          '$boolean${wrap(condition['left'] as String)} '
           '${condition['comparator']} '
-          '${condition['right']}',
+          '${wrap(condition['right'] as String)}',
         );
       } else if (type == 'where') {
-        // WHERE clause within JOIN
-        final value = condition['value'];
-        if (value is Expression) {
-          parts.add(
-            '$boolean${condition['column']} '
-            '${condition['comparator']} ${value.sql}',
-          );
-        } else {
-          parts.add(
-            '$boolean${condition['column']} '
-            '${condition['comparator']} \$${bindings.length + 1}',
-          );
-          bindings.add(value);
-        }
+        parts.add(
+          '$boolean${compileBasicPredicate(condition['column'] as String, condition['comparator'] as String, condition['value'], bindings)}',
+        );
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
-          '$boolean${condition['first']} '
+          '$boolean${wrap(condition['first'] as String)} '
           '${condition['comparator']} '
-          '${condition['second']}',
+          '${wrap(condition['second'] as String)}',
         );
       } else if (type == 'null') {
-        // WHERE column IS NULL or WHERE column IS NOT NULL
-        final column = condition['column'];
-        final not = condition['not'] as bool;
-        final nullKeyword = not ? 'is not null' : 'is null';
-        parts.add('$boolean$column $nullKeyword');
+        parts.add(
+          '$boolean${compileNullPredicate(condition['column'] as String, condition['not'] as bool)}',
+        );
       } else if (type == 'in') {
         // WHERE column IN ($1, $2, $3) or WHERE column NOT IN ($1, $2, $3)
-        final column = condition['column'];
+        final column = wrap(condition['column'] as String);
         final values = condition['values'] as List<Object?>;
         final not = condition['not'] as bool;
         final inKeyword = not ? 'not in' : 'in';
@@ -576,7 +634,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         }
       } else if (type == 'between') {
         // WHERE column BETWEEN $1 AND $2 or WHERE column NOT BETWEEN $1 AND $2
-        final column = condition['column'];
+        final column = wrap(condition['column'] as String);
         final values = condition['values'] as List<Object?>;
         final not = condition['not'] as bool;
         final betweenKeyword = not ? 'not between' : 'between';
@@ -586,8 +644,9 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         bindings.addAll(values);
       } else if (type == 'betweenColumns') {
         // WHERE column BETWEEN column1 AND column2
-        final column = condition['column'];
-        final betweenColumns = condition['betweenColumns'] as List<String>;
+        final column = wrap(condition['column'] as String);
+        final betweenColumns =
+            (condition['betweenColumns'] as List<String>).map(wrap).toList();
         final not = condition['not'] as bool;
         final betweenKeyword = not ? 'not between' : 'between';
         parts.add(
@@ -638,28 +697,20 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
       final type = where['type'];
 
       if (type == 'basic') {
-        final value = where['value'];
-        if (value is Expression) {
-          parts.add(
-            '$boolean${where['column']} '
-            '${where['comparator']} ${value.sql}',
-          );
-        } else {
-          parts.add(
-            '$boolean${where['column']} '
-            '${where['comparator']} \$${bindings.length + 1}',
-          );
-          bindings.add(value);
-        }
+        parts.add(
+          '$boolean${compileBasicPredicate(where['column'] as String, where['comparator'] as String, where['value'], bindings)}',
+        );
       } else if (type == 'like') {
         final not = where['not'] as bool;
         final keyword = not ? 'not ilike' : 'ilike';
         final value = where['value'];
         if (value is Expression) {
-          parts.add('$boolean${where['column']} $keyword ${value.sql}');
+          parts.add(
+            '$boolean${wrap(where['column'] as String)} $keyword ${value.sql}',
+          );
         } else {
           parts.add(
-            '$boolean${where['column']} $keyword \$${bindings.length + 1}',
+            '$boolean${wrap(where['column'] as String)} $keyword \$${bindings.length + 1}',
           );
           bindings.add(value);
         }
@@ -672,7 +723,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
           offset: bindings.length,
         );
         parts.add(
-          '$boolean${where['column']} ${where['comparator']} (${embedded.sql})',
+          '$boolean${wrap(where['column'] as String)} ${where['comparator']} (${embedded.sql})',
         );
         bindings.addAll(embedded.bindings);
       } else if (type == 'binary') {
@@ -685,7 +736,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         final path = where['path'] as String?;
         String target;
         if (path == null || path == r'$') {
-          target = '(${where['column']})::jsonb';
+          target = '(${wrap(where['column'] as String)})::jsonb';
         } else {
           final segments = _jsonPathSegments(path);
           final placeholders = <String>[];
@@ -695,8 +746,8 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
           }
           target =
               placeholders.isEmpty
-                  ? '(${where['column']})::jsonb'
-                  : 'jsonb_extract_path((${where['column']})::jsonb, '
+                  ? '(${wrap(where['column'] as String)})::jsonb'
+                  : 'jsonb_extract_path((${wrap(where['column'] as String)})::jsonb, '
                       '${placeholders.join(', ')})';
         }
         if (value is Expression) {
@@ -721,8 +772,8 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         }
         final expression =
             placeholders.isEmpty
-                ? '(${where['column']})::jsonb is not null'
-                : 'jsonb_extract_path((${where['column']})::jsonb, '
+                ? '(${wrap(where['column'] as String)})::jsonb is not null'
+                : 'jsonb_extract_path((${wrap(where['column'] as String)})::jsonb, '
                     '${placeholders.join(', ')}) is not null';
         parts.add('$boolean${not ? 'not ' : ''}($expression)');
       } else if (type == 'jsonLength') {
@@ -730,7 +781,8 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         final comparator = where['comparator'];
         String target;
         if (path == null || path == r'$') {
-          target = 'jsonb_array_length((${where['column']})::jsonb)';
+          target =
+              'jsonb_array_length((${wrap(where['column'] as String)})::jsonb)';
         } else {
           final segments = _jsonPathSegments(path);
           final placeholders = <String>[];
@@ -740,7 +792,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
           }
           target =
               'jsonb_array_length(jsonb_extract_path('
-              '(${where['column']})::jsonb, ${placeholders.join(', ')}))';
+              '(${wrap(where['column'] as String)})::jsonb, ${placeholders.join(', ')}))';
         }
         parts.add('$boolean$target $comparator \$${bindings.length + 1}');
         bindings.add(where['value']);
@@ -757,7 +809,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         final path = where['path'] as String?;
         String target;
         if (path == null || path == r'$') {
-          target = '(${where['column']})::jsonb';
+          target = '(${wrap(where['column'] as String)})::jsonb';
         } else {
           final segments = _jsonPathSegments(path);
           final placeholders = <String>[];
@@ -767,8 +819,8 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
           }
           target =
               placeholders.isEmpty
-                  ? '(${where['column']})::jsonb'
-                  : 'jsonb_extract_path((${where['column']})::jsonb, '
+                  ? '(${wrap(where['column'] as String)})::jsonb'
+                  : 'jsonb_extract_path((${wrap(where['column'] as String)})::jsonb, '
                       '${placeholders.join(', ')})';
         }
         parts.add(
@@ -782,7 +834,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         );
         bindings.add(jsonEncode(value));
       } else if (type == 'fullText') {
-        final columns = where['columns'] as List<String>;
+        final columns = (where['columns'] as List<String>).map(wrap).toList();
         final options = where['options'] as Map<String, dynamic>;
         final language = options['language'] as String? ?? 'english';
         if (!RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(language)) {
@@ -817,13 +869,13 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
       } else if (type == 'column') {
         // WHERE column1 = column2
         parts.add(
-          '$boolean${where['first']} '
+          '$boolean${wrap(where['first'] as String)} '
           '${where['comparator']} '
-          '${where['second']}',
+          '${wrap(where['second'] as String)}',
         );
       } else if (type == 'in') {
         // WHERE column IN ($1, $2, $3) or WHERE column NOT IN ($1, $2, $3)
-        final column = where['column'];
+        final column = wrap(where['column'] as String);
         final values = where['values'] as List<Object?>;
         final not = where['not'] as bool;
         final inKeyword = not ? 'not in' : 'in';
@@ -849,18 +901,16 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
           offset: bindings.length,
         );
         parts.add(
-          '$boolean${where['column']} ${not ? 'not in' : 'in'} (${embedded.sql})',
+          '$boolean${wrap(where['column'] as String)} ${not ? 'not in' : 'in'} (${embedded.sql})',
         );
         bindings.addAll(embedded.bindings);
       } else if (type == 'null') {
-        // WHERE column IS NULL or WHERE column IS NOT NULL
-        final column = where['column'];
-        final not = where['not'] as bool;
-        final nullKeyword = not ? 'is not null' : 'is null';
-        parts.add('$boolean$column $nullKeyword');
+        parts.add(
+          '$boolean${compileNullPredicate(where['column'] as String, where['not'] as bool)}',
+        );
       } else if (type == 'between') {
         // WHERE column BETWEEN $1 AND $2 or WHERE column NOT BETWEEN $1 AND $2
-        final column = where['column'];
+        final column = wrap(where['column'] as String);
         final values = where['values'] as List<Object?>;
         final not = where['not'] as bool;
         final betweenKeyword = not ? 'not between' : 'between';
@@ -870,8 +920,9 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         bindings.addAll(values);
       } else if (type == 'betweenColumns') {
         // WHERE column BETWEEN column1 AND column2
-        final column = where['column'];
-        final betweenColumns = where['betweenColumns'] as List<String>;
+        final column = wrap(where['column'] as String);
+        final betweenColumns =
+            (where['betweenColumns'] as List<String>).map(wrap).toList();
         final not = where['not'] as bool;
         final betweenKeyword = not ? 'not between' : 'between';
         parts.add(
@@ -880,7 +931,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
           '${betweenColumns[1]}',
         );
       } else if (type == 'integerInRaw') {
-        final column = where['column'];
+        final column = wrap(where['column'] as String);
         final values = where['values'] as List<int>;
         final not = where['not'] as bool;
         if (values.isEmpty) {
@@ -891,7 +942,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
           );
         }
       } else if (type == 'rowValues') {
-        final columns = (where['columns'] as List<String>).join(', ');
+        final columns = (where['columns'] as List<String>).map(wrap).join(', ');
         final operator = where['operator'];
         final values = where['values'] as List<Object?>;
         final placeholders = <String>[];
@@ -905,7 +956,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         }
         parts.add('$boolean($columns) $operator (${placeholders.join(', ')})');
       } else if (type == 'valueBetween') {
-        final columns = where['columns'] as List<String>;
+        final columns = (where['columns'] as List<String>).map(wrap).toList();
         final not = where['not'] as bool;
         final keyword = not ? 'not between' : 'between';
         final value = where['value'];
@@ -924,18 +975,18 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         final value = where['value'];
         if (value is Expression) {
           parts.add(
-            '$boolean${where['column']} is not distinct from ${value.sql}',
+            '$boolean${wrap(where['column'] as String)} is not distinct from ${value.sql}',
           );
         } else {
           parts.add(
-            '$boolean${where['column']} is not distinct from '
+            '$boolean${wrap(where['column'] as String)} is not distinct from '
             '\$${bindings.length + 1}',
           );
           bindings.add(value);
         }
       } else if (type == 'all') {
         // WHERE (col1 = $1 AND col2 = $2 AND col3 = $3)
-        final columns = where['columns'] as List<String>;
+        final columns = (where['columns'] as List<String>).map(wrap).toList();
         final comparator = where['comparator'];
         final value = where['value'];
         final conditions = <String>[];
@@ -946,7 +997,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         parts.add('$boolean(${conditions.join(' and ')})');
       } else if (type == 'any') {
         // WHERE (col1 = $1 OR col2 = $2 OR col3 = $3)
-        final columns = where['columns'] as List<String>;
+        final columns = (where['columns'] as List<String>).map(wrap).toList();
         final comparator = where['comparator'];
         final value = where['value'];
         final conditions = <String>[];
@@ -957,7 +1008,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         parts.add('$boolean(${conditions.join(' or ')})');
       } else if (type == 'none') {
         // WHERE NOT (col1 = $1 OR col2 = $2 OR col3 = $3)
-        final columns = where['columns'] as List<String>;
+        final columns = (where['columns'] as List<String>).map(wrap).toList();
         final comparator = where['comparator'];
         final value = where['value'];
         final conditions = <String>[];
@@ -1005,23 +1056,13 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
     return parts.join('');
   }
 
-  List<String> _jsonPathSegments(String path) {
-    var normalized = path.trim();
-    if (normalized.startsWith(r'$')) {
-      normalized = normalized.substring(1);
-    }
-    if (normalized.startsWith('.')) {
-      normalized = normalized.substring(1);
-    }
-    if (normalized.isEmpty) {
-      return const [];
-    }
-    return normalized.split('.');
-  }
+  List<String> _jsonPathSegments(String path) =>
+      jsonPathSegments(path).map((part) => '$part').toList();
 
   /// Returns a complete SQL expression for a date-part extraction.
   /// The returned string already includes the column reference.
   String _dateExpression(String dateType, String column) {
+    column = wrap(column);
     switch (dateType) {
       case 'date':
         return 'date($column)';
@@ -1057,7 +1098,7 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         buffer.write(convertedSql);
       } else {
         buffer.write(
-          '${order['column']} '
+          '${wrap(order['column'] as String)} '
           '${order['direction']}',
         );
       }
@@ -1070,8 +1111,8 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
   }
 
   /// Compiles GROUP BY clauses.
-  String _compileGroups(List<String> groups) {
-    return ' group by ${groups.join(', ')}';
+  String _compileGroups(List<Object> groups) {
+    return ' group by ${groups.map(wrap).join(', ')}';
   }
 
   /// Compiles HAVING clauses.
@@ -1098,12 +1139,12 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
       } else if (having['type'] == 'null') {
         final not = having['not'] as bool;
         parts.add(
-          '$boolean${having['column']} ${not ? 'is not null' : 'is null'}',
+          '$boolean${wrap(having['column'] as Object)} ${not ? 'is not null' : 'is null'}',
         );
       } else if (having['type'] == 'between') {
         final not = having['not'] as bool;
         parts.add(
-          '$boolean${having['column']} ${not ? 'not between' : 'between'} '
+          '$boolean${wrap(having['column'] as Object)} ${not ? 'not between' : 'between'} '
           '\$${bindings.length + 1} and \$${bindings.length + 2}',
         );
         bindings.addAll(having['values'] as List<Object?>);
@@ -1111,12 +1152,12 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
         final value = having['value'];
         if (value is Expression) {
           parts.add(
-            '$boolean${having['column']} '
+            '$boolean${wrap(having['column'] as Object)} '
             '${having['comparator']} ${value.sql}',
           );
         } else {
           parts.add(
-            '$boolean${having['column']} '
+            '$boolean${wrap(having['column'] as Object)} '
             '${having['comparator']} \$${bindings.length + 1}',
           );
           bindings.add(value);

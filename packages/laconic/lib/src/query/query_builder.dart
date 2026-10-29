@@ -24,7 +24,7 @@ class QueryBuilder {
   String? _fromAlias;
 
   /// The columns to select.
-  List<String> _columns = ['*'];
+  List<Object> _columns = ['*'];
 
   /// Bindings for raw SELECT expressions, in column order.
   final List<Object?> _selectBindings = [];
@@ -42,7 +42,7 @@ class QueryBuilder {
   final List<Map<String, dynamic>> _orders = [];
 
   /// The GROUP BY columns.
-  final List<String> _groups = [];
+  final List<Object> _groups = [];
 
   /// The HAVING conditions.
   final List<Map<String, dynamic>> _havings = [];
@@ -107,7 +107,7 @@ class QueryBuilder {
           _columns.length == 1 &&
           _columns.first == '*') {
         // Group cardinality does not need the bound grouping expressions again.
-        query._columns = ['1'];
+        query._columns = [const Expression('1')];
         query._distinct = false;
         query._distinctColumns = null;
       }
@@ -125,11 +125,11 @@ class QueryBuilder {
 
     final aggregate =
         _distinct
-            ? 'COUNT(DISTINCT $column) as aggregate'
-            : 'COUNT($column) as aggregate';
+            ? 'COUNT(DISTINCT ${_grammar.wrap(column)}) as aggregate'
+            : 'COUNT(${_grammar.wrap(column)}) as aggregate';
     final compiled = _grammar.compileSelect(
       table: _table,
-      columns: [aggregate],
+      columns: [Expression(aggregate)],
       wheres: _wheres,
       joins: _joins,
       orders: [],
@@ -174,7 +174,15 @@ class QueryBuilder {
       );
     }
 
-    final compiled = _grammar.compileDelete(table: _table, wheres: _wheres);
+    _validateWriteScope();
+    final compiled = _grammar.compileDelete(
+      table: _table,
+      wheres: _wheres,
+      joins: _joins,
+      orders: _orders,
+      limit: _limit,
+      offset: _offset,
+    );
 
     return _laconic.affectingStatement(compiled.sql, compiled.bindings);
   }
@@ -300,7 +308,8 @@ class QueryBuilder {
       throw LaconicException('insertUsing requires at least one column');
     }
     final compiled = _compileSubquery(query);
-    final sql = 'insert into $_table (${columns.join(', ')}) ${compiled.sql}';
+    final sql =
+        'insert into ${_grammar.wrapTable(_table)} (${columns.map(_grammar.wrap).join(', ')}) ${compiled.sql}';
     await _laconic.statement(sql, compiled.bindings);
     return true;
   }
@@ -568,7 +577,7 @@ class QueryBuilder {
     }
     _joins.add({
       'type': type,
-      'table': '(${compiled.sql}) as $as',
+      'table': '(${compiled.sql}) as ${_grammar.quoteSchemaIdentifier(as)}',
       'tableBindings': compiled.bindings,
       'conditions': joinClause.conditions,
     });
@@ -624,7 +633,7 @@ class QueryBuilder {
     _joins.add({
       'type': 'lateral',
       'joinType': type,
-      'table': '(${compiled.sql}) as $as',
+      'table': '(${compiled.sql}) as ${_grammar.quoteSchemaIdentifier(as)}',
       'tableBindings': compiled.bindings,
       'conditions': <Map<String, dynamic>>[],
     });
@@ -641,7 +650,7 @@ class QueryBuilder {
     final compiled = _compileSubquery(query);
     _joins.add({
       'type': 'cross',
-      'table': '(${compiled.sql}) as $as',
+      'table': '(${compiled.sql}) as ${_grammar.quoteSchemaIdentifier(as)}',
       'tableBindings': compiled.bindings,
       'conditions': <Map<String, dynamic>>[],
     });
@@ -696,12 +705,14 @@ class QueryBuilder {
 
   /// Sets the LIMIT for the query.
   QueryBuilder limit(int limit) {
+    if (limit < 0) throw LaconicException('Limit must be non-negative');
     _limit = limit;
     return this;
   }
 
   /// Sets the OFFSET for the query.
   QueryBuilder offset(int offset) {
+    if (offset < 0) throw LaconicException('Offset must be non-negative');
     _offset = offset;
     return this;
   }
@@ -723,7 +734,7 @@ class QueryBuilder {
 
     if (await matches.exists()) {
       if (values.isNotEmpty) {
-        await matches.update(values);
+        await matches.limit(1).update(values);
       }
     } else {
       await insert([
@@ -847,7 +858,7 @@ class QueryBuilder {
       clauses.add('when ? then $i');
     }
     return orderByRaw(
-      'case $column ${clauses.join(' ')} else ${values.length} end',
+      'case ${_grammar.wrap(column)} ${clauses.join(' ')} else ${values.length} end',
       values,
     );
   }
@@ -1314,45 +1325,64 @@ class QueryBuilder {
         _columns.length == 1 &&
         _columns.first == '*') {
       if (_groups.isNotEmpty || _havings.isEmpty) {
-        query._columns = ['1'];
+        query._columns = [const Expression('1')];
       }
     }
     return query._compileSelect();
   }
 
-  /// Processes query results in chunks to avoid memory issues.
   Stream<List<LaconicResult>> _chunkStream(int count) async* {
     if (count <= 0) throw LaconicException('Chunk size must be positive');
-    var page = 1;
-    while (true) {
-      final results = await clone().forPage(page, perPage: count).get();
+    final base = _paginationQuery();
+    if (base._orders.isEmpty) {
+      throw LaconicException('chunk/lazy requires orderBy');
+    }
+    var offset = base._offset ?? 0;
+    var remaining = _limit;
+    while (remaining == null || remaining > 0) {
+      final size = remaining == null || remaining > count ? count : remaining;
+      final results = await base.clone().offset(offset).limit(size).get();
       if (results.isEmpty) break;
       final received = results.length;
+      offset += received;
+      if (remaining != null) remaining -= received;
       yield results;
-      if (received < count) break;
-      page++;
+      if (received < size) break;
     }
   }
 
-  /// Processes query results in chunks to avoid memory issues.
-  Future<void> chunk(
-    int count,
-    Future<void> Function(List<LaconicResult>) callback,
-  ) async {
-    await for (final results in _chunkStream(count)) {
-      await callback(results);
-    }
-  }
-
-  /// Streams results one row at a time using offset-based chunking.
+  /// Processes bounded query results in chunks without mutating this builder.
   ///
-  /// Add an ordering clause for stable pagination; otherwise the database may
-  /// return rows in a different order between chunks.
+  /// The callback accepts `(rows)` or `(rows, page)`, with one-based pages.
+  /// It may be synchronous or asynchronous; returning `false` stops iteration.
+  Future<bool> chunk(int count, Function callback) async {
+    var page = 1;
+    await for (final rows in _chunkStream(count)) {
+      if (!await _callChunk(callback, rows, page++)) return false;
+    }
+    return true;
+  }
+
+  Future<bool> _callChunk(
+    Function callback,
+    List<LaconicResult> rows,
+    int page,
+  ) async {
+    final arguments =
+        callback is Function(List<LaconicResult>, int)
+            ? <Object>[rows, page]
+            : callback is Function(List<LaconicResult>)
+            ? <Object>[rows]
+            : throw LaconicException(
+              'Chunk callback must accept rows and an optional page',
+            );
+    return await Function.apply(callback, arguments) != false;
+  }
+
+  /// Streams rows using ordered offset chunks, preserving OFFSET and LIMIT.
   Stream<LaconicResult> lazy([int count = 1000]) async* {
-    await for (final results in _chunkStream(count)) {
-      for (final row in results) {
-        yield row;
-      }
+    await for (final rows in _chunkStream(count)) {
+      yield* Stream.fromIterable(rows);
     }
   }
 
@@ -1362,25 +1392,18 @@ class QueryBuilder {
     return _laconic.selectStream(compiled.sql, compiled.bindings);
   }
 
-  /// Processes results in ascending order of a unique, non-null cursor column.
-  ///
-  /// Replaces existing ordering with [column]. An existing offset applies only
-  /// to the first page. [alias] optionally qualifies the column with a table alias.
   Stream<List<LaconicResult>> _chunkByIdStream(
     int count, {
     String column = 'id',
     String? alias,
   }) async* {
     if (count <= 0) throw LaconicException('Chunk size must be positive');
-    final resultColumn = _resultColumnName(column);
-    final col =
-        _groupLimit != null
-            ? resultColumn
-            : alias != null
-            ? '$alias.$column'
-            : column;
+    final resultColumn = alias ?? _resultColumnName(column);
+    final col = _groupLimit != null ? resultColumn : column;
     Object? lastId;
-    while (true) {
+    var remaining = _limit;
+    while (remaining == null || remaining > 0) {
+      final size = remaining == null || remaining > count ? count : remaining;
       final q = _paginationQuery()..reorder();
       if (lastId != null && _unions.isEmpty) {
         final conditions = List<Map<String, dynamic>>.of(q._wheres);
@@ -1395,7 +1418,7 @@ class QueryBuilder {
         q.where(col, lastId, comparator: '>');
       }
       if (lastId != null) q._offset = null;
-      q.orderBy(_unions.isEmpty ? col : resultColumn).limit(count);
+      q.orderBy(_unions.isEmpty ? col : resultColumn).limit(size);
       final compiled = q._compileSelect(
         unionWheres: [
           if (lastId != null && _unions.isNotEmpty)
@@ -1416,76 +1439,82 @@ class QueryBuilder {
       }
       lastId = nextId;
       final received = results.length;
+      if (remaining != null) remaining -= received;
       yield results;
-      if (received < count) break;
+      if (received < size) break;
     }
   }
 
-  /// Processes results in ascending order of a unique, non-null cursor column.
+  /// Processes rows in ascending key order, preserving LIMIT and initial OFFSET.
   ///
-  /// Replaces existing ordering with [column]. An existing offset applies only
-  /// to the first page. [alias] optionally qualifies the column with a table alias.
-  Future<void> chunkById(
+  /// [column] is the SQL cursor column; [alias] is its name in the result row.
+  /// The callback accepts `(rows)` or `(rows, page)` and may return `false`.
+  Future<bool> chunkById(
     int count,
-    Future<void> Function(List<LaconicResult>) callback, {
+    Function callback, {
     String column = 'id',
     String? alias,
   }) async {
-    await for (final results in _chunkByIdStream(
+    var page = 1;
+    await for (final rows in _chunkByIdStream(
       count,
       column: column,
       alias: alias,
     )) {
-      await callback(results);
+      if (!await _callChunk(callback, rows, page++)) return false;
     }
+    return true;
   }
 
-  /// Streams rows ordered by a unique, non-null cursor column.
+  /// Streams rows by a unique key; [alias] is the cursor's result-column name.
   Stream<LaconicResult> lazyById([
     int count = 1000,
     String column = 'id',
     String? alias,
   ]) async* {
-    await for (final results in _chunkByIdStream(
+    await for (final rows in _chunkByIdStream(
       count,
       column: column,
       alias: alias,
     )) {
-      for (final row in results) {
-        yield row;
-      }
+      yield* Stream.fromIterable(rows);
     }
   }
 
-  /// Iterates over each result using cursor-based chunking.
-  Future<void> eachById(
-    Future<void> Function(LaconicResult) callback, {
+  Future<bool> _each(Stream<LaconicResult> rows, Function callback) async {
+    var index = 0;
+    await for (final row in rows) {
+      final arguments =
+          callback is Function(LaconicResult, int)
+              ? <Object>[row, index]
+              : callback is Function(LaconicResult)
+              ? <Object>[row]
+              : throw LaconicException(
+                'Row callback must accept a row and an optional index',
+              );
+      if (await Function.apply(callback, arguments) == false) return false;
+      index++;
+    }
+    return true;
+  }
+
+  /// Iterates by key; callbacks accept `(row)` or `(row, index)` (zero-based).
+  Future<bool> eachById(
+    Function callback, {
     int count = 1000,
     String column = 'id',
     String? alias,
-  }) async {
-    await for (final row in lazyById(count, column, alias)) {
-      await callback(row);
-    }
-  }
+  }) => _each(lazyById(count, column, alias), callback);
 
-  /// Iterates over each result using chunking.
-  Future<void> each(
-    Future<void> Function(LaconicResult) callback, {
-    int count = 1000,
-  }) async {
-    await chunk(count, (results) async {
-      for (final row in results) {
-        await callback(row);
-      }
-    });
-  }
+  /// Iterates ordered rows; returning `false` stops without fetching more chunks.
+  Future<bool> each(Function callback, {int count = 1000}) =>
+      _each(lazy(count), callback);
 
   /// Returns a deep copy of this QueryBuilder for reuse.
   QueryBuilder clone() {
     final copy =
         QueryBuilder(laconic: _laconic, table: _table)
-          .._columns = List<String>.from(_columns)
+          .._columns = List<Object>.from(_columns)
           .._selectBindings.addAll(_selectBindings)
           .._groupBindings.addAll(_groupBindings)
           .._fromSubquery = _fromSubquery
@@ -1544,11 +1573,11 @@ class QueryBuilder {
   /// Specifies the columns to select.
   ///
   /// If [columns] is null or empty, selects all columns (*).
-  QueryBuilder select(List<String>? columns) {
+  QueryBuilder select(List<Object>? columns) {
     if (columns == null || columns.isEmpty) {
       _columns = ['*'];
     } else {
-      _columns = columns;
+      _columns = List<Object>.of(columns);
     }
     _selectBindings.clear();
     return this;
@@ -1562,9 +1591,9 @@ class QueryBuilder {
   /// ```dart
   /// query.select(['name']).addSelect(['email', 'age'])
   /// ```
-  QueryBuilder addSelect(List<String> columns) {
+  QueryBuilder addSelect(List<Object> columns) {
     if (_columns.contains('*')) {
-      _columns = columns;
+      _columns = List<Object>.of(columns);
       _selectBindings.clear();
     } else {
       _columns.addAll(columns);
@@ -1584,10 +1613,10 @@ class QueryBuilder {
   /// ```
   QueryBuilder selectRaw(String sql, [List<Object?> bindings = const []]) {
     if (_columns.length == 1 && _columns[0] == '*') {
-      _columns = [sql];
+      _columns = [Expression(sql)];
       _selectBindings.clear();
     } else {
-      _columns.add(sql);
+      _columns.add(Expression(sql));
     }
     _selectBindings.addAll(bindings);
     return this;
@@ -1596,12 +1625,12 @@ class QueryBuilder {
   /// Adds a subquery to the SELECT clause as `(subquery) as as`.
   QueryBuilder selectSub(Object query, String as) {
     final compiled = _grammar.compileInlineSubquery(_compileSubquery(query));
-    final sql = '(${compiled.sql}) as $as';
+    final sql = '(${compiled.sql}) as ${_grammar.quoteSchemaIdentifier(as)}';
     if (_columns.length == 1 && _columns[0] == '*') {
-      _columns = [sql];
+      _columns = [Expression(sql)];
       _selectBindings.clear();
     } else {
-      _columns.add(sql);
+      _columns.add(Expression(sql));
     }
     _selectBindings.addAll(compiled.bindings);
     return this;
@@ -1679,8 +1708,23 @@ class QueryBuilder {
   ///
   /// Throws [LaconicException] when no row or more than one row matches.
   Future<Object?> soleValue(String column) async {
-    final row = await sole();
-    return row[_resultColumnName(column)];
+    final row = await clone().select([column]).sole();
+    return row.values.first;
+  }
+
+  void _validateWriteScope() {
+    if (_fromSubquery != null ||
+        _groups.isNotEmpty ||
+        _havings.isNotEmpty ||
+        _unions.isNotEmpty ||
+        _distinct ||
+        _groupLimit != null ||
+        _indexHints.isNotEmpty ||
+        _locks.isNotEmpty) {
+      throw LaconicException(
+        'This query scope cannot be used for UPDATE or DELETE',
+      );
+    }
   }
 
   /// Updates records matching the query.
@@ -1691,10 +1735,15 @@ class QueryBuilder {
     if (data.isEmpty) {
       throw LaconicException('Cannot update with an empty data map');
     }
+    _validateWriteScope();
     final compiled = _grammar.compileUpdate(
       table: _table,
       data: data,
       wheres: _wheres,
+      joins: _joins,
+      orders: _orders,
+      limit: _limit,
+      offset: _offset,
     );
 
     return _laconic.affectingStatement(compiled.sql, compiled.bindings);
@@ -2596,25 +2645,16 @@ class QueryBuilder {
     return this;
   }
 
-  static String _normalizeJsonPath(String path) {
-    final trimmed = path.trim();
-    if (trimmed.startsWith(r'$')) {
-      return trimmed;
-    }
-    final prefix = trimmed.startsWith('.') ? r'$' : r'$.';
-    return '$prefix$trimmed';
-  }
+  String _normalizeJsonPath(String path) => _grammar.jsonPath(path.trim());
 
-  static ({String column, String? path}) _splitJsonColumn(String column) {
-    final parts = column.split('->');
-    if (parts.length == 1) {
+  ({String column, String? path}) _splitJsonColumn(String column) {
+    if (!column.contains('->')) {
       return (column: column.trim(), path: null);
     }
-    final field = parts.removeAt(0).trim();
-    final rawPath = parts.join('.').trim();
+    final selector = _grammar.splitJsonSelector(column);
     return (
-      column: field,
-      path: rawPath.isEmpty ? null : _normalizeJsonPath(rawPath),
+      column: selector.column.trim(),
+      path: _normalizeJsonPath(selector.path),
     );
   }
 
@@ -2996,7 +3036,7 @@ class QueryBuilder {
   /// query.groupByRaw('YEAR(created_at)');
   /// ```
   QueryBuilder groupByRaw(String sql, [List<Object?> bindings = const []]) {
-    _groups.add(sql);
+    _groups.add(Expression(sql));
     _groupBindings.addAll(bindings);
     return this;
   }
@@ -3011,7 +3051,7 @@ class QueryBuilder {
   /// ```dart
   /// query.groupBy('account_id').having('account_id', 100, comparator: '>')
   /// ```
-  QueryBuilder having(String column, Object? value, {String comparator = '='}) {
+  QueryBuilder having(Object column, Object? value, {String comparator = '='}) {
     _havings.add({
       'column': column,
       'comparator': SqlOperator.validate(comparator),
@@ -3032,7 +3072,7 @@ class QueryBuilder {
   /// query.groupBy('account_id').having('account_id', 100, comparator: '>').orHaving('account_id', 50, comparator: '<')
   /// ```
   QueryBuilder orHaving(
-    String column,
+    Object column,
     Object? value, {
     String comparator = '=',
   }) {
@@ -3047,7 +3087,7 @@ class QueryBuilder {
 
   /// Adds a HAVING ... BETWEEN condition.
   QueryBuilder havingBetween(
-    String column, {
+    Object column, {
     required Object? min,
     required Object? max,
   }) {
@@ -3063,7 +3103,7 @@ class QueryBuilder {
 
   /// Adds a HAVING ... NOT BETWEEN condition.
   QueryBuilder havingNotBetween(
-    String column, {
+    Object column, {
     required Object? min,
     required Object? max,
   }) {
@@ -3079,7 +3119,7 @@ class QueryBuilder {
 
   /// Adds an OR HAVING ... BETWEEN condition.
   QueryBuilder orHavingBetween(
-    String column, {
+    Object column, {
     required Object? min,
     required Object? max,
   }) {
@@ -3095,7 +3135,7 @@ class QueryBuilder {
 
   /// Adds an OR HAVING ... NOT BETWEEN condition.
   QueryBuilder orHavingNotBetween(
-    String column, {
+    Object column, {
     required Object? min,
     required Object? max,
   }) {
@@ -3110,7 +3150,7 @@ class QueryBuilder {
   }
 
   /// Adds a HAVING ... IS NULL condition.
-  QueryBuilder havingNull(String column) {
+  QueryBuilder havingNull(Object column) {
     _havings.add({
       'type': 'null',
       'column': column,
@@ -3121,7 +3161,7 @@ class QueryBuilder {
   }
 
   /// Adds an OR HAVING ... IS NULL condition.
-  QueryBuilder orHavingNull(String column) {
+  QueryBuilder orHavingNull(Object column) {
     _havings.add({
       'type': 'null',
       'column': column,
@@ -3132,7 +3172,7 @@ class QueryBuilder {
   }
 
   /// Adds a HAVING ... IS NOT NULL condition.
-  QueryBuilder havingNotNull(String column) {
+  QueryBuilder havingNotNull(Object column) {
     _havings.add({
       'type': 'null',
       'column': column,
@@ -3143,7 +3183,7 @@ class QueryBuilder {
   }
 
   /// Adds an OR HAVING ... IS NOT NULL condition.
-  QueryBuilder orHavingNotNull(String column) {
+  QueryBuilder orHavingNotNull(Object column) {
     _havings.add({
       'type': 'null',
       'column': column,
@@ -3221,7 +3261,7 @@ class QueryBuilder {
   QueryBuilder distinct([List<String>? columns]) {
     _distinct = true;
     if (columns != null && columns.isNotEmpty) {
-      _columns = List<String>.of(columns);
+      _columns = List<Object>.of(columns);
       _selectBindings.clear();
       _distinctColumns = List<String>.of(columns);
     } else {
@@ -3302,7 +3342,9 @@ class QueryBuilder {
     final compiled = _grammar.compileSelect(
       table: _table,
       columns: [
-        '${_grammar.compileAggregateExpression(function, column, distinct: _distinct)} as aggregate',
+        Expression(
+          '${_grammar.compileAggregateExpression(function, column, distinct: _distinct)} as aggregate',
+        ),
       ],
       wheres: _wheres,
       joins: _joins,
@@ -3396,19 +3438,16 @@ class QueryBuilder {
     final compiled = _compileSelect(columns: columns);
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
-    final resultColumn = _resultColumnName(column);
-
     if (key != null) {
       // Return as Map
       final map = <Object?, Object?>{};
-      final resultKey = _resultColumnName(key);
       for (final row in results) {
-        map[row[resultKey]] = row[resultColumn];
+        map[row.values.first] = row.values.last;
       }
       return map;
     } else {
       // Return as List
-      return results.map((row) => row[resultColumn]).toList();
+      return results.map((row) => row.values.first).toList();
     }
   }
 
@@ -3435,16 +3474,10 @@ class QueryBuilder {
       return null;
     }
 
-    return results.first[_resultColumnName(column)];
+    return results.first.values.first;
   }
 
-  static String _resultColumnName(String column) {
-    return column
-        .split(RegExp(r'\s+as\s+', caseSensitive: false))
-        .last
-        .split('.')
-        .last;
-  }
+  String _resultColumnName(String column) => _grammar.resultColumnName(column);
 
   /// Increments a column's value by a given amount.
   ///
@@ -3472,15 +3505,7 @@ class QueryBuilder {
       );
     }
 
-    final compiled = _grammar.compileIncrement(
-      table: _table,
-      column: column,
-      amount: amount,
-      extra: extra,
-      wheres: _wheres,
-    );
-
-    return _laconic.affectingStatement(compiled.sql, compiled.bindings);
+    return _adjustEach('+', {column: amount}, extra, allowWithoutWhere);
   }
 
   /// Decrements a column's value by a given amount.
@@ -3509,21 +3534,22 @@ class QueryBuilder {
       );
     }
 
-    final compiled = _grammar.compileDecrement(
-      table: _table,
-      column: column,
-      amount: amount,
-      extra: extra,
-      wheres: _wheres,
-    );
-
-    return _laconic.affectingStatement(compiled.sql, compiled.bindings);
+    return _adjustEach('-', {column: amount}, extra, allowWithoutWhere);
   }
 
   /// Updates rows using a `FROM` clause. PostgreSQL only.
   Future<int> updateFrom(String from, Map<String, Object?> data) async {
     if (data.isEmpty) {
       throw LaconicException('Cannot update with an empty data map');
+    }
+    _validateWriteScope();
+    if (_joins.isNotEmpty ||
+        _orders.isNotEmpty ||
+        _limit != null ||
+        _offset != null) {
+      throw LaconicException(
+        'updateFrom does not support JOIN, ORDER BY, LIMIT or OFFSET',
+      );
     }
     final compiled = _grammar.compileUpdateFrom(
       table: _table,
@@ -3571,7 +3597,9 @@ class QueryBuilder {
 
     return update({
       for (final entry in columns.entries)
-        entry.key: Expression('${entry.key} $operator ${entry.value}'),
+        entry.key: Expression(
+          '${_grammar.wrap(entry.key)} $operator ${entry.value}',
+        ),
       ...?extra,
     });
   }
@@ -3633,7 +3661,7 @@ class QueryBuilder {
   CompiledQuery _compileForDebug() => _compileSelect();
 
   CompiledQuery _compileGroupLimit({
-    List<String>? columns,
+    List<Object>? columns,
     int? limitOverride,
   }) {
     final groupLimit = _groupLimit!;
@@ -3654,23 +3682,25 @@ class QueryBuilder {
         orderParts.add(order['sql'] as String);
         windowBindings.addAll(order['bindings'] as List<Object?>);
       } else {
-        orderParts.add('${order['column']} ${order['direction']}');
+        orderParts.add(
+          '${_grammar.wrap(order['column'] as String)} ${order['direction']}',
+        );
       }
     }
     final orderSql =
-        ' order by ${orderParts.isEmpty ? groupColumn : orderParts.join(', ')}';
+        ' order by ${orderParts.isEmpty ? _grammar.wrap(groupColumn) : orderParts.join(', ')}';
     final rowNumber =
-        'row_number() over (partition by $groupColumn$orderSql) '
+        'row_number() over (partition by ${_grammar.wrap(groupColumn)}$orderSql) '
         'as laconic_row';
 
     if (columns != null) {
-      inner._columns = List<String>.from(columns);
+      inner._columns = List<Object>.from(columns);
       inner._selectBindings.clear();
     }
     if (inner._columns.isEmpty) {
       inner._columns = ['*'];
     }
-    inner._columns.add(rowNumber);
+    inner._columns.add(Expression(rowNumber));
     inner._selectBindings.addAll(windowBindings);
 
     final innerCompiled = inner._compileSelect();
@@ -3709,7 +3739,7 @@ class QueryBuilder {
   }
 
   CompiledQuery _compileSelect({
-    List<String>? columns,
+    List<Object>? columns,
     int? limitOverride,
     List<Map<String, dynamic>> unionWheres = const [],
   }) {

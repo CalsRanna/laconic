@@ -1,5 +1,12 @@
 ## Unreleased
 
+- Quote query identifiers and support JSON scalar selectors/path updates. Retain
+  joined, ordered, and paginated writes using tableoid/ctid target subqueries
+  with correctly numbered bindings.
+- **Breaking:** adopt the matching unreleased core query compiler contract and
+  chunking semantics. Use `Expression`/`*Raw` for SQL expressions. Existing
+  version numbers are retained until a coordinated core/driver release.
+
 - Implement core Schema Builder operations, search-path-aware inspection,
   identity columns, and transactional migration DDL.
 

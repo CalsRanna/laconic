@@ -14,12 +14,15 @@ void main() {
 
   test('TOP, OFFSET/FETCH and zero limits preserve binding order', () {
     final q = query().selectRaw('? as marker', [7]).where('age', 20).limit(3);
-    expect(q.toSql(), 'select top (3) ? as marker from users where age = ?');
+    expect(
+      q.toSql(),
+      'select top (3) ? as marker from [users] where [age] = ?',
+    );
     expect(q.getBindings(), [7, 20]);
     final page = q.clone().orderBy('id').offset(5);
     expect(
       page.toSql(),
-      endsWith('order by id asc offset ? rows fetch next ? rows only'),
+      endsWith('order by [id] asc offset ? rows fetch next ? rows only'),
     );
     expect(page.getBindings(), [7, 20, 5, 3]);
     expect(q.clone().offset(5).limit(0).toSql(), contains('top (0)'));
@@ -36,7 +39,7 @@ void main() {
         .where('u.id', 4)
         .union(query().where('id', 5))
         .limit(2);
-    expect(q.toSql(), contains('order by id asc offset 0 rows'));
+    expect(q.toSql(), contains('order by [id] asc offset 0 rows'));
     expect(q.getBindings(), [20, 4, 5]);
   });
 
@@ -48,7 +51,7 @@ void main() {
     );
     expect(
       c.sql,
-      'insert into users (name, age) output inserted.user_id values (?, 20)',
+      'insert into [users] ([name], [age]) output inserted.[user_id] values (?, 20)',
     );
     expect(c.bindings, ['a']);
   });
@@ -63,10 +66,10 @@ void main() {
       uniqueBy: ['id'],
       update: ['name'],
     );
-    expect(c.sql, startsWith('merge into users with (holdlock)'));
+    expect(c.sql, startsWith('merge into [users] with (holdlock)'));
     expect(
       c.sql,
-      contains('when matched then update set name = laconic_source.name'),
+      contains('when matched then update set [name] = laconic_source.[name]'),
     );
     expect(c.sql, endsWith(';'));
     expect(c.bindings, [1, 'a', 2, 'b']);
@@ -87,14 +90,14 @@ void main() {
 
   test('tuple comparisons expand lexicographically with repeated bindings', () {
     final q = query().whereRowValues(['age', 'id'], '>=', [20, 3]);
-    expect(q.toSql(), contains('((age > ?) or (age = ? and id >= ?))'));
+    expect(q.toSql(), contains('(([age] > ?) or ([age] = ? and [id] >= ?))'));
     expect(q.getBindings(), [20, 20, 3]);
   });
 
   test('lock hints follow the table and lateral joins compile to APPLY', () {
     expect(
       query().where('id', 1).lockForUpdate().toSql(),
-      contains('from users with (updlock, rowlock) where'),
+      contains('from [users] with (updlock, rowlock) where'),
     );
     expect(query().sharedLock().toSql(), contains('with (holdlock, rowlock)'));
     expect(
@@ -110,11 +113,11 @@ void main() {
   test('dialect-specific date, random order and null-safe equality', () {
     expect(
       query().whereDate('created_at', '2026-01-01').toSql(),
-      contains('cast(created_at as date) = ?'),
+      contains('cast([created_at] as date) = ?'),
     );
     expect(
       query().whereTime('created_at', '12:00:00').toSql(),
-      contains('cast(created_at as time) = ?'),
+      contains('cast([created_at] as time) = ?'),
     );
     expect(query().inRandomOrder().toSql(), contains('newid()'));
     expect(
@@ -123,7 +126,7 @@ void main() {
     );
     expect(
       grammar.compileAggregateExpression('AVG', 'age', distinct: true),
-      'AVG(DISTINCT cast(age as float))',
+      'AVG(DISTINCT cast([age] as float))',
     );
   });
 

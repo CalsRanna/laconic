@@ -155,10 +155,11 @@ void main() {
         )).single['found'],
         isFalse,
       );
-      final q = db.table('(SELECT 1 AS id) AS t').where('id', 1).whereRaw(
-        r"id = $1 AND '?' = '?'",
-        [1],
-      );
+      final q = db
+          .table('t')
+          .fromRaw('(SELECT 1 AS id) AS t')
+          .where('id', 1)
+          .whereRaw(r"id = $1 AND '?' = '?'", [1]);
       expect((await q.get()).single['id'], 1);
     },
   );

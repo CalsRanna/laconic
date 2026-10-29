@@ -88,11 +88,11 @@ class _MockGrammar extends SqlGrammar {
   @override
   CompiledQuery compileSelect({
     required String table,
-    required List<String> columns,
+    required List<Object> columns,
     required List<Map<String, dynamic>> wheres,
     required List<Map<String, dynamic>> joins,
     required List<Map<String, dynamic>> orders,
-    required List<String> groups,
+    required List<Object> groups,
     required List<Map<String, dynamic>> havings,
     required bool distinct,
     int? limit,
@@ -125,6 +125,10 @@ class _MockGrammar extends SqlGrammar {
     required String table,
     required Map<String, Object?> data,
     required List<Map<String, dynamic>> wheres,
+    List<Map<String, dynamic>> joins = const [],
+    List<Map<String, dynamic>> orders = const [],
+    int? limit,
+    int? offset,
   }) {
     return CompiledQuery(sql: 'UPDATE $table ...', bindings: []);
   }
@@ -133,6 +137,10 @@ class _MockGrammar extends SqlGrammar {
   CompiledQuery compileDelete({
     required String table,
     required List<Map<String, dynamic>> wheres,
+    List<Map<String, dynamic>> joins = const [],
+    List<Map<String, dynamic>> orders = const [],
+    int? limit,
+    int? offset,
   }) {
     return CompiledQuery(sql: 'DELETE FROM $table ...', bindings: []);
   }
@@ -284,7 +292,7 @@ void main() async {
 
   // Chunking
   print('\n--- Chunking ---');
-  await laconic.table('users').chunk(2, (batch) async {
+  await laconic.table('users').orderBy('id').chunk(2, (batch) async {
     print('Processing ${batch.length} users...');
   });
 

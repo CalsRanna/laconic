@@ -7,11 +7,11 @@ class MockGrammar extends SqlGrammar {
   @override
   CompiledQuery compileSelect({
     required String table,
-    required List<String> columns,
+    required List<Object> columns,
     required List<Map<String, dynamic>> wheres,
     required List<Map<String, dynamic>> joins,
     required List<Map<String, dynamic>> orders,
-    required List<String> groups,
+    required List<Object> groups,
     required List<Map<String, dynamic>> havings,
     required bool distinct,
     int? limit,
@@ -164,6 +164,10 @@ class MockGrammar extends SqlGrammar {
     required String table,
     required Map<String, Object?> data,
     required List<Map<String, dynamic>> wheres,
+    List<Map<String, dynamic>> joins = const [],
+    List<Map<String, dynamic>> orders = const [],
+    int? limit,
+    int? offset,
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];
@@ -203,6 +207,10 @@ class MockGrammar extends SqlGrammar {
   CompiledQuery compileDelete({
     required String table,
     required List<Map<String, dynamic>> wheres,
+    List<Map<String, dynamic>> joins = const [],
+    List<Map<String, dynamic>> orders = const [],
+    int? limit,
+    int? offset,
   }) {
     final buffer = StringBuffer();
     final bindings = <Object?>[];

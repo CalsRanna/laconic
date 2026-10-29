@@ -863,7 +863,7 @@ void main() {
             .useIndex('idx_name')
             .toSql()
             .toLowerCase(),
-        contains('use index (idx_name)'),
+        contains('use index (`idx_name`)'),
       );
       expect(
         laconic
@@ -871,7 +871,7 @@ void main() {
             .forceIndex('idx_name')
             .toSql()
             .toLowerCase(),
-        contains('force index (idx_name)'),
+        contains('force index (`idx_name`)'),
       );
       expect(
         laconic
@@ -879,7 +879,7 @@ void main() {
             .ignoreIndex('idx_name')
             .toSql()
             .toLowerCase(),
-        contains('ignore index (idx_name)'),
+        contains('ignore index (`idx_name`)'),
       );
       expect(
         () => laconic.table(MysqlTestData.userTable).useIndex('bad name'),

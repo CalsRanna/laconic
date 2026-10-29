@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../exception.dart';
 import '../schema/blueprint.dart';
 import '../schema/schema_command.dart';
@@ -300,6 +302,275 @@ abstract class SqlGrammar {
     throw LaconicException('This grammar does not implement column inspection');
   }
 
+  /// Quotes a query column, qualified identifier, alias, or JSON selector.
+  ///
+  /// Only [Expression] bypasses identifier quoting.
+  String wrap(Object value) {
+    if (value is Expression) return value.sql;
+    if (value is! String) {
+      throw LaconicException('Expected an identifier or Expression');
+    }
+    final alias = _splitAlias(value);
+    if (alias.name != null) {
+      return '${wrap(alias.value)} as ${quoteSchemaIdentifier(_identifierParts(alias.name!).join('.'))}';
+    }
+    if (value.contains('->')) {
+      final selector = splitJsonSelector(value);
+      return compileJsonSelector(selector.column, selector.path);
+    }
+    return _wrapIdentifier(value);
+  }
+
+  String _wrapIdentifier(String value) => _identifierParts(
+    value,
+  ).map((part) => part == '*' ? '*' : quoteSchemaIdentifier(part)).join('.');
+
+  /// Quotes a table, including the supported `table alias` shorthand.
+  String wrapTable(String table) {
+    final alias = _splitAlias(table, table: true);
+    return alias.name == null
+        ? _wrapIdentifier(table)
+        : '${_wrapIdentifier(alias.value)} as ${quoteSchemaIdentifier(_identifierParts(alias.name!).join('.'))}';
+  }
+
+  /// Quotes the table name or alias used to qualify target rows.
+  ///
+  /// Set [useAlias] to false for operators that require the actual table name.
+  String tableReference(String table, {bool useAlias = true}) {
+    final alias = _splitAlias(table, table: true);
+    return alias.name == null || !useAlias
+        ? _wrapIdentifier(alias.value)
+        : quoteSchemaIdentifier(_identifierParts(alias.name!).join('.'));
+  }
+
+  /// Resolves a selected column or alias to its unquoted result name.
+  String resultColumnName(String column) {
+    final alias = _splitAlias(column);
+    return alias.name == null
+        ? _identifierParts(alias.value).last
+        : _identifierParts(alias.name!).join('.');
+  }
+
+  ({String value, String? name}) _splitAlias(
+    String value, {
+    bool table = false,
+  }) {
+    String? quote;
+    int? implicit;
+    for (var i = 0; i < value.length; i++) {
+      final char = value[i];
+      if (quote != null) {
+        if (char == quote) {
+          if (i + 1 < value.length && value[i + 1] == quote) {
+            i++;
+          } else {
+            quote = null;
+          }
+        } else if (char == r'\' && quote == '"') {
+          i++;
+        }
+        continue;
+      }
+      if ((char == '"' || char == '`' || char == '[') &&
+          (i == 0 || '.> \t'.contains(value[i - 1]))) {
+        quote = char == '[' ? ']' : char;
+        continue;
+      }
+      if (char.trim().isEmpty) {
+        final match = RegExp(
+          r'^\s+as\s+',
+          caseSensitive: false,
+        ).firstMatch(value.substring(i));
+        if (match != null) {
+          return (
+            value: value.substring(0, i),
+            name: value.substring(i + match.end),
+          );
+        }
+        implicit ??= i;
+      }
+    }
+    if (table && implicit != null) {
+      return (
+        value: value.substring(0, implicit),
+        name: value.substring(implicit).trim(),
+      );
+    }
+    return (value: value, name: null);
+  }
+
+  List<String> _identifierParts(String value) {
+    final parts = <String>[];
+    final buffer = StringBuffer();
+    String? quote;
+    for (var i = 0; i < value.length; i++) {
+      final char = value[i];
+      if (quote != null) {
+        if (char == quote) {
+          if (i + 1 < value.length && value[i + 1] == quote) {
+            buffer.write(char);
+            i++;
+          } else {
+            quote = null;
+          }
+        } else {
+          buffer.write(char);
+        }
+      } else if (buffer.isEmpty &&
+          (char == '"' || char == '`' || char == '[')) {
+        quote = char == '[' ? ']' : char;
+      } else if (char == '.') {
+        parts.add(buffer.toString());
+        buffer.clear();
+      } else {
+        buffer.write(char);
+      }
+    }
+    if (quote != null) {
+      throw LaconicException('Unclosed quoted identifier: $value');
+    }
+    parts.add(buffer.toString());
+    return parts;
+  }
+
+  /// Splits Laravel-style JSON selectors into a column and JSON path.
+  ({String column, String path}) splitJsonSelector(String selector) {
+    final index = selector.indexOf('->');
+    if (index < 1) throw LaconicException('Expected a column and JSON path');
+    final path = selector.substring(index + 2);
+    if (path.isEmpty) throw LaconicException('JSON selector requires a path');
+    return (
+      column: selector.substring(0, index),
+      path: path.startsWith(r'$') ? path : '\$.$path',
+    );
+  }
+
+  /// Parses object keys and array indexes in a JSON path.
+  List<Object> jsonPathSegments(String path) {
+    final parts = <Object>[];
+    var i = path.startsWith(r'$') ? 1 : 0;
+    while (i < path.length) {
+      if (path.startsWith('->', i)) {
+        i += 2;
+        continue;
+      }
+      if (path[i] == '.') {
+        i++;
+        continue;
+      }
+      if (path[i] == '[') {
+        final end = path.indexOf(']', i);
+        if (end < 0) throw LaconicException('Invalid JSON path: $path');
+        final index = int.tryParse(path.substring(i + 1, end));
+        if (index == null || index < 0) {
+          throw LaconicException('Expected an array index: $path');
+        }
+        parts.add(index);
+        i = end + 1;
+      } else if (path[i] == '"') {
+        final start = i++;
+        while (i < path.length) {
+          if (path[i] == r'\') {
+            i += 2;
+            continue;
+          }
+          if (path[i++] == '"') break;
+        }
+        parts.add(jsonDecode(path.substring(start, i)) as String);
+      } else {
+        final start = i;
+        while (i < path.length &&
+            path[i] != '.' &&
+            path[i] != '[' &&
+            !path.startsWith('->', i)) {
+          i++;
+        }
+        parts.add(path.substring(start, i));
+      }
+    }
+    return parts;
+  }
+
+  /// Encodes a JSON path with quoted object keys and array subscripts.
+  String jsonPath(String path) =>
+      '\$${jsonPathSegments(path).map((part) => part is int ? '[$part]' : '.${jsonEncode(part)}').join()}';
+
+  /// Compiles JSON scalar extraction for ordinary query clauses.
+  String compileJsonSelector(String column, String path) {
+    throw LaconicException('This grammar does not support JSON selectors');
+  }
+
+  /// Adds a value binding, or emits an explicit SQL expression.
+  String parameter(Object? value, List<Object?> bindings) {
+    if (value is Expression) return value.sql;
+    bindings.add(value);
+    return numberedPlaceholders ? '\$${bindings.length}' : '?';
+  }
+
+  /// Compiles an ordinary comparison, including typed JSON values.
+  String compileBasicPredicate(
+    String column,
+    String comparator,
+    Object? value,
+    List<Object?> bindings,
+  ) => '${wrap(column)} $comparator ${parameter(value, bindings)}';
+
+  /// Compiles a NULL check, including JSON null where the dialect requires it.
+  String compileNullPredicate(String column, bool not) =>
+      '${wrap(column)} is ${not ? 'not ' : ''}null';
+
+  /// Compiles assignments, composing updates to multiple paths in one JSON field.
+  String compileAssignments(Map<String, Object?> data, List<Object?> bindings) {
+    final columns = <String, List<({String? path, Object? value})>>{};
+    for (final entry in data.entries) {
+      final selector =
+          entry.key.contains('->')
+              ? splitJsonSelector(entry.key)
+              : (column: entry.key, path: null);
+      if (selector.path != null && data.containsKey(selector.column)) {
+        throw LaconicException(
+          'Cannot combine whole-column and JSON-path assignments',
+        );
+      }
+      columns.putIfAbsent(selector.column, () => []).add((
+        path: selector.path,
+        value: entry.value,
+      ));
+    }
+    // Compile each complete assignment in SQL order, including its bindings.
+    return columns.entries
+        .map((entry) {
+          var expression = wrap(entry.key);
+          for (final update in entry.value) {
+            expression =
+                update.path == null
+                    ? parameter(update.value, bindings)
+                    : compileJsonUpdate(
+                      expression,
+                      update.path!,
+                      update.value,
+                      bindings,
+                    );
+          }
+          return '${wrapAssignmentColumn(entry.key)} = $expression';
+        })
+        .join(', ');
+  }
+
+  /// Quotes an assignment target; most dialects disallow its table qualifier.
+  String wrapAssignmentColumn(String column) =>
+      quoteSchemaIdentifier(_identifierParts(column).last);
+
+  /// Compiles a JSON path assignment without changing other object properties.
+  String compileJsonUpdate(
+    String source,
+    String path,
+    Object? value,
+    List<Object?> bindings,
+  ) {
+    throw LaconicException('This grammar does not support JSON path updates');
+  }
+
   /// Compiles a SELECT query.
   ///
   /// Parameters:
@@ -323,11 +594,11 @@ abstract class SqlGrammar {
   /// embedded in a larger statement while keeping placeholder order intact.
   CompiledQuery compileSelect({
     required String table,
-    required List<String> columns,
+    required List<Object> columns,
     required List<Map<String, dynamic>> wheres,
     required List<Map<String, dynamic>> joins,
     required List<Map<String, dynamic>> orders,
-    required List<String> groups,
+    required List<Object> groups,
     required List<Map<String, dynamic>> havings,
     required bool distinct,
     int? limit,
@@ -349,7 +620,7 @@ abstract class SqlGrammar {
     String function,
     String column, {
     bool distinct = false,
-  }) => '$function(${distinct ? 'DISTINCT ' : ''}$column)';
+  }) => '$function(${distinct ? 'DISTINCT ' : ''}${wrap(column)})';
 
   /// Whether compiled SQL uses `$1, $2, ...` placeholders.
   bool get numberedPlaceholders => false;
@@ -376,7 +647,7 @@ abstract class SqlGrammar {
   CompiledQuery compileUnion({
     required List<CompiledQuery> queries,
     required List<bool> all,
-    required List<String> columns,
+    required List<Object> columns,
     required List<Map<String, dynamic>> orders,
     List<Map<String, dynamic>> wheres = const [],
     int? limit,
@@ -405,7 +676,7 @@ abstract class SqlGrammar {
     );
     return CompiledQuery(
       sql: outer.sql.replaceFirst(
-        'from laconic_union',
+        'from ${wrapTable('laconic_union')}',
         'from ($sql) as laconic_union',
       ),
       bindings: [...bindings, ...outer.bindings],
@@ -432,6 +703,10 @@ abstract class SqlGrammar {
     required String table,
     required Map<String, Object?> data,
     required List<Map<String, dynamic>> wheres,
+    List<Map<String, dynamic>> joins = const [],
+    List<Map<String, dynamic>> orders = const [],
+    int? limit,
+    int? offset,
   });
 
   /// Compiles a DELETE query.
@@ -442,6 +717,10 @@ abstract class SqlGrammar {
   CompiledQuery compileDelete({
     required String table,
     required List<Map<String, dynamic>> wheres,
+    List<Map<String, dynamic>> joins = const [],
+    List<Map<String, dynamic>> orders = const [],
+    int? limit,
+    int? offset,
   });
 
   /// Compiles an INSERT query that returns the inserted ID.
@@ -527,7 +806,7 @@ abstract class SqlGrammar {
     required List<String> columns,
     required String sql,
   }) {
-    return 'insert into $table (${columns.join(', ')}) $sql';
+    return 'insert into ${wrapTable(table)} (${columns.map(wrap).join(', ')}) $sql';
   }
 
   /// Compiles an UPSERT (INSERT ... ON CONFLICT / ON DUPLICATE KEY UPDATE) query.

@@ -930,7 +930,8 @@ void main() {
 
     test('DISTINCT ON keys survive projection changes and cloning', () async {
       final q = laconic
-          .table(
+          .table('t')
+          .fromRaw(
             '(select 1 as id, 1 as grp union all select 2, 1 '
             'union all select 3, 2 union all select 4, 2) as t',
           )
@@ -1112,7 +1113,7 @@ void main() {
             .distinct(['gender'])
             .toSql()
             .toLowerCase(),
-        contains('distinct on (gender)'),
+        contains('distinct on ("gender")'),
       );
     });
 

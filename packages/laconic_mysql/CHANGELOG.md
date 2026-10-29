@@ -1,5 +1,12 @@
 ## Unreleased
 
+- Quote query identifiers, support JSON scalar selectors/path updates, and retain
+  joined or ordered/limited writes. Reject nonzero write offsets and JOIN with
+  ORDER BY/LIMIT.
+- **Breaking:** adopt the matching unreleased core query compiler contract and
+  chunking semantics. Use `Expression`/`*Raw` for SQL expressions. Existing
+  version numbers are retained until a coordinated core/driver release.
+
 - Scope internal protocol constants, authentication helpers, and binary value
   decoding to classes. Keep connection and query behavior unchanged.
 
