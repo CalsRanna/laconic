@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:laconic/cli.dart';
+import 'package:laconic/laconic.dart';
 import 'package:laconic/src/cli/migration_generator.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';

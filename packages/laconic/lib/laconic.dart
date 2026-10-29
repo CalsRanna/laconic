@@ -67,3 +67,5 @@ export 'src/schema/schema_command.dart';
 export 'src/migrations/migration.dart';
 export 'src/migrations/migration_status.dart';
 export 'src/migrations/migrator.dart';
+
+export 'src/cli/migration_cli.dart' show runMigrationCli, runMigrationCommand;

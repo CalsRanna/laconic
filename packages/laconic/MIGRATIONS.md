@@ -2,9 +2,8 @@
 
 Database migrations and the CLI are built into `laconic`. These unreleased APIs
 require matching core and driver sources containing the Schema Builder API.
-Import `Migration`, `MigrationStatus`, and `Migrator` from
-`package:laconic/laconic.dart`. CLI APIs are exported separately from
-`package:laconic/cli.dart` so the main library does not import CLI I/O.
+Import `Migration`, `MigrationStatus`, `Migrator`, `runMigrationCli`, and
+`runMigrationCommand` from `package:laconic/laconic.dart`.
 The core uses `args`, `cli_util`, `io`, and `path` for the CLI, and has no
 concrete database driver dependencies, including development dependencies.
 Applications choose and inject their driver; integration tests live in driver packages.
@@ -158,7 +157,7 @@ removes the entrypoint after the subprocess finishes, including failures. This
 does not use reflection or interpret Dart source. The CLI requires the Dart SDK
 even when the launcher itself is compiled to a native executable. A custom
 statically registered executable can instead call `runMigrationCommand()` from
-`package:laconic/cli.dart` directly; see its API documentation.
+`package:laconic/laconic.dart` directly; see its API documentation.
 
 `status --json` writes an array of `{name, status, batch, missing}` to stdout.
 Diagnostics go to stderr. Application configuration and query hooks should also

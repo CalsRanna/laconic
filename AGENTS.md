@@ -135,8 +135,7 @@ PostgreSQL 使用 `PostgresqlPlaceholders` 做单次扫描的占位符转换，�
 
 ```
 packages/laconic/lib/
-├── laconic.dart                    # 公共数据库 API；不导入 CLI I/O
-├── cli.dart                        # runMigrationCli / runMigrationCommand
+├── laconic.dart                    # 统一导出数据库 API 和两个公共 CLI 函数
 └── src/
     ├── laconic.dart                # 连接门面、查询钩子、QueryBuilder / SchemaBuilder 工厂
     ├── exception.dart              # 共享 LaconicException
@@ -192,8 +191,8 @@ packages/laconic_postgresql/lib/src/
 
 ### 核心包内部依赖
 
-- 通过 `lib/laconic.dart` 和 `lib/cli.dart` 保持公共入口稳定；`lib/src` 按职责组织，包内实现使用相对导入。
-- 数据库 API 不反向依赖 CLI；CLI 通过传入的 Laconic 连接使用查询、Schema 和 Migration。
+- 通过 `lib/laconic.dart` 统一导出公共 API；`lib/src` 按职责组织，包内实现使用相对导入。
+- 数据库实现不反向依赖 CLI 实现；公共入口同时导出两者。CLI 通过传入的 Laconic 连接使用查询、Schema 和 Migration。
 - QueryBuilder 的公开链式方法保持为类成员；纯调试格式化委托给内部辅助函数。
 - SchemaCommand 的 sealed 子类型保持在同一个库，Blueprint 只负责收集这些命令。
 - 公共入口只导出用户和驱动需要的类型；CLI 请求、源码生成和 SQL 调试辅助函数不导出。
@@ -205,7 +204,7 @@ packages/laconic_postgresql/lib/src/
 - 各驱动的 schema 实现在同库 `*_schema.dart` part 文件中，通过私有 mixin 组织；MariaDB 复用 MySQL 实现。
 - 编译器保持无状态、无 I/O；一次操作先完整编译再逐条执行。查询钩子由现有 Laconic 执行入口统一触发。
 - 核心包内置迁移引擎 `lib/src/migrations/`，从 `laconic.dart` 导出 Migration/MigrationStatus/Migrator；每个普通迁移按 grammar 的 `supportsSchemaTransactions` 声明处理事务。MySQL/MariaDB 不自动开启 DDL 事务。
-- Migration CLI 位于独立的 `cli.dart` 入口和 `lib/src/cli/`，支持 make/migrate/rollback/status。项目配置导出 createDatabase()，迁移文件导出 migration()；通过临时静态 import 入口运行，不使用反射。可执行入口为 `bin/laconic.dart`，使用 `dart run laconic`。核心仅增加 args/cli_util/io/path 工具依赖，dependencies 和 dev_dependencies 均不引入具体数据库驱动。
+- Migration CLI 实现位于 `lib/src/cli/`，公共函数从 `lib/laconic.dart` 导出，支持 make/migrate/rollback/status。项目配置导出 createDatabase()，迁移文件导出 migration()；通过临时静态 import 入口运行，不使用反射。可执行入口为 `bin/laconic.dart`，使用 `dart run laconic`。核心仅增加 args/cli_util/io/path 工具依赖，dependencies 和 dev_dependencies 均不引入具体数据库驱动。
 - 跨方言 Schema/Migration 行为测试位于核心 `test/regressions/schema_regressions.dart` 和 `test/regressions/migrator_regressions.dart`，由各驱动的测试入口调用。核心 `test/cli/migration_cli_test.dart` 测试无驱动 CLI 行为；SQLite 包负责 CLI 数据库与子进程集成测试，迁移示例也位于 SQLite 包。
 - 详细 API、限制和第三方扩展契约见根目录 SCHEMA.md。版本号暂保留原发布线，发布前须按 RELEASE.md 协调新 API 的最低版本。
 
@@ -312,7 +311,7 @@ MySQL 和 PostgreSQL 驱动使用 Dart 的 `runZoned` 配合区域值，通过�
 - `QueryBuilder`、`JoinClause`、`LaconicResult`、`LaconicQuery`、`LaconicException`
 - `Expression` 类 + `raw()` 顶层函数
 - `LaconicPage`、`LaconicSimplePage`、`LaconicCursorPage`
-- `Migration`、`MigrationStatus`、`Migrator`；CLI 函数仅从 `lib/cli.dart` 导出
+- `Migration`、`MigrationStatus`、`Migrator`；`runMigrationCli`、`runMigrationCommand`
 - `operator.dart` 的运算符校验为内部实现，不导出
 
 ## 测试策略

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:laconic/laconic.dart';
-import 'package:laconic/cli.dart';
 import 'package:laconic_sqlite/laconic_sqlite.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';

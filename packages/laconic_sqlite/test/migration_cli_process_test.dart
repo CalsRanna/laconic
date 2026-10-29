@@ -20,7 +20,7 @@ void main() {
 
   setUpAll(() async {
     final library = await Isolate.resolvePackageUri(
-      Uri.parse('package:laconic/cli.dart'),
+      Uri.parse('package:laconic/laconic.dart'),
     );
     executable = p.join(
       p.dirname(p.dirname(File.fromUri(library!).path)),

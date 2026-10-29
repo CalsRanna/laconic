@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Export `runMigrationCli` and `runMigrationCommand` from `laconic.dart` and
+  remove the separate `cli.dart` entrypoint. Update CLI imports to
+  `package:laconic/laconic.dart`.
+
 - Organize core internals into database, query, grammar, schema, migrations,
   and CLI modules. Separate schema commands, migration status, SQL debug
   formatting, and CLI parsing/execution. Keep public exports, fluent methods,
@@ -8,13 +12,13 @@
   support files; driver packages reuse suites from `test/regressions`.
 
 - Fold the unreleased migration package into the core. Import `Migration`,
-  `MigrationStatus`, and `Migrator` from `package:laconic/laconic.dart`, use
-  `package:laconic/cli.dart` for CLI APIs, and replace `dart run laconic_migrations`
+  `MigrationStatus`, `Migrator`, and CLI APIs from
+  `package:laconic/laconic.dart`, and replace `dart run laconic_migrations`
   with `dart run laconic`. Remove the old package dependency and update imports
   in existing migration files. Core has no concrete driver dependencies; database
   integration tests and the runnable example now live in driver packages.
 - Add `args`, `cli_util`, `io`, and `path` for the built-in CLI. The main library
-  exports migration types without importing CLI I/O.
+  exports migration types and CLI functions together.
 - Add the `laconic` executable with `make`, `migrate`, `rollback`, and
   `status`, Laravel-style aliases, batch/step options, and JSON status output.
 - Generate timestamped migration factories, optionally with create/drop-table

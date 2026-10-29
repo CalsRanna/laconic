@@ -77,7 +77,6 @@ Future<int> runProjectMigrations({
     }
     final entrypoint = File(p.join(temporary.path, 'main.dart'));
     await entrypoint.writeAsString('''import 'dart:io';
-import 'package:laconic/cli.dart';
 import 'package:laconic/laconic.dart';
 import ${dartString(config.absolute.uri.toString())} as configuration;
 $imports
