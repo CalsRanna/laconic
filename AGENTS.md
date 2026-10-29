@@ -184,7 +184,8 @@ packages/laconic_postgresql/lib/src/
 - DDL、默认值编码和结构检查 SQL 都由现有 `SqlGrammar` 编译；不新增 SchemaGrammar、SchemaProvider 或单独的 schema 包。
 - 各驱动的 schema 实现在同库 `*_schema.dart` part 文件中，通过私有 mixin 组织；MariaDB 复用 MySQL 实现。
 - 编译器保持无状态、无 I/O；一次操作先完整编译再逐条执行。查询钩子由现有 Laconic 执行入口统一触发。
-- `laconic_migrations` 仅依赖核心，提供 Migration/Migrator；每个普通迁移按 grammar 的 `supportsSchemaTransactions` 声明处理事务。MySQL/MariaDB 不自动开启 DDL 事务。
+- `laconic_migrations` 的迁移引擎使用核心，提供 Migration/Migrator；每个普通迁移按 grammar 的 `supportsSchemaTransactions` 声明处理事务。MySQL/MariaDB 不自动开启 DDL 事务。
+- Migration CLI 位于独立的 `cli.dart` 入口和 `lib/src/cli/`，支持 make/migrate/rollback/status。项目配置导出 createDatabase()，迁移文件导出 migration()；通过临时静态 import 入口运行，不使用反射。CLI 增加 args/cli_util/io/path 依赖，核心包依赖保持不变。
 - 跨方言 Schema 行为测试位于核心 `test/schema_regressions.dart`；迁移测试位于 `packages/laconic_migrations/test`，完整回归必须包含此目录。
 - 详细 API、限制和第三方扩展契约见根目录 SCHEMA.md。版本号暂保留原发布线，发布前须按 RELEASE.md 协调新 API 的最低版本。
 

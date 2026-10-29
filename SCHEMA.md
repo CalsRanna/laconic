@@ -9,8 +9,10 @@
 各驱动的同一个 Grammar 编译查询、写入和 DDL。驱动内部用私有 mixin/part 分文件组织
 DDL 实现，没有新增公开的 SchemaGrammar 或 SchemaProvider。
 
-`laconic_migrations` 只依赖核心包，负责迁移顺序、历史、批次和回滚。
-它不导入具体数据库驱动，也不依赖驱动名称进行分支判断。
+`laconic_migrations` 的迁移引擎使用核心包，负责迁移顺序、历史、批次和回滚。
+CLI 额外依赖参数解析、路径和 SDK 定位工具；它不导入具体数据库驱动，
+也不依赖驱动名称进行分支判断。文件生成与命令用法见
+[Migration CLI](packages/laconic_migrations/README.md#cli)。
 
 ## 创建与修改表
 
