@@ -6,11 +6,11 @@
 
 Laconic 是一个 Laravel 风格的 Dart SQL 查询构造器，支持 MySQL、MariaDB、SQLite、PostgreSQL 和 SQL Server。它提供流畅、可链式调用的 API，用于构建和执行参数化数据库查询，拥有 130+ 个公开方法，覆盖查询、子查询、分页、流式读取、JSON/全文检索和方言特性。
 
-该项目是一个 **Dart workspace 单体仓库**（SDK >=3.7.0），包含七个包：
+该项目是一个 **Dart workspace 单体仓库**（SDK >=3.7.0），包含六个包：
 
 | 包 | 用途 | 关键依赖 |
 |---------|---------|---------------|
-| `packages/laconic/` | 核心查询构造器、抽象 `SqlGrammar`、`DatabaseDriver` 接口、共享类型 | *(无)* |
+| `packages/laconic/` | 查询构造器、Schema、Migration、CLI、`SqlGrammar` 和 `DatabaseDriver` | CLI 使用 `args`、`cli_util`、`io`、`path`；无具体驱动依赖 |
 | `packages/laconic_sqlite/` | SQLite 驱动 + 语法 | `sqlite3: ^3.3.2` |
 | `packages/laconic_mysql/` | MySQL 驱动 + 内嵌客户端 + 语法 | `buffer: ^1.1.1`、`crypto: ^3.0.1` |
 | `packages/laconic_postgresql/` | PostgreSQL 驱动 + 语法 | `postgres: ^3.5.4` |
@@ -32,7 +32,8 @@ workspace 根目录的 `pubspec.yaml` 定义了 workspace 成员；各个包使�
 ```bash
 # 运行所有包的全部测试（推荐显式列出）
 dart test packages/laconic/test packages/laconic_sqlite/test \
-  packages/laconic_mysql/test packages/laconic_postgresql/test --concurrency=1
+  packages/laconic_mysql/test packages/laconic_postgresql/test \
+  packages/laconic_mariadb/test packages/laconic_sqlserver/test --concurrency=1
 
 # 运行单个包的测试
 cd packages/laconic_sqlite && dart test
@@ -184,9 +185,9 @@ packages/laconic_postgresql/lib/src/
 - DDL、默认值编码和结构检查 SQL 都由现有 `SqlGrammar` 编译；不新增 SchemaGrammar、SchemaProvider 或单独的 schema 包。
 - 各驱动的 schema 实现在同库 `*_schema.dart` part 文件中，通过私有 mixin 组织；MariaDB 复用 MySQL 实现。
 - 编译器保持无状态、无 I/O；一次操作先完整编译再逐条执行。查询钩子由现有 Laconic 执行入口统一触发。
-- `laconic_migrations` 的迁移引擎使用核心，提供 Migration/Migrator；每个普通迁移按 grammar 的 `supportsSchemaTransactions` 声明处理事务。MySQL/MariaDB 不自动开启 DDL 事务。
-- Migration CLI 位于独立的 `cli.dart` 入口和 `lib/src/cli/`，支持 make/migrate/rollback/status。项目配置导出 createDatabase()，迁移文件导出 migration()；通过临时静态 import 入口运行，不使用反射。CLI 增加 args/cli_util/io/path 依赖，核心包依赖保持不变。
-- 跨方言 Schema 行为测试位于核心 `test/schema_regressions.dart`；迁移测试位于 `packages/laconic_migrations/test`，完整回归必须包含此目录。
+- 核心包内置迁移引擎 `lib/src/migrations/`，从 `laconic.dart` 导出 Migration/MigrationStatus/Migrator；每个普通迁移按 grammar 的 `supportsSchemaTransactions` 声明处理事务。MySQL/MariaDB 不自动开启 DDL 事务。
+- Migration CLI 位于独立的 `cli.dart` 入口和 `lib/src/cli/`，支持 make/migrate/rollback/status。项目配置导出 createDatabase()，迁移文件导出 migration()；通过临时静态 import 入口运行，不使用反射。可执行入口为 `bin/laconic.dart`，使用 `dart run laconic`。核心仅增加 args/cli_util/io/path 工具依赖，dependencies 和 dev_dependencies 均不引入具体数据库驱动。
+- 跨方言 Schema/Migration 行为测试位于核心 `test/schema_regressions.dart` 和 `test/migrator_regressions.dart`，由各驱动的测试入口调用。核心 `test/migration_cli_test.dart` 测试无驱动 CLI 行为；SQLite 包负责 CLI 数据库与子进程集成测试，迁移示例也位于 SQLite 包。
 - 详细 API、限制和第三方扩展契约见根目录 SCHEMA.md。版本号暂保留原发布线，发布前须按 RELEASE.md 协调新 API 的最低版本。
 
 ### 语法模式（策略模式）
@@ -292,6 +293,7 @@ MySQL 和 PostgreSQL 驱动使用 Dart 的 `runZoned` 配合区域值，通过�
 - `QueryBuilder`、`JoinClause`、`LaconicResult`、`LaconicQuery`、`LaconicException`
 - `Expression` 类 + `raw()` 顶层函数
 - `LaconicPage`、`LaconicSimplePage`、`LaconicCursorPage`
+- `Migration`、`MigrationStatus`、`Migrator`；CLI 函数仅从 `lib/cli.dart` 导出
 - `operator.dart` 的运算符校验为内部实现，不导出
 
 ## 测试策略
@@ -343,7 +345,8 @@ dart pub get
 dart analyze
 docker compose up -d --wait
 dart test packages/laconic/test packages/laconic_sqlite/test \
-  packages/laconic_mysql/test packages/laconic_postgresql/test --concurrency=1
+  packages/laconic_mysql/test packages/laconic_postgresql/test \
+  packages/laconic_mariadb/test packages/laconic_sqlserver/test --concurrency=1
 docker compose down
 ```
 
@@ -355,7 +358,7 @@ CHANGELOG 必须记录 breaking changes、迁移说明和驱动版本对应关�
 ## 依赖
 
 ### 核心包（`packages/laconic`）
-- 零运行时依赖。开发依赖：`lints: ^5.1.1`、`test: ^1.25.15`。
+- CLI 工具依赖：`args: ^2.7.0`、`cli_util: ^0.6.0`、`io: ^1.0.5`、`path: ^1.9.1`；没有具体数据库驱动依赖。开发依赖：`lints: ^5.1.1`、`test: ^1.25.15`。
 
 ### SQLite 驱动
 - `sqlite3: ^3.3.2` — 通过 `dart:ffi` 使用原生 SQLite。使用 `Database.prepare()` 进行参数化语句。

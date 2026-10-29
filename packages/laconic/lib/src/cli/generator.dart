@@ -49,7 +49,6 @@ Future<File> generateMigration({
           ? "throw UnimplementedError('Implement down() before rolling back this migration.');"
           : 'await database.schema.drop(${dartString(createTable)});';
   final source = '''import 'package:laconic/laconic.dart';
-import 'package:laconic_migrations/laconic_migrations.dart';
 
 /// Returns this file's migration for the CLI registry.
 Migration migration() => _GeneratedMigration();

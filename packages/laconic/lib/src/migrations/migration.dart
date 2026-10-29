@@ -1,4 +1,4 @@
-import 'package:laconic/laconic.dart';
+import '../laconic.dart';
 
 /// A versioned database change with an explicitly authored reverse operation.
 abstract class Migration {

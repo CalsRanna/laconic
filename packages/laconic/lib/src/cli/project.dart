@@ -63,9 +63,7 @@ Future<int> runProjectMigrations({
       ExitCode.config.code,
     );
   }
-  final cache = Directory(
-    p.join(project.path, '.dart_tool', 'laconic_migrations'),
-  );
+  final cache = Directory(p.join(project.path, '.dart_tool', 'laconic'));
   await cache.create(recursive: true);
   final temporary = await cache.createTemp('run_');
   try {
@@ -79,8 +77,8 @@ Future<int> runProjectMigrations({
     }
     final entrypoint = File(p.join(temporary.path, 'main.dart'));
     await entrypoint.writeAsString('''import 'dart:io';
-import 'package:laconic_migrations/cli.dart';
-import 'package:laconic_migrations/laconic_migrations.dart';
+import 'package:laconic/cli.dart';
+import 'package:laconic/laconic.dart';
 import ${dartString(config.absolute.uri.toString())} as configuration;
 $imports
 Migration checked(String name, Migration migration) {

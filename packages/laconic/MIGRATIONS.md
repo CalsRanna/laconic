@@ -1,14 +1,16 @@
 # Laconic Migrations
 
-Explicit database migrations for Laconic. This unreleased workspace package
-requires the matching core and driver sources containing the Schema Builder API.
-The migration engine uses `laconic`; the CLI also uses `args`, `cli_util`, `io`,
-and `path`. Choose a database driver in your application. CLI APIs are exported
-separately from `package:laconic_migrations/cli.dart`.
+Database migrations and the CLI are built into `laconic`. These unreleased APIs
+require matching core and driver sources containing the Schema Builder API.
+Import `Migration`, `MigrationStatus`, and `Migrator` from
+`package:laconic/laconic.dart`. CLI APIs are exported separately from
+`package:laconic/cli.dart` so the main library does not import CLI I/O.
+The core uses `args`, `cli_util`, `io`, and `path` for the CLI, and has no
+concrete database driver dependencies, including development dependencies.
+Applications choose and inject their driver; integration tests live in driver packages.
 
 ```dart
 import 'package:laconic/laconic.dart';
-import 'package:laconic_migrations/laconic_migrations.dart';
 
 class CreateUsers extends Migration {
   @override
@@ -74,7 +76,7 @@ operations. Migration functions execute application code; run trusted sources.
 ## CLI
 
 Run the CLI from your application directory after resolving dependencies with
-`dart pub get`. Add `laconic_migrations`, `laconic`, and your selected driver to
+`dart pub get`. Add `laconic` and your selected driver to
 that application's dependencies.
 
 Create `database/migrations.dart` with a top-level `createDatabase()` function
@@ -97,24 +99,24 @@ closes it afterward; generation and help do not load database configuration.
 
 ```sh
 # Generate a create-table migration with a matching drop-table rollback.
-dart run laconic_migrations make create_users --create=users
+dart run laconic make create_users --create=users
 
 # Edit the generated file to define the remaining columns, then run it.
-dart run laconic_migrations migrate
+dart run laconic migrate
 
 # Show pending/applied migrations and their batch numbers.
-dart run laconic_migrations status
-dart run laconic_migrations status --json
+dart run laconic status
+dart run laconic status --json
 
 # Roll back the latest batch, or the latest two individual migrations.
-dart run laconic_migrations rollback
-dart run laconic_migrations rollback --step=2
+dart run laconic rollback
+dart run laconic rollback --step=2
 
 # Give every pending migration its own batch.
-dart run laconic_migrations migrate --step
+dart run laconic migrate --step
 
 # Generate an arbitrary change with up/down stubs to fill in.
-dart run laconic_migrations make add_user_preferences
+dart run laconic make add_user_preferences
 ```
 
 `make:migration`, `migrate:rollback`, and `migrate:status` are aliases. Use `--help`
@@ -124,7 +126,7 @@ filled in, so unfinished work is never silently recorded as successful.
 Global options go before the command:
 
 ```sh
-dart run laconic_migrations \
+dart run laconic \
   --config tool/database.dart \
   --path database/changes \
   --table app_migrations \
@@ -151,12 +153,12 @@ migrations directory. Only regular `.dart` files in that directory are loaded;
 subdirectories are not scanned and symlinked Dart files are rejected explicitly.
 
 The launcher discovers files, generates a temporary entrypoint with normal Dart
-imports under `.dart_tool/laconic_migrations/`, then invokes the Dart SDK. It
+imports under `.dart_tool/laconic/`, then invokes the Dart SDK. It
 removes the entrypoint after the subprocess finishes, including failures. This
 does not use reflection or interpret Dart source. The CLI requires the Dart SDK
 even when the launcher itself is compiled to a native executable. A custom
 statically registered executable can instead call `runMigrationCommand()` from
-`package:laconic_migrations/cli.dart` directly; see its API documentation.
+`package:laconic/cli.dart` directly; see its API documentation.
 
 `status --json` writes an array of `{name, status, batch, missing}` to stdout.
 Diagnostics go to stderr. Application configuration and query hooks should also
@@ -172,10 +174,10 @@ system as described above. Automatic schema diff and schema snapshots are not
 provided.
 
 See [Schema Builder](../../SCHEMA.md) for the dialect support matrix and
-[the example](example/laconic_migrations_example.dart) for a runnable workflow.
+[the example](../laconic_sqlite/example/migrations_example.dart) for a runnable workflow.
 
 From the workspace root:
 
 ```sh
-dart run packages/laconic_migrations/example/laconic_migrations_example.dart
+dart run packages/laconic_sqlite/example/migrations_example.dart
 ```

@@ -20,15 +20,40 @@ void main() {
 
   setUpAll(() async {
     final library = await Isolate.resolvePackageUri(
-      Uri.parse('package:laconic_migrations/cli.dart'),
+      Uri.parse('package:laconic/cli.dart'),
     );
-    packageRoot = p.dirname(p.dirname(File.fromUri(library!).path));
-    executable = p.join(packageRoot, 'bin', 'laconic_migrations.dart');
+    executable = p.join(
+      p.dirname(p.dirname(File.fromUri(library!).path)),
+      'bin',
+      'laconic.dart',
+    );
+    final driver = await Isolate.resolvePackageUri(
+      Uri.parse('package:laconic_sqlite/laconic_sqlite.dart'),
+    );
+    packageRoot = p.dirname(p.dirname(File.fromUri(driver!).path));
   });
   setUp(() async {
     final cache = Directory(p.join(packageRoot, '.dart_tool'));
     await cache.create(recursive: true);
     project = await cache.createTemp("cli project's \$ test_");
+    await File(p.join(project.path, 'pubspec.yaml')).writeAsString('''
+name: migration_cli_fixture
+environment:
+  sdk: '>=3.7.0 <4.0.0'
+dependencies:
+  laconic: ^6.0.0
+  laconic_sqlite:
+    path: ${jsonEncode(packageRoot)}
+dependency_overrides:
+  laconic:
+    path: ${jsonEncode(p.dirname(p.dirname(executable)))}
+''');
+    final install = await TestProcess.start(dart, [
+      'pub',
+      'get',
+      '--offline',
+    ], workingDirectory: project.path);
+    await install.shouldExit(0);
     final config = File(p.join(project.path, 'database', 'migrations.dart'));
     await config.parent.create(recursive: true);
     await config.writeAsString('''import 'package:laconic/laconic.dart';
@@ -47,7 +72,7 @@ Laconic createDatabase() => Laconic(SqliteDriver(SqliteConfig('test.db')));
     final process = await TestProcess.start(
       binary ?? dart,
       binary == null
-          ? ['run', '--verbosity=error', executable, ...arguments]
+          ? ['run', '--verbosity=error', 'laconic', ...arguments]
           : arguments,
       workingDirectory: project.path,
       environment: {'DART_SDK': cli_util.sdkPath!},
@@ -61,6 +86,20 @@ Laconic createDatabase() => Laconic(SqliteDriver(SqliteConfig('test.db')));
   test(
     'generated files migrate, report JSON status, and roll back by batch or step',
     () async {
+      final configuration =
+          jsonDecode(
+                await File(
+                  p.join(project.path, '.dart_tool', 'package_config.json'),
+                ).readAsString(),
+              )
+              as Map<String, dynamic>;
+      final packages = (configuration['packages'] as List).map(
+        (entry) => entry['name'] as String,
+      );
+      expect(packages, contains('laconic'));
+      expect(packages.where((name) => name.startsWith('laconic_')), [
+        'laconic_sqlite',
+      ]);
       final made = await run(['make', 'create_items', '--create=items']);
       expect(made.output, contains('Created:'));
       final pending =
@@ -80,9 +119,7 @@ Laconic createDatabase() => Laconic(SqliteDriver(SqliteConfig('test.db')));
       await run(['migrate:rollback']);
       expect((await run(['rollback'])).output, 'Nothing to roll back.');
       expect(
-        Directory(
-          p.join(project.path, '.dart_tool', 'laconic_migrations'),
-        ).listSync(),
+        Directory(p.join(project.path, '.dart_tool', 'laconic')).listSync(),
         isEmpty,
       );
     },
@@ -103,9 +140,7 @@ Laconic createDatabase() => Laconic(SqliteDriver(SqliteConfig('test.db')));
       expect(result.error, contains('Error'));
       expect(File(p.join(project.path, 'test.db')).existsSync(), isFalse);
       expect(
-        Directory(
-          p.join(project.path, '.dart_tool', 'laconic_migrations'),
-        ).listSync(),
+        Directory(p.join(project.path, '.dart_tool', 'laconic')).listSync(),
         isEmpty,
       );
     },

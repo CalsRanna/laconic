@@ -5,12 +5,12 @@
 
 ## 1. 发布前条件
 
-- [ ] 为 Schema Builder API 确定核心发布版本，并同步所有驱动和新增 `laconic_migrations 1.0.0` 的最低核心依赖版本；已发布的 6.0.0 不包含这些 API
+- [ ] 为 Schema Builder、Migration 和 CLI 确定核心发布版本，并同步所有驱动的最低核心依赖版本；已发布的 6.0.0 不包含这些 API
 - [ ] 记录 `implements SqlGrammar` 实现者必须补齐新增成员的兼容性变更
 - [ ] 为核心新增的 `compileAggregateExpression` 确定发布版本，并同步新驱动的最低核心依赖版本；SQL Server 驱动不能使用缺少该钩子的旧核心
 - [ ] 工作区已提交且 `git status` 干净
-- [ ] 七个 `pubspec.yaml` 的 `version` 与驱动依赖约束一致
-- [ ] 七个 `CHANGELOG.md` 已包含当前版本的 breaking changes / 功能 / 修复
+- [ ] 六个 `pubspec.yaml` 的 `version` 与驱动依赖约束一致
+- [ ] 六个 `CHANGELOG.md` 已包含当前版本的 breaking changes / 功能 / 修复
 - [ ] README（英文与中文）的版本号、安装片段和升级说明已更新
 - [ ] Docker 可运行（MySQL 3306、MariaDB 3307、PostgreSQL 5433、SQL Server 1433）
 
@@ -24,8 +24,7 @@ dart analyze
 docker compose up -d --wait
 dart test packages/laconic/test packages/laconic_sqlite/test \
   packages/laconic_mysql/test packages/laconic_postgresql/test \
-  packages/laconic_mariadb/test packages/laconic_sqlserver/test \
-  packages/laconic_migrations/test --concurrency=1
+  packages/laconic_mariadb/test packages/laconic_sqlserver/test --concurrency=1
 docker compose down
 ```
 
@@ -33,7 +32,7 @@ SQL Server 容器需要 x86-64 Linux；Apple Silicon 上的模拟运行不属于
 
 ## 3. 发布内容 dry-run
 
-在七个包目录分别执行：
+在六个包目录分别执行：
 
 ```bash
 cd packages/laconic && dart pub publish --dry-run
@@ -42,7 +41,6 @@ cd packages/laconic_mysql && dart pub publish --dry-run
 cd packages/laconic_postgresql && dart pub publish --dry-run
 cd packages/laconic_mariadb && dart pub publish --dry-run
 cd packages/laconic_sqlserver && dart pub publish --dry-run
-cd packages/laconic_migrations && dart pub publish --dry-run
 ```
 
 预期仅出现 “checked-in files are modified” 警告（如果尚未提交）。
@@ -70,9 +68,8 @@ pub.dev 上驱动依赖 `laconic: ^6.0.0`，因此必须先发布核心包：
    cd ../laconic_postgresql && dart pub publish
    cd ../laconic_mariadb && dart pub publish
    cd ../laconic_sqlserver && dart pub publish
-   cd ../laconic_migrations && dart pub publish
    ```
-5. 在 GitHub 创建 release，链接七个 CHANGELOG 和 README 的升级章节。
+5. 在 GitHub 创建 release，链接六个 CHANGELOG 和 README 的升级章节。
 
 ## 5. 发布后验证
 

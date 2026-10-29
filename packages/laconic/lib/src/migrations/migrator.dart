@@ -1,4 +1,7 @@
-import 'package:laconic/laconic.dart';
+import '../exception.dart';
+import '../laconic.dart';
+import '../query_builder/query_builder.dart';
+import '../result.dart';
 
 import 'migration.dart';
 

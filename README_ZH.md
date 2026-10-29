@@ -624,4 +624,5 @@ MIT License
 
 核心新增 `db.schema`，用于建表、改表和结构检查。DDL 统一由现有 `SqlGrammar` 编译，
 具体方言仍在各驱动包内。详见 [Schema Builder 与驱动扩展](SCHEMA.md)，
-以及独立的 [`laconic_migrations` 包](packages/laconic_migrations/README.md)。
+以及内置的 [Migration 与 CLI](packages/laconic/MIGRATIONS.md)。
+`Migration`、`Migrator` 直接从核心包导入，CLI 使用 `dart run laconic`。

@@ -1,5 +1,4 @@
 import 'package:laconic/laconic.dart';
-import 'package:laconic_migrations/laconic_migrations.dart';
 import 'package:laconic_sqlite/laconic_sqlite.dart';
 
 class CreateUsers extends Migration {

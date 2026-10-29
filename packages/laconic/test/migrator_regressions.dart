@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:laconic/laconic.dart';
-import 'package:laconic_migrations/laconic_migrations.dart';
 import 'package:test/test.dart';
 
 class TestMigration extends Migration {

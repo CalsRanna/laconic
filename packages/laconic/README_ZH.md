@@ -416,5 +416,6 @@ MIT License
 ## Schema Builder（未发布）
 
 `Laconic.schema` 提供建表、改表与结构检查，DDL 统一使用 `SqlGrammar`。
-参见 [Schema 使用与自定义驱动说明](../../SCHEMA.md)。迁移流程位于独立的
-[`laconic_migrations` 包](../laconic_migrations/README.md)。
+参见 [Schema 使用与自定义驱动说明](../../SCHEMA.md)。核心同时内置 `Migration`、
+`Migrator` 和 `dart run laconic` CLI，详见 [迁移指南](MIGRATIONS.md)。
+应用选择并注入驱动，核心没有任何具体驱动依赖。

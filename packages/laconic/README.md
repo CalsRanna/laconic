@@ -542,5 +542,6 @@ MIT License
 `Laconic.schema` exposes the core Schema Builder. SQL compilation stays in
 `SqlGrammar`, with concrete behavior supplied by the selected driver. See
 [the schema guide](../../SCHEMA.md) for supported operations and custom drivers.
-Versioned migrations are provided by the separate
-[`laconic_migrations` package](../laconic_migrations/README.md).
+The core also exports `Migration` and `Migrator` and provides the
+`dart run laconic` CLI. See the [migration guide](MIGRATIONS.md).
+Applications supply their chosen database driver; the core has no driver dependencies.

@@ -1,6 +1,6 @@
 import 'package:laconic/laconic.dart';
 import 'package:laconic_mysql/laconic_mysql.dart';
-import 'migrator_regressions.dart';
+import '../../laconic/test/migrator_regressions.dart';
 
 void main() => migratorRegressions(
   () => Laconic(

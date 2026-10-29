@@ -2,6 +2,7 @@
 ///
 /// Laconic provides a fluent, chainable API for building and executing
 /// database queries with support for MySQL, SQLite, and PostgreSQL.
+/// Schema changes and versioned migrations use [SchemaBuilder] and [Migrator].
 ///
 /// ## Quick Start
 ///
@@ -47,6 +48,8 @@ library;
 export 'src/database_driver.dart';
 export 'src/exception.dart';
 export 'src/laconic.dart';
+export 'src/migrations/migration.dart';
+export 'src/migrations/migrator.dart';
 export 'src/pagination.dart';
 export 'src/query.dart';
 export 'src/grammar/compiled_query.dart';

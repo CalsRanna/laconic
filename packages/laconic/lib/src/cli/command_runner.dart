@@ -4,11 +4,11 @@ import 'dart:io';
 
 import 'package:args/command_runner.dart';
 import 'package:io/io.dart';
-import 'package:laconic/laconic.dart';
 import 'package:path/path.dart' as p;
 
-import '../migration.dart';
-import '../migrator.dart';
+import '../laconic.dart';
+import '../migrations/migration.dart';
+import '../migrations/migrator.dart';
 import 'cli_exception.dart';
 import 'generator.dart';
 import 'project.dart';
@@ -157,10 +157,7 @@ class _Runner extends CommandRunner<int> {
   final StringSink output;
 
   _Runner(this.output, _Execute execute)
-    : super(
-        'laconic_migrations',
-        'Generate and run Laconic database migrations.',
-      ) {
+    : super('laconic', 'Generate and run Laconic database migrations.') {
     for (final name in ['migrate', 'rollback', 'status']) {
       addCommand(_DatabaseCommand(name, output, execute));
     }

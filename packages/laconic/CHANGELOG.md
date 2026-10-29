@@ -1,9 +1,36 @@
 ## Unreleased
 
+- Fold the unreleased migration package into the core. Import `Migration`,
+  `MigrationStatus`, and `Migrator` from `package:laconic/laconic.dart`, use
+  `package:laconic/cli.dart` for CLI APIs, and replace `dart run laconic_migrations`
+  with `dart run laconic`. Remove the old package dependency and update imports
+  in existing migration files. Core has no concrete driver dependencies; database
+  integration tests and the runnable example now live in driver packages.
+- Add `args`, `cli_util`, `io`, and `path` for the built-in CLI. The main library
+  exports migration types without importing CLI I/O.
+- Add the `laconic` executable with `make`, `migrate`, `rollback`, and
+  `status`, Laravel-style aliases, batch/step options, and JSON status output.
+- Generate timestamped migration factories, optionally with create/drop-table
+  bodies, without overwriting existing files.
+- Load application-owned database configuration and migration factories through
+  temporary static Dart entrypoints. Forward diagnostics and exit codes, close
+  database connections, and remove temporary files after execution.
+- Add an embeddable `runMigrationCommand` CLI API and test native launcher SDK
+  discovery, failure behavior, generated files, and end-to-end SQLite workflows.
+- Add explicit `Migration` registration and `Migrator` execution using Laconic.
+- Track successful migrations and batches; support status, rollback, and reset.
+- Wrap each migration and history update in a transaction when supported, with
+  per-migration opt-out. Preserve records when rollback fails.
+- Preflight missing rollback definitions and reject overlapping instance runs.
+- Validate the workflow against SQLite, MySQL, MariaDB, PostgreSQL, and SQL Server.
+- Requires the unreleased Schema Builder core/driver line. Set compatible
+  published minimum versions before releasing; current workspace version
+  constraints are not a claim that released Laconic 6.0.0 contains this API.
+
 - Add `Laconic.schema`, `SchemaBuilder`, and typed Blueprint commands in the core.
 - Extend the existing `SqlGrammar` with DDL compilation, identifier/default encoding,
   structure inspection queries, and a schema transaction capability. No new
-  `DatabaseDriver` members or runtime dependencies are required.
+  `DatabaseDriver` members are required for schema support.
 - Custom grammars using `implements SqlGrammar` must add the new members;
   subclasses using `extends` inherit defaults and can implement schema support
   incrementally. See SCHEMA.md for the extension contract.
