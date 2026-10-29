@@ -64,8 +64,8 @@ export 'src/schema/blueprint.dart';
 export 'src/schema/schema_builder.dart';
 export 'src/schema/schema_command.dart';
 
-export 'src/migrations/migration.dart';
-export 'src/migrations/migration_status.dart';
-export 'src/migrations/migrator.dart';
+export 'src/migration/migration.dart';
+export 'src/migration/migration_status.dart';
+export 'src/migration/migrator.dart';
 
 export 'src/cli/migration_cli.dart';

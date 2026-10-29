@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import '../laconic.dart';
-import '../migrations/migration.dart';
+import '../migration/migration.dart';
 import 'command_runner.dart';
 import 'make_command.dart';
 import 'migration_executor.dart';

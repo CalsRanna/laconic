@@ -4,8 +4,8 @@ import 'dart:convert';
 import 'package:io/io.dart';
 
 import '../laconic.dart';
-import '../migrations/migration.dart';
-import '../migrations/migrator.dart';
+import '../migration/migration.dart';
+import '../migration/migrator.dart';
 import 'command_runner.dart';
 
 abstract final class MigrationExecutor {
