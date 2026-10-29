@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Compare JSON overlap elements as JSONB values so numbers, booleans, nulls,
+  objects and nested arrays retain their types. Preserve SQL NULL semantics.
+- Search non-null full-text columns even when another searched column is NULL.
 - Avoid unused JSON path bindings for empty overlap/non-overlap lists.
 - Inherit grouped-count and `groupLimit` pagination fixes from the matching
   unreleased core.

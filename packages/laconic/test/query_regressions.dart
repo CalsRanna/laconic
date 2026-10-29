@@ -672,6 +672,42 @@ void queryRegressions(Laconic Function() createDatabase) {
     expect(rows.map((r) => '${r['active']}').toList(), ['0', '1']);
   });
 
+  test('distinct aggregates ignore duplicate input values', () async {
+    final q = query().distinct();
+    expect(await q.sum('active'), 1);
+    expect(await q.avg('active'), 0.5);
+    expect(await q.min('active'), 0);
+    expect(await q.max('active'), 1);
+    expect(await q.clone().where('id', 0).sum('active'), isNull);
+    expect(await query().sum('active'), 3);
+    expect(await query().avg('active'), closeTo(0.6, 0.000001));
+  });
+
+  test(
+    'column readers resolve qualified columns and selected aliases',
+    () async {
+      final q = db
+          .table('$table t')
+          .join('$table r', (join) => join.on('t.id', 'r.id'))
+          .orderBy('t.id');
+      expect(await q.pluck('t.id'), [1, 2, 3, 4, 5]);
+      expect(await q.pluck('t.label', key: 'r.id'), {
+        1: '?',
+        2: 'two',
+        3: 'three',
+        4: 'four',
+        5: 'five',
+      });
+      expect(await q.pluck('t.id as selected_id'), [1, 2, 3, 4, 5]);
+      expect(await q.value('t.label'), '?');
+      expect(await q.value('t.label as selected_label'), '?');
+      expect(await q.clone().where('t.id', 1).soleValue('t.label'), '?');
+      final page = await q.cursorPaginate(2, column: 't.id');
+      expect(ids(page.data), [1, 2]);
+      expect(page.nextCursor, 2);
+    },
+  );
+
   test('count supports column and distinct forms', () async {
     await query().insert([
       {'id': 98, 'active': 1, 'label': null},
@@ -1172,6 +1208,71 @@ void queryRegressions(Laconic Function() createDatabase) {
           .count(),
       2,
     );
+  });
+
+  test(
+    'groupLimit cursor pagination preserves the partition selection',
+    () async {
+      final q = db
+          .table('$groupLimitTable g')
+          .select(['g.id', 'g.val'])
+          .where('g.id', 0, comparator: '>')
+          .groupLimit(1, 'g.grp')
+          .orderByRaw('g.val + ? desc', [0]);
+      final sql = q.toSql();
+      final bindings = q.getBindings();
+      final first = await q.cursorPaginate(1, column: 'g.id');
+      expect(ids(first.data), [3]);
+      expect(first.hasMorePages, isTrue);
+      final second = await q.cursorPaginate(
+        1,
+        column: 'g.id',
+        cursor: first.nextCursor,
+      );
+      expect(ids(second.data), [5]);
+      expect(second.hasMorePages, isFalse);
+      expect(
+        (await q.cursorPaginate(1, column: 'g.id', cursor: 5)).data,
+        isEmpty,
+      );
+      expect(q.toSql(), sql);
+      expect(q.getBindings(), bindings);
+
+      final skipped = db
+          .table(groupLimitTable)
+          .groupLimit(2, 'grp')
+          .orderBy('val')
+          .offset(1);
+      final skippedFirst = await skipped.cursorPaginate(1);
+      final skippedSecond = await skipped.cursorPaginate(
+        1,
+        cursor: skippedFirst.nextCursor,
+      );
+      expect(ids(skippedFirst.data) + ids(skippedSecond.data), [2, 5]);
+    },
+  );
+
+  test('groupLimit keyset iteration pages the outer result', () async {
+    final q = db
+        .table('$groupLimitTable g')
+        .groupLimit(1, 'g.grp')
+        .orderByDesc('g.val');
+    final chunks = <Object?>[];
+    await q.chunkById(1, (rows) async => chunks.addAll(ids(rows)), alias: 'g');
+    expect(chunks, [3, 5]);
+    expect(await q.lazyById(1, 'g.id').map((row) => row['id']).toList(), [
+      3,
+      5,
+    ]);
+    final each = <Object?>[];
+    await q.eachById((row) async => each.add(row['id']), count: 1, alias: 'g');
+    expect(each, [3, 5]);
+    final skipped = db
+        .table(groupLimitTable)
+        .groupLimit(2, 'grp')
+        .orderBy('val')
+        .offset(1);
+    expect(await skipped.lazyById(1).map((row) => row['id']).toList(), [2, 5]);
   });
 
   test(

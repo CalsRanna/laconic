@@ -771,9 +771,14 @@ class PostgresqlGrammar extends SqlGrammar {
         }
         parts.add(
           '$boolean${not ? 'not ' : ''}'
-          '($target ?| \$${bindings.length + 1}::text[])',
+          '(case when $target is null then null else exists ('
+          'select 1 from jsonb_array_elements($target) as laconic_json_element(value) '
+          'join jsonb_array_elements(\$${bindings.length + 1}::jsonb) '
+          'as laconic_json_candidate(value) '
+          'on laconic_json_element.value = laconic_json_candidate.value'
+          ') end)',
         );
-        bindings.add(_pgTextArray(value));
+        bindings.add(jsonEncode(value));
       } else if (type == 'fullText') {
         final columns = where['columns'] as List<String>;
         final options = where['options'] as Map<String, dynamic>;
@@ -793,7 +798,7 @@ class PostgresqlGrammar extends SqlGrammar {
             ),
         };
         final vector = columns
-            .map((column) => "to_tsvector('$language', $column)")
+            .map((column) => "to_tsvector('$language', coalesce($column, ''))")
             .join(' || ');
         final value = where['value'];
         if (value is Expression) {
@@ -996,15 +1001,6 @@ class PostgresqlGrammar extends SqlGrammar {
     }
 
     return parts.join('');
-  }
-
-  String _pgTextArray(Iterable<Object?> values) {
-    final parts = values.map((value) {
-      final text = value?.toString() ?? '';
-      final escaped = text.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
-      return '"$escaped"';
-    });
-    return '{${parts.join(',')}}';
   }
 
   List<String> _jsonPathSegments(String path) {

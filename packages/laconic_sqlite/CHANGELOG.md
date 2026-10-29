@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Restrict FTS5 full-text searches to the requested columns, including queries
+  containing OR expressions or explicit column filters.
 - Read `selectStream` results through a native cursor instead of buffering all
   rows. Each stream owns its statement and closes it on completion, error or
   cancellation.

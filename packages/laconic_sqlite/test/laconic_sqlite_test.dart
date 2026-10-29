@@ -892,6 +892,40 @@ void main() {
       }
     });
 
+    test('FTS5 searches only the requested columns', () async {
+      const probe = 'laconic_fts_columns';
+      await laconic.statement(
+        'create virtual table $probe using fts5(title, body, notes)',
+      );
+      try {
+        await laconic.table(probe).insert([
+          {'title': 'other', 'body': 'fox', 'notes': 'other'},
+          {'title': 'fox', 'body': 'other', 'notes': 'other'},
+          {'title': 'other', 'body': 'other', 'notes': 'fox'},
+          {'title': 'dog', 'body': 'other', 'notes': 'other'},
+        ]);
+        Future<List<Object?>> matches(
+          List<String> columns,
+          String value,
+        ) async =>
+            (await laconic
+                    .table(probe)
+                    .select(['rowid'])
+                    .whereFullText(columns, value)
+                    .orderBy('rowid')
+                    .get())
+                .map((row) => row['rowid'])
+                .toList();
+        expect(await matches(['title'], 'fox'), [2]);
+        expect(await matches(['title', 'body'], 'fox'), [1, 2]);
+        expect(await matches(['title'], 'fox OR dog'), [2, 4]);
+        expect(await matches(['title'], 'body:fox'), isEmpty);
+        expect(await matches(['$probe.title'], 'fox'), [2]);
+      } finally {
+        await laconic.statement('drop table $probe');
+      }
+    });
+
     test('binary comparisons and lateral joins are unsupported on SQLite', () {
       expect(
         () => laconic.table(userTable).whereBinary('name', 'John').toSql(),

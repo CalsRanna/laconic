@@ -582,12 +582,19 @@ class SqliteGrammar extends SqlGrammar {
           );
         }
         final tableName = table.split(RegExp(r'\s+')).first;
+        final columns = (where['columns'] as List<String>)
+            .map(
+              (column) => '"${column.split('.').last.replaceAll('"', '""')}"',
+            )
+            .join(' ');
+        final prefix = '{$columns} : (';
         final value = where['value'];
         if (value is Expression) {
-          parts.add('$boolean$tableName match ${value.sql}');
+          parts.add("$boolean$tableName match (? || (${value.sql}) || ')')");
+          bindings.add(prefix);
         } else {
           parts.add('$boolean$tableName match ?');
-          bindings.add(value);
+          bindings.add('$prefix$value)');
         }
       } else if (type == 'column') {
         // WHERE column1 = column2

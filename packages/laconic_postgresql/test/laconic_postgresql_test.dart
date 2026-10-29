@@ -764,16 +764,120 @@ void main() {
       }
     });
 
-    test('JSON overlaps compiles on PostgreSQL', () {
-      expect(
-        laconic
-            .table(userTable)
-            .whereJsonOverlaps('x', ['a'])
-            .toSql()
-            .toLowerCase(),
-        contains('?|'),
-      );
+    test('DISTINCT ON keys survive projection changes and cloning', () async {
+      final q = laconic
+          .table(
+            '(select 1 as id, 1 as grp union all select 2, 1 '
+            'union all select 3, 2 union all select 4, 2) as t',
+          )
+          .distinct(['grp'])
+          .addSelect(['id'])
+          .orderBy('grp')
+          .orderBy('id');
+      expect((await q.get()).map((row) => row['id']).toList(), [1, 3]);
+      expect(await q.count(), 2);
+      expect(await q.pluck('id'), [1, 3]);
+      expect(await q.value('id'), 1);
+      final copy = q.clone().select(['id']);
+      expect((await copy.get()).map((row) => row['id']).toList(), [1, 3]);
+      expect((await q.get()).map((row) => row['grp']).toList(), [1, 2]);
+      expect(await q.clone().distinct().count(), 4);
     });
+
+    test(
+      'JSON overlaps compares typed elements and preserves SQL nulls',
+      () async {
+        const probe = 'laconic_json_overlap_types';
+        await laconic.statement(
+          'create table $probe (id int primary key, payload text)',
+        );
+        try {
+          await laconic.table(probe).insert([
+            {'id': 1, 'payload': '{"tags":[1]}'},
+            {'id': 2, 'payload': '{"tags":["1"]}'},
+            {'id': 3, 'payload': '{"tags":[true]}'},
+            {'id': 4, 'payload': '{"tags":["true"]}'},
+            {'id': 5, 'payload': '{"tags":[null]}'},
+            {'id': 6, 'payload': '{"tags":[{"a":1}]}'},
+            {'id': 7, 'payload': '{"tags":[{"a":1,"b":2}]}'},
+            {'id': 8, 'payload': '{"tags":[[1,2]]}'},
+            {'id': 9, 'payload': '{"tags":[]}'},
+            {'id': 10, 'payload': null},
+          ]);
+          final cases = <List<Object?>, List<int>>{
+            [1]: [1],
+            ['1']: [2],
+            [true]: [3],
+            ['true']: [4],
+            [null]: [5],
+            [
+              {'a': 1},
+            ]: [6],
+            [
+              [1, 2],
+            ]: [8],
+            [1, true]: [1, 3],
+          };
+          for (final entry in cases.entries) {
+            final q = laconic.table(probe).where('id', 0, comparator: '>');
+            final matches =
+                await q
+                    .clone()
+                    .whereJsonOverlaps('payload->tags', entry.key)
+                    .orderBy('id')
+                    .get();
+            expect(matches.map((row) => row['id']).toList(), entry.value);
+            final others =
+                await q
+                    .clone()
+                    .whereJsonDoesntOverlap('payload->tags', entry.key)
+                    .orderBy('id')
+                    .get();
+            expect(others.map((row) => row['id']).toList(), [
+              for (var id = 1; id <= 9; id++)
+                if (!entry.value.contains(id)) id,
+            ]);
+          }
+          expect(
+            await laconic
+                .table(probe)
+                .where('id', 10)
+                .whereNot((q) => q.whereJsonOverlaps('payload->tags', [1]))
+                .count(),
+            0,
+          );
+        } finally {
+          await laconic.statement('drop table $probe');
+        }
+      },
+    );
+
+    test(
+      'full text search retains matches when another column is null',
+      () async {
+        const probe = 'laconic_fulltext_nulls';
+        await laconic.statement(
+          'create table $probe (id int primary key, title text, body text)',
+        );
+        try {
+          await laconic.table(probe).insert([
+            {'id': 1, 'title': 'fox', 'body': null},
+            {'id': 2, 'title': null, 'body': 'fox'},
+            {'id': 3, 'title': null, 'body': null},
+            {'id': 4, 'title': 'dog', 'body': null},
+          ]);
+          final rows =
+              await laconic
+                  .table(probe)
+                  .whereFullText(['title', 'body'], 'fox')
+                  .orderBy('id')
+                  .get();
+          expect(rows.map((row) => row['id']).toList(), [1, 2]);
+        } finally {
+          await laconic.statement('drop table $probe');
+        }
+      },
+    );
 
     test('whereBinary is unsupported on PostgreSQL', () {
       expect(

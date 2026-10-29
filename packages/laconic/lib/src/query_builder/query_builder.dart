@@ -51,8 +51,8 @@ class QueryBuilder {
   /// Whether to select distinct records.
   bool _distinct = false;
 
-  /// Whether PostgreSQL should compile `DISTINCT ON`.
-  bool _distinctOn = false;
+  /// The columns used by PostgreSQL's `DISTINCT ON`.
+  List<String>? _distinctColumns;
 
   /// UNION clauses.
   final List<Map<String, dynamic>> _unions = [];
@@ -110,7 +110,7 @@ class QueryBuilder {
         // Group cardinality does not need the bound grouping expressions again.
         query._columns = ['1'];
         query._distinct = false;
-        query._distinctOn = false;
+        query._distinctColumns = null;
       }
       final inner = query._compileSelect();
       final results = await _laconic.select(
@@ -901,7 +901,9 @@ class QueryBuilder {
   /// Implemented with `row_number() over (partition by column ...)`.
   /// An [offset] skips rows within each partition, while [limit] caps the
   /// combined result. [paginate] and [simplePaginate] page the combined result
-  /// after applying these per-partition constraints.
+  /// after applying these per-partition constraints. [cursorPaginate] and
+  /// [chunkById] also apply their cursors to that combined result, preserving
+  /// the ordering and offset used to select rows within each partition.
   QueryBuilder groupLimit(int value, String column) {
     if (value < 0) {
       throw LaconicException('groupLimit must be zero or greater');
@@ -1001,7 +1003,9 @@ class QueryBuilder {
     if (perPage < 1) {
       throw LaconicException('perPage must be greater than zero');
     }
-    final q = clone()..reorder();
+    final q = _paginationQuery()..reorder();
+    final cursorColumn =
+        _groupLimit == null ? column : _resultColumnName(column);
     q._offset = null;
     if (cursor != null && q._unions.isEmpty) {
       final conditions = List<Map<String, dynamic>>.of(q._wheres);
@@ -1013,9 +1017,9 @@ class QueryBuilder {
           'boolean': 'and',
         });
       }
-      q.where(column, cursor, comparator: '>');
+      q.where(cursorColumn, cursor, comparator: '>');
     }
-    q.orderBy(column).limit(perPage + 1);
+    q.orderBy(cursorColumn).limit(perPage + 1);
     final compiled = q._compileSelect(
       unionWheres: [
         if (cursor != null && q._unions.isNotEmpty)
@@ -1035,7 +1039,7 @@ class QueryBuilder {
     Object? nextCursor;
     if (hasMorePages && data.isNotEmpty) {
       try {
-        nextCursor = data.last[column];
+        nextCursor = data.last[_resultColumnName(column)];
       } on ArgumentError {
         throw LaconicException(
           'cursorPaginate requires selecting the cursor column "$column"',
@@ -1369,11 +1373,16 @@ class QueryBuilder {
     String? alias,
   }) async* {
     if (count <= 0) throw LaconicException('Chunk size must be positive');
-    final col = alias != null ? '$alias.$column' : column;
-    final resultColumn = column.split('.').last;
+    final resultColumn = _resultColumnName(column);
+    final col =
+        _groupLimit != null
+            ? resultColumn
+            : alias != null
+            ? '$alias.$column'
+            : column;
     Object? lastId;
     while (true) {
-      final q = clone()..reorder();
+      final q = _paginationQuery()..reorder();
       if (lastId != null && _unions.isEmpty) {
         final conditions = List<Map<String, dynamic>>.of(q._wheres);
         q._wheres.clear();
@@ -1390,7 +1399,7 @@ class QueryBuilder {
       q.orderBy(_unions.isEmpty ? col : resultColumn).limit(count);
       final compiled = q._compileSelect(
         unionWheres: [
-          if (lastId != null)
+          if (lastId != null && _unions.isNotEmpty)
             {
               'type': 'basic',
               'column': resultColumn,
@@ -1491,7 +1500,10 @@ class QueryBuilder {
           .._groups.addAll(_groups)
           .._havings.addAll(_havings.map((h) => Map<String, dynamic>.from(h)))
           .._distinct = _distinct
-          .._distinctOn = _distinctOn
+          .._distinctColumns =
+              _distinctColumns == null
+                  ? null
+                  : List<String>.of(_distinctColumns!)
           .._groupLimit =
               _groupLimit == null
                   ? null
@@ -1669,7 +1681,7 @@ class QueryBuilder {
   /// Throws [LaconicException] when no row or more than one row matches.
   Future<Object?> soleValue(String column) async {
     final row = await sole();
-    return row[column];
+    return row[_resultColumnName(column)];
   }
 
   /// Updates records matching the query.
@@ -2523,7 +2535,7 @@ class QueryBuilder {
   ///
   /// MySQL modes: `boolean` or `natural language` (default).
   /// PostgreSQL modes: `plain` (default), `phrase`, `websearch` or `raw`.
-  /// SQLite does not support full-text search through this method.
+  /// SQLite searches the specified columns of an FTS5 virtual table.
   QueryBuilder whereFullText(
     List<String> columns,
     String value, {
@@ -3206,14 +3218,15 @@ class QueryBuilder {
   ///
   /// Passing [columns] also selects those columns and enables PostgreSQL's
   /// `DISTINCT ON (columns)`; other dialects compile a plain `DISTINCT`.
+  /// Subsequent projection changes retain PostgreSQL's original distinct keys.
   QueryBuilder distinct([List<String>? columns]) {
     _distinct = true;
     if (columns != null && columns.isNotEmpty) {
-      _columns = columns;
+      _columns = List<String>.of(columns);
       _selectBindings.clear();
-      _distinctOn = true;
+      _distinctColumns = List<String>.of(columns);
     } else {
-      _distinctOn = false;
+      _distinctColumns = null;
     }
     return this;
   }
@@ -3289,14 +3302,16 @@ class QueryBuilder {
 
     final compiled = _grammar.compileSelect(
       table: _table,
-      columns: ['$function($column) as aggregate'],
+      columns: [
+        '$function(${_distinct ? 'DISTINCT ' : ''}$column) as aggregate',
+      ],
       wheres: _wheres,
       joins: _joins,
       orders: [],
       groups: _groups,
       groupBindings: _groupBindings,
       havings: _havings,
-      distinct: _distinct,
+      distinct: false,
       fromSubquery: _fromSubquery,
       fromAlias: _fromAlias,
       indexHints: _indexHints,
@@ -3382,17 +3397,19 @@ class QueryBuilder {
     final compiled = _compileSelect(columns: columns);
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
+    final resultColumn = _resultColumnName(column);
 
     if (key != null) {
       // Return as Map
       final map = <Object?, Object?>{};
+      final resultKey = _resultColumnName(key);
       for (final row in results) {
-        map[row[key]] = row[column];
+        map[row[resultKey]] = row[resultColumn];
       }
       return map;
     } else {
       // Return as List
-      return results.map((row) => row[column]).toList();
+      return results.map((row) => row[resultColumn]).toList();
     }
   }
 
@@ -3419,7 +3436,15 @@ class QueryBuilder {
       return null;
     }
 
-    return results.first[column];
+    return results.first[_resultColumnName(column)];
+  }
+
+  static String _resultColumnName(String column) {
+    return column
+        .split(RegExp(r'\s+as\s+', caseSensitive: false))
+        .last
+        .split('.')
+        .last;
   }
 
   /// Increments a column's value by a given amount.
@@ -3790,8 +3815,7 @@ class QueryBuilder {
       groupBindings: _groupBindings,
       havings: _havings,
       distinct: _distinct,
-      distinctColumns:
-          hasUnion ? null : (_distinctOn ? (columns ?? _columns) : null),
+      distinctColumns: hasUnion ? null : _distinctColumns,
       fromSubquery: _fromSubquery,
       fromAlias: _fromAlias,
       indexHints: _indexHints,

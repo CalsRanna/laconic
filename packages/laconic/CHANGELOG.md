@@ -1,5 +1,12 @@
 ## Unreleased
 
+- Apply `distinct` to aggregate inputs for `sum`, `avg`, `min` and `max`.
+- Preserve per-partition selection and offsets when using `groupLimit` with
+  cursor pagination or ID-based chunking, including `lazyById` and `eachById`.
+- Resolve qualified column names and selected aliases in column readers;
+  accept qualified cursor column names in `cursorPaginate`.
+- Keep PostgreSQL `DISTINCT ON` keys independent of subsequent projection
+  changes and preserve them when cloning a query.
 - Fix `count` and existence queries using bound `groupByRaw` expressions.
 - Count rows selected by `groupLimit`, honor an additional global `limit`, and
   apply `paginate` / `simplePaginate` offsets to the combined result. Direct
