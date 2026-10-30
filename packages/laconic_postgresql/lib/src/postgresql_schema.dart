@@ -16,12 +16,22 @@ mixin _PostgresqlSchema on SqlGrammar {
   @override
   String compileColumnType(ColumnDefinition column) {
     switch (column.type) {
+      case ColumnType.tinyInteger:
+      case ColumnType.smallInteger:
+      case ColumnType.year:
+        return 'smallint';
+      case ColumnType.mediumInteger:
       case ColumnType.integer:
         return 'integer';
       case ColumnType.bigInteger:
         return 'bigint';
       case ColumnType.string:
         return 'varchar(${column.length ?? 255})';
+      case ColumnType.char:
+        return 'char(${column.length ?? 255})';
+      case ColumnType.tinyText:
+      case ColumnType.mediumText:
+      case ColumnType.longText:
       case ColumnType.text:
         return 'text';
       case ColumnType.boolean:
@@ -30,17 +40,46 @@ mixin _PostgresqlSchema on SqlGrammar {
         return 'decimal(${column.precision ?? 10}, ${column.scale ?? 2})';
       case ColumnType.doublePrecision:
         return 'double precision';
+      case ColumnType.float:
+        return (column.precision ?? 53) <= 24 ? 'real' : 'double precision';
       case ColumnType.date:
         return 'date';
       case ColumnType.dateTime:
       case ColumnType.timestamp:
-        return 'timestamp without time zone';
+        return 'timestamp${compileTemporalPrecision(column)} without time zone';
+      case ColumnType.dateTimeTz:
+      case ColumnType.timestampTz:
+        return 'timestamp${compileTemporalPrecision(column)} with time zone';
+      case ColumnType.time:
+        return 'time${compileTemporalPrecision(column)} without time zone';
+      case ColumnType.timeTz:
+        return 'time${compileTemporalPrecision(column)} with time zone';
       case ColumnType.binary:
+        if (column.length != null || column.fixed) {
+          throw LaconicException(
+            'PostgreSQL BYTEA does not support a fixed or maximum length',
+          );
+        }
         return 'bytea';
       case ColumnType.json:
+      case ColumnType.jsonb:
         return 'jsonb';
       case ColumnType.uuid:
         return 'uuid';
+      case ColumnType.ulid:
+        return 'char(26)';
+      case ColumnType.enumeration:
+        return 'text';
+      case ColumnType.set:
+        throw LaconicException('PostgreSQL does not support SET columns');
+      case ColumnType.ipAddress:
+        return 'inet';
+      case ColumnType.macAddress:
+        return 'macaddr';
+      case ColumnType.geometry:
+        return 'geometry';
+      case ColumnType.geography:
+        return 'geography';
     }
   }
 

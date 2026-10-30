@@ -19,6 +19,56 @@ class Blueprint {
   ColumnDefinition id([String name = 'id']) =>
       _column(name, ColumnType.bigInteger, autoIncrement: true).primary();
 
+  /// Adds an auto-incrementing integer primary key.
+  ColumnDefinition increments(String name) =>
+      _column(name, ColumnType.integer, autoIncrement: true).primary();
+
+  /// Adds an auto-incrementing BIGINT primary key, matching [id].
+  ColumnDefinition bigIncrements(String name) => id(name);
+
+  /// Adds an auto-incrementing small integer primary key.
+  ColumnDefinition smallIncrements(String name) =>
+      _column(name, ColumnType.smallInteger, autoIncrement: true).primary();
+
+  /// Adds an auto-incrementing tiny integer primary key.
+  ColumnDefinition tinyIncrements(String name) =>
+      _column(name, ColumnType.tinyInteger, autoIncrement: true).primary();
+
+  /// Adds an auto-incrementing medium integer primary key.
+  ColumnDefinition mediumIncrements(String name) =>
+      _column(name, ColumnType.mediumInteger, autoIncrement: true).primary();
+
+  /// Adds a tiny integer using the database's supported integer range.
+  ColumnDefinition tinyInteger(String name) =>
+      _column(name, ColumnType.tinyInteger);
+
+  /// Adds a small integer column.
+  ColumnDefinition smallInteger(String name) =>
+      _column(name, ColumnType.smallInteger);
+
+  /// Adds a medium integer, or an ordinary integer when no medium type exists.
+  ColumnDefinition mediumInteger(String name) =>
+      _column(name, ColumnType.mediumInteger);
+
+  /// Adds an unsigned integer on MySQL or MariaDB.
+  ColumnDefinition unsignedInteger(String name) => integer(name).unsigned();
+
+  /// Adds an unsigned BIGINT on MySQL or MariaDB.
+  ColumnDefinition unsignedBigInteger(String name) =>
+      bigInteger(name).unsigned();
+
+  /// Adds an unsigned tiny integer on MySQL or MariaDB.
+  ColumnDefinition unsignedTinyInteger(String name) =>
+      tinyInteger(name).unsigned();
+
+  /// Adds an unsigned small integer on MySQL or MariaDB.
+  ColumnDefinition unsignedSmallInteger(String name) =>
+      smallInteger(name).unsigned();
+
+  /// Adds an unsigned medium integer on MySQL or MariaDB.
+  ColumnDefinition unsignedMediumInteger(String name) =>
+      mediumInteger(name).unsigned();
+
   /// Adds an integer column.
   ColumnDefinition integer(String name) => _column(name, ColumnType.integer);
 
@@ -34,6 +84,20 @@ class Blueprint {
 
   /// Adds a text column.
   ColumnDefinition text(String name) => _column(name, ColumnType.text);
+
+  /// Adds fixed-width character storage where supported by the database.
+  ColumnDefinition char(String name, {int length = 255}) =>
+      _column(name, ColumnType.char, length: length);
+
+  /// Adds tiny text, or ordinary text where no tiny type exists.
+  ColumnDefinition tinyText(String name) => _column(name, ColumnType.tinyText);
+
+  /// Adds medium text, or ordinary text where no medium type exists.
+  ColumnDefinition mediumText(String name) =>
+      _column(name, ColumnType.mediumText);
+
+  /// Adds long text, or ordinary text where no long type exists.
+  ColumnDefinition longText(String name) => _column(name, ColumnType.longText);
 
   /// Adds a boolean column.
   ColumnDefinition boolean(String name) => _column(name, ColumnType.boolean);
@@ -55,30 +119,174 @@ class Blueprint {
   ColumnDefinition doublePrecision(String name) =>
       _column(name, ColumnType.doublePrecision);
 
+  /// Adds floating-point storage with a binary precision from 1 to 53.
+  ColumnDefinition float(String name, {int precision = 53}) =>
+      _column(name, ColumnType.float, precision: precision);
+
   /// Adds a date column.
   ColumnDefinition date(String name) => _column(name, ColumnType.date);
 
   /// Adds a date and time column without an implicit timezone conversion.
-  ColumnDefinition dateTime(String name) => _column(name, ColumnType.dateTime);
+  ColumnDefinition dateTime(String name, {int? precision}) =>
+      _column(name, ColumnType.dateTime, precision: precision);
 
   /// Adds a timestamp column using the database's timestamp semantics.
-  ColumnDefinition timestamp(String name) =>
-      _column(name, ColumnType.timestamp);
+  ColumnDefinition timestamp(String name, {int? precision}) =>
+      _column(name, ColumnType.timestamp, precision: precision);
+
+  /// Adds a timezone-aware date-time where supported, or rejects it.
+  ColumnDefinition dateTimeTz(String name, {int? precision}) =>
+      _column(name, ColumnType.dateTimeTz, precision: precision);
+
+  /// Adds a timezone-aware timestamp where supported, or rejects it.
+  ColumnDefinition timestampTz(String name, {int? precision}) =>
+      _column(name, ColumnType.timestampTz, precision: precision);
+
+  /// Adds a time column with optional fractional-second precision.
+  ColumnDefinition time(String name, {int? precision}) =>
+      _column(name, ColumnType.time, precision: precision);
+
+  /// Adds a timezone-aware time where supported, or rejects it.
+  ColumnDefinition timeTz(String name, {int? precision}) =>
+      _column(name, ColumnType.timeTz, precision: precision);
+
+  /// Adds a native year or integer year column, depending on the database.
+  ColumnDefinition year(String name) => _column(name, ColumnType.year);
 
   /// Adds nullable `created_at` and `updated_at` timestamp columns.
-  void timestamps() {
-    timestamp('created_at').nullable();
-    timestamp('updated_at').nullable();
+  void timestamps({int? precision}) {
+    timestamp('created_at', precision: precision).nullable();
+    timestamp('updated_at', precision: precision).nullable();
   }
 
+  /// Adds nullable timezone-aware creation and update timestamps.
+  void timestampsTz({int? precision}) {
+    timestampTz('created_at', precision: precision).nullable();
+    timestampTz('updated_at', precision: precision).nullable();
+  }
+
+  /// Adds nullable timestamps, matching [timestamps].
+  void nullableTimestamps({int? precision}) => timestamps(precision: precision);
+
+  /// Adds a nullable soft-deletion timestamp without changing query behavior.
+  ColumnDefinition softDeletes({String name = 'deleted_at', int? precision}) =>
+      timestamp(name, precision: precision).nullable();
+
+  /// Adds a nullable timezone-aware soft-deletion timestamp.
+  ColumnDefinition softDeletesTz({
+    String name = 'deleted_at',
+    int? precision,
+  }) => timestampTz(name, precision: precision).nullable();
+
+  /// Adds a nullable 100-character authentication token column.
+  ColumnDefinition rememberToken() =>
+      string('remember_token', length: 100).nullable();
+
   /// Adds a binary column.
-  ColumnDefinition binary(String name) => _column(name, ColumnType.binary);
+  ColumnDefinition binary(String name, {int? length, bool fixed = false}) =>
+      _column(name, ColumnType.binary, length: length, fixed: fixed);
 
   /// Adds a JSON column using the database's native or text representation.
   ColumnDefinition json(String name) => _column(name, ColumnType.json);
 
+  /// Adds JSONB on PostgreSQL, or the driver's ordinary JSON representation.
+  ColumnDefinition jsonb(String name) => _column(name, ColumnType.jsonb);
+
   /// Adds a UUID column using the database's native or string representation.
   ColumnDefinition uuid(String name) => _column(name, ColumnType.uuid);
+
+  /// Adds storage for a 26-character ULID; values are supplied by the caller.
+  ColumnDefinition ulid(String name) => _column(name, ColumnType.ulid);
+
+  /// Adds a native enumeration or a string with a CHECK constraint.
+  ColumnDefinition enumColumn(String name, List<String> allowed) =>
+      _column(name, ColumnType.enumeration, allowed: allowed);
+
+  /// Adds a native SET column on MySQL or MariaDB.
+  ColumnDefinition set(String name, List<String> allowed) =>
+      _column(name, ColumnType.set, allowed: allowed);
+
+  /// Adds native PostgreSQL INET or 45-character IP address storage.
+  ColumnDefinition ipAddress(String name) =>
+      _column(name, ColumnType.ipAddress);
+
+  /// Adds native PostgreSQL MACADDR or 17-character MAC address storage.
+  ColumnDefinition macAddress(String name) =>
+      _column(name, ColumnType.macAddress);
+
+  /// Adds native geometry storage; PostgreSQL requires PostGIS.
+  ColumnDefinition geometry(String name) => _column(name, ColumnType.geometry);
+
+  /// Adds native geography storage on PostgreSQL/PostGIS or SQL Server.
+  ColumnDefinition geography(String name) =>
+      _column(name, ColumnType.geography);
+
+  /// Adds a BIGINT foreign-key column matching the signed [id] convention.
+  ForeignIdColumnDefinition foreignId(String name) =>
+      _foreignColumn(name, ColumnType.bigInteger);
+
+  /// Adds a UUID foreign-key column.
+  ForeignIdColumnDefinition foreignUuid(String name) =>
+      _foreignColumn(name, ColumnType.uuid);
+
+  /// Adds a ULID foreign-key column.
+  ForeignIdColumnDefinition foreignUlid(String name) =>
+      _foreignColumn(name, ColumnType.ulid);
+
+  /// Adds type and BIGINT ID columns with a compound index.
+  void morphs(String name, {String? indexName}) =>
+      _morphs(name, ColumnType.bigInteger, false, indexName);
+
+  /// Adds nullable type and BIGINT ID columns with a compound index.
+  void nullableMorphs(String name, {String? indexName}) =>
+      _morphs(name, ColumnType.bigInteger, true, indexName);
+
+  /// Adds type and UUID columns with a compound index.
+  void uuidMorphs(String name, {String? indexName}) =>
+      _morphs(name, ColumnType.uuid, false, indexName);
+
+  /// Adds nullable type and UUID columns with a compound index.
+  void nullableUuidMorphs(String name, {String? indexName}) =>
+      _morphs(name, ColumnType.uuid, true, indexName);
+
+  /// Adds type and ULID columns with a compound index.
+  void ulidMorphs(String name, {String? indexName}) =>
+      _morphs(name, ColumnType.ulid, false, indexName);
+
+  /// Adds nullable type and ULID columns with a compound index.
+  void nullableUlidMorphs(String name, {String? indexName}) =>
+      _morphs(name, ColumnType.ulid, true, indexName);
+
+  /// Drops the creation and update timestamp columns.
+  void dropTimestamps() {
+    dropColumn('created_at');
+    dropColumn('updated_at');
+  }
+
+  /// Drops timezone-aware creation and update timestamp columns.
+  void dropTimestampsTz() => dropTimestamps();
+
+  /// Drops the soft-deletion column.
+  void dropSoftDeletes({String name = 'deleted_at'}) => dropColumn(name);
+
+  /// Drops the timezone-aware soft-deletion column.
+  void dropSoftDeletesTz({String name = 'deleted_at'}) => dropColumn(name);
+
+  /// Drops the authentication token column.
+  void dropRememberToken() => dropColumn('remember_token');
+
+  /// Drops a polymorphic index and its type/ID columns.
+  void dropMorphs(String name, {String? indexName}) {
+    dropIndex(indexName ?? _name(['${name}_type', '${name}_id'], 'index'));
+    dropColumn('${name}_type');
+    dropColumn('${name}_id');
+  }
+
+  /// Drops a foreign-key constraint before dropping its column.
+  void dropConstrainedForeignId(String name, {String? constraintName}) {
+    dropForeign(constraintName ?? _name([name], 'foreign'));
+    dropColumn(name);
+  }
 
   /// Adds a named non-unique index.
   void index(List<String> columns, {String? name}) =>
@@ -125,6 +333,8 @@ class Blueprint {
     int? precision,
     int? scale,
     bool autoIncrement = false,
+    bool fixed = false,
+    List<String> allowed = const [],
   }) {
     final column = ColumnDefinition(
       name,
@@ -133,9 +343,28 @@ class Blueprint {
       precision: precision,
       scale: scale,
       autoIncrement: autoIncrement,
+      fixed: fixed,
+      allowed: allowed,
+    );
+    column.validate();
+    _commands.add(column);
+    return column;
+  }
+
+  ForeignIdColumnDefinition _foreignColumn(String name, ColumnType type) {
+    final column = ForeignIdColumnDefinition(
+      name,
+      type,
+      (constraintName) => foreign([name], name: constraintName),
     );
     _commands.add(column);
     return column;
+  }
+
+  void _morphs(String name, ColumnType type, bool nullable, String? indexName) {
+    string('${name}_type').nullable(nullable);
+    _column('${name}_id', type).nullable(nullable);
+    index(['${name}_type', '${name}_id'], name: indexName);
   }
 
   void _index(List<String> columns, IndexType type, String? name) {

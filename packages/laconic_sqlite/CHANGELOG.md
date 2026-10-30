@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Support Blueprint lifecycle/foreign/morph helpers and advanced types using
+  SQLite affinities, including CHECK enums, JSONB/ULID and temporal text storage.
+  Reject unsigned, SET, spatial and bounded BLOB types, and direct CHECK-enum
+  member changes. Requires matching unreleased core sources; see SCHEMA.md.
+
 - Support schema-scoped table wipes for migration CLI `fresh`, including cyclic
   foreign keys and virtual tables. Reuse the atomic schema transaction and restore
   foreign-key settings on success/failure. Use with matching unreleased core sources.

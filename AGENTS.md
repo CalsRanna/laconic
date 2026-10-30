@@ -201,6 +201,8 @@ packages/laconic_postgresql/lib/src/
 
 ### Schema Builder 与 Migration
 
+- Blueprint 支持 foreignId/foreignUuid/foreignUlid + 显式目标表 constrained、softDeletes、rememberToken、morphs 与删除快捷方法。id/foreignId/数字 morph 保留 signed BIGINT；unsigned 仅 MySQL/MariaDB 显式支持。高级类型使用 ColumnType 和 ColumnDefinition 的 allowed/fixed/isUnsigned/precision 参数；enumColumn 在非 MySQL 方言用 CHECK，并拒绝直接 change 枚举成员。映射和时区/空间限制见 SCHEMA.md，PostGIS 不自动安装。
+
 - 核心 `Laconic.schema` 返回 `SchemaBuilder`，`Blueprint` 用类型化命令描述表结构。`ColumnDefinition.change()` 修改已有列；`schema_metadata.dart` 定义表、列、索引、外键元数据，SchemaBuilder 提供对应检查接口。
 - DDL、默认值编码和结构检查 SQL 都由现有 `SqlGrammar` 编译；不新增 SchemaGrammar、SchemaProvider 或单独的 schema 包。
 - 各驱动的 schema 实现在同库 `*_schema.dart` part 文件中，通过私有 mixin 组织；MariaDB 复用 MySQL 实现。

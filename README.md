@@ -697,6 +697,8 @@ Issues and Pull Requests are welcome!
 
 Supports `change()`, typed table/view/column/index/foreign-key metadata, and
 atomic SQLite table rebuilds. See the schema guide for transaction restrictions.
+Blueprint includes foreign-key, soft-delete and morph shortcuts, plus enum/SET,
+JSONB/ULID, temporal, binary, network and spatial types with explicit dialect limits.
 
 The core now provides `db.schema` for table creation, alteration, and inspection.
 DDL uses the existing `SqlGrammar`; concrete dialects live in their driver packages.

@@ -1,5 +1,20 @@
 ## Unreleased
 
+- Add Blueprint foreignId/foreignUuid/foreignUlid with explicit-table constrained(),
+  fluent foreign-key actions, soft-delete/remember-token/timestamp/morph helpers,
+  and matching drop shortcuts. IDs and numeric foreign/morph columns retain
+  Laconic's signed BIGINT convention.
+- Add integer/identity widths, unsigned integers, CHAR and text sizes, FLOAT,
+  JSONB/ULID, enumColumn/SET, temporal precision and timezone types, bounded binary,
+  network addresses and native spatial types. Unsupported semantics fail before
+  DDL; PostGIS is application-owned and CHECK enum changes require explicit work.
+- **Driver contract:** ColumnType gains cases; update exhaustive type switches.
+  ColumnDefinition adds immutable allowed values, fixed binary length and unsigned
+  state. Unsigned/enum/temporal grammar hooks have safe defaults. Existing type
+  defaults and driver interfaces stay unchanged. Release with all five matching
+  drivers and coordinated minimum core versions; current versions remain unchanged.
+  See SCHEMA.md for mappings and compatibility limits.
+
 - Complete the migration CLI lifecycle with `reset`, `refresh [--step=N]`,
   `fresh [--step]`, their `migrate:*` aliases, and `rollback --batch=N`.
   Add corresponding Migrator methods, per-migration progress callbacks, and

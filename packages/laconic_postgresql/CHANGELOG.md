@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Add Blueprint shortcuts, integer/text families, FLOAT, JSONB/ULID, CHECK enums,
+  precise/timezone-aware temporal types, INET/MACADDR and PostGIS geometry/geography.
+  Reject unsigned, SET, bounded BYTEA and direct CHECK-enum member changes.
+  PostGIS installation is application-owned. Existing json() remains JSONB.
+  Requires matching unreleased core sources; see SCHEMA.md.
+
 - Implement `change()` and catalog metadata for tables, views, columns, indexes,
   and foreign keys, preserving composite-key order and generated/identity flags.
 - Requires the matching unreleased core schema contract; coordinate published

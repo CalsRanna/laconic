@@ -21,6 +21,12 @@ mixin _SqlserverSchema on SqlGrammar {
   @override
   String compileColumnType(ColumnDefinition column) {
     switch (column.type) {
+      case ColumnType.tinyInteger:
+        return 'tinyint';
+      case ColumnType.smallInteger:
+      case ColumnType.year:
+        return 'smallint';
+      case ColumnType.mediumInteger:
       case ColumnType.integer:
         return 'int';
       case ColumnType.bigInteger:
@@ -32,8 +38,18 @@ mixin _SqlserverSchema on SqlGrammar {
           );
         }
         return 'nvarchar(${column.length ?? 255})';
+      case ColumnType.char:
+        if ((column.length ?? 255) > 4000) {
+          throw LaconicException('SQL Server NCHAR length cannot exceed 4000');
+        }
+        return 'nchar(${column.length ?? 255})';
+      case ColumnType.tinyText:
+      case ColumnType.mediumText:
+      case ColumnType.longText:
+      case ColumnType.enumeration:
       case ColumnType.text:
       case ColumnType.json:
+      case ColumnType.jsonb:
         return 'nvarchar(max)';
       case ColumnType.boolean:
         return 'bit';
@@ -46,15 +62,43 @@ mixin _SqlserverSchema on SqlGrammar {
         return 'decimal(${column.precision ?? 10}, ${column.scale ?? 2})';
       case ColumnType.doublePrecision:
         return 'float';
+      case ColumnType.float:
+        return 'float(${column.precision ?? 53})';
       case ColumnType.date:
         return 'date';
       case ColumnType.dateTime:
       case ColumnType.timestamp:
-        return 'datetime2';
+        return 'datetime2${compileTemporalPrecision(column, maximum: 7)}';
+      case ColumnType.dateTimeTz:
+      case ColumnType.timestampTz:
+        return 'datetimeoffset${compileTemporalPrecision(column, maximum: 7)}';
+      case ColumnType.time:
+        return 'time${compileTemporalPrecision(column, maximum: 7)}';
+      case ColumnType.timeTz:
+        throw LaconicException(
+          'SQL Server does not support TIME WITH TIME ZONE',
+        );
       case ColumnType.binary:
-        return 'varbinary(max)';
+        if (column.length != null && column.length! > 8000) {
+          throw LaconicException(
+            'SQL Server binary length cannot exceed 8000; omit length for varbinary(max)',
+          );
+        }
+        return '${column.fixed ? 'binary' : 'varbinary'}(${column.length ?? 'max'})';
       case ColumnType.uuid:
         return 'uniqueidentifier';
+      case ColumnType.ulid:
+        return 'char(26)';
+      case ColumnType.ipAddress:
+        return 'nvarchar(45)';
+      case ColumnType.macAddress:
+        return 'nvarchar(17)';
+      case ColumnType.set:
+        throw LaconicException('SQL Server does not support SET columns');
+      case ColumnType.geometry:
+        return 'geometry';
+      case ColumnType.geography:
+        return 'geography';
     }
   }
 

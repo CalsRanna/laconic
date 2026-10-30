@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Support the new Blueprint shortcuts and advanced type families, including
+  unsigned, native ENUM/SET, temporal precision, bounded binary and geometry.
+  Reject timezone-aware/geography types and SQL-mode-dependent enum/set backslashes.
+  Requires matching unreleased core sources; see SCHEMA.md for exact mappings.
+
 - Implement `change()` with MODIFY COLUMN and typed schema metadata queries,
   preserving index/key definitions and existing auto-increment behavior.
 - Requires the matching unreleased core schema contract; coordinate published

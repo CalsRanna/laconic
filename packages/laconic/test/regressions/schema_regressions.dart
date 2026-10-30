@@ -1,6 +1,7 @@
 import 'package:laconic/laconic.dart';
 import 'package:test/test.dart';
 import 'schema_metadata_regressions.dart';
+import 'schema_type_regressions.dart';
 
 abstract final class SchemaRegressions {
   static void register(
@@ -12,6 +13,11 @@ abstract final class SchemaRegressions {
     group('Schema builder', () {
       late Laconic db;
       SchemaMetadataRegressions.register(
+        createDatabase,
+        sqlite: sqlite,
+        namespace: namespace,
+      );
+      SchemaTypeRegressions.register(
         createDatabase,
         sqlite: sqlite,
         namespace: namespace,

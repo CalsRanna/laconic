@@ -572,6 +572,8 @@ MIT License
 
 Supports `change()`, typed table/view/column/index/foreign-key metadata, and
 atomic SQLite table rebuilds. See the schema guide for transaction restrictions.
+Blueprint includes foreign-key, soft-delete and morph shortcuts, plus enum/SET,
+JSONB/ULID, temporal, binary, network and spatial types with explicit dialect limits.
 
 `Laconic.schema` exposes the core Schema Builder. SQL compilation stays in
 `SqlGrammar`, with concrete behavior supplied by the selected driver. See

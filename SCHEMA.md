@@ -67,15 +67,109 @@ SQLite 重建操作会在独占连接的事务中读取快照、完整编译并�
 
 ## 列、索引与外键
 
-列方法：`id`、`integer`、`bigInteger`、`string`、`text`、`boolean`、`decimal`、
-`doublePrecision`、`date`、`dateTime`、`timestamp`、`binary`、`json`、`uuid`、`timestamps`。
-列修饰方法：`nullable()`、`defaultTo(value)`、`primary()`、`unique()`、`change()`。
+| 类别 | API |
+|---|---|
+| 整数、自增 | `id`、`increments`、`tiny/small/medium/bigIncrements`、`integer`、`tiny/small/medium/bigInteger`、对应 `unsigned*Integer` |
+| 字符串 | `char(length:)`、`string(length:)`、`tinyText`、`text`、`mediumText`、`longText` |
+| 数值 | `boolean`、`decimal(precision:, scale:)`、`float(precision:)`、`doublePrecision` |
+| 日期与时间 | `date`、`year`、`time`、`timeTz`、`dateTime`、`dateTimeTz`、`timestamp`、`timestampTz` |
+| 结构化值 | `json`、`jsonb`、`uuid`、`ulid`、`enumColumn(name, values)`、`set(name, values)` |
+| 二进制与网络 | `binary(length:, fixed:)`、`ipAddress`、`macAddress` |
+| 空间 | `geometry`、`geography`（原生类型；PostgreSQL 需要 PostGIS） |
+
+列修饰方法：`nullable()`、`defaultTo(value)`、`primary()`、`unique()`、`unsigned()`、`change()`。
 
 `id()` 使用 SQLite INTEGER 或服务端数据库的有符号 BIGINT 自增主键。
-外键列应使用匹配类型，例如 `bigInteger('user_id')`；这里不隐式使用 unsigned。
+`bigIncrements()` 与 `id()` 一致，其他 increments 方法使用对应的整数规格；
+它们也不隐式使用 unsigned。`foreignId()` 使用相同的有符号 BIGINT，避免外键类型不匹配。
+MySQL/MariaDB 可以显式使用 `id().unsigned()` 和 `foreignId('user_id').unsigned()`；
+`unsigned*Integer` 是相应整数类型加 `.unsigned()` 的快捷方式，其他数据库明确拒绝 unsigned。
 `timestamps()` 添加 nullable 的 `created_at` 和 `updated_at`，不会自动填充值。
 DDL 默认值不能简单使用查询参数绑定，因此普通值会被方言编码为 SQL 字面量；
 `defaultTo(Expression('CURRENT_TIMESTAMP'))` 允许显式提供可信 SQL 表达式。
+
+### 外键与常用列快捷方法
+
+```dart
+await db.schema.create('posts', (table) {
+  table.id();
+  table.foreignId('user_id').nullable()
+      .constrained('users', column: 'id', name: 'posts_user_fk')
+      .nullOnDelete();
+  table.nullableUuidMorphs('subject', indexName: 'posts_subject_index');
+  table.timestamps(precision: 3);
+  table.softDeletes();
+  table.rememberToken();
+});
+```
+
+`foreignId`、`foreignUuid`、`foreignUlid` 返回支持链式列修饰的
+`ForeignIdColumnDefinition`。先调用 `nullable()` 等列修饰，再调用
+`constrained('table', column: 'id', name: ...)`，返回普通 `ForeignKeyDefinition`。
+也可使用 `references('column', name: ...).on('table')`。目标表名必须显式给出，
+不推断模型、英文复数或 schema。外键动作支持 `cascadeOnDelete/Update`、
+`nullOnDelete/Update`、`restrictOnDelete/Update`、`noActionOnDelete/Update`。
+
+`morphs` / `uuidMorphs` / `ulidMorphs` 及其 `nullable*` 变体添加
+`<name>_type` 字符串、`<name>_id` 对应类型，以及按 type、id 顺序的组合索引。
+数字 morph ID 与 `id()` 一样使用 signed BIGINT；多态关联不添加数据库外键。
+`indexName:` 可覆盖默认索引名称。
+
+`softDeletes(name: 'deleted_at', precision:)` 添加 nullable timestamp；
+`softDeletesTz` 使用对应时区类型。`rememberToken()` 添加 nullable VARCHAR(100)
+（或方言等价类型）。`timestampsTz` 和 `nullableTimestamps` 分别提供时区和普通
+时间戳对。它们只创建列，不自动填充时间、过滤软删除行或实现认证逻辑。
+UUID/ULID 方法只定义存储类型，不生成 ID。
+
+删除时可使用 `dropTimestamps` / `dropTimestampsTz`、`dropSoftDeletes` /
+`dropSoftDeletesTz`、`dropRememberToken`、`dropMorphs(name, indexName:)`，以及
+`dropConstrainedForeignId(name, constraintName:)`。后两者先删除索引/外键再删除列；
+创建时指定了自定义名称，删除时也必须传入同一名称。
+
+### 高级类型的方言行为
+
+| 类型 | SQLite | MySQL / MariaDB | PostgreSQL | SQL Server |
+|---|---|---|---|---|
+| tiny / small / medium integer | INTEGER | TINYINT / SMALLINT / MEDIUMINT | SMALLINT / SMALLINT / INTEGER | TINYINT / SMALLINT / INT |
+| tiny / medium / long text | TEXT | 对应原生类型 | TEXT | NVARCHAR(MAX) |
+| `char` / `ulid` | CHAR(n) / CHAR(26)，长度不强制 | CHAR(n) / CHAR(26) | CHAR(n) / CHAR(26) | NCHAR(n) / CHAR(26) |
+| `float(precision:)` | REAL | FLOAT(p) | p≤24 为 REAL，否则 DOUBLE PRECISION | FLOAT(p) |
+| `jsonb` | TEXT | JSON | JSONB | NVARCHAR(MAX) |
+| `enumColumn` | TEXT + CHECK | ENUM | TEXT + CHECK | NVARCHAR(MAX) + CHECK |
+| `set` | 拒绝 | SET | 拒绝 | 拒绝 |
+| `dateTimeTz` / `timestampTz` | TEXT | 拒绝 | TIMESTAMP WITH TIME ZONE | DATETIMEOFFSET |
+| `timeTz` | TEXT | 拒绝 | TIME WITH TIME ZONE | 拒绝 |
+| `year` | INTEGER | YEAR | SMALLINT | SMALLINT |
+| `binary(length:, fixed:)` | 有 length/fixed 时拒绝 | BINARY(n) / VARBINARY(n) | 有 length/fixed 时拒绝 | BINARY(n) / VARBINARY(n) |
+| `ipAddress` / `macAddress` | VARCHAR(45/17) | VARCHAR(45/17) | INET / MACADDR | NVARCHAR(45/17) |
+| `geometry` | 拒绝 | GEOMETRY | PostGIS GEOMETRY | GEOMETRY |
+| `geography` | 拒绝 | 拒绝 | PostGIS GEOGRAPHY | GEOGRAPHY |
+
+这些映射采用数据库原生范围和比较语义；例如 SQL Server TINYINT 为 0–255，
+SQLite 不强制整数位宽或字符长度。IP/MAC 的字符串映射不进行格式校验。
+空间类型当前只定义通用原生列，不提供 subtype、SRID 修饰或自动安装 PostGIS。
+几何值的构造、编码和读取仍使用驱动支持的原生 SQL/类型处理。
+
+时间类型接受可选 `precision:`。MySQL/MariaDB/PostgreSQL 支持 0–6，SQL Server
+支持 0–7；SQLite 保存文本，不强制小数精度或时区转换。省略 precision 保持原有
+数据库默认值。MySQL/MariaDB 没有带时区列类型，使用显式 UTC 的 `dateTime` /
+`timestamp`，不把 `*Tz` 静默降级。普通 `timestamp()` 在 SQL Server 仍是 DATETIME2。
+
+`float` 接受 1–53 位二进制精度；各数据库按自身支持的单/双精度档位存储。
+`binary()` 不指定长度时仍分别使用 BLOB/BYTEA/VARBINARY(MAX)。指定 fixed 必须同时
+给 length；MySQL/MariaDB 的 BINARY 最大 255、VARBINARY 最大 65535（还受行大小限制），
+SQL Server 指定长度最大 8000。不支持长度语义的数据库会在执行 DDL 前报错。
+
+Dart 的 `enum` 是保留字，因此枚举入口命名为 `enumColumn`。允许值列表会做不可变
+快照，必须非空、无重复、不含 NUL；SET 最多 64 个成员，成员不能含逗号。
+MySQL/MariaDB 为避免 SQL mode 改变枚举字面量含义，拒绝带反斜杠的 ENUM/SET 成员。
+值的大小写、尾随空格和无效输入行为仍取决于数据库排序规则及 SQL mode。
+CHECK 枚举的 nullable 列允许 NULL；调整 CHECK 枚举的成员列表不支持直接 `.change()`，
+需要显式处理约束。MySQL/MariaDB 原生 ENUM 可 `.change()`；更换其他类型时既有 CHECK
+约束仍可能保留。现有 PostgreSQL `json()` 继续使用 JSONB，新增 `jsonb()` 不改变旧映射。
+
+API 名称参照 [Laravel Blueprint](https://laravel.com/framework/docs/13.x/migrations#available-column-types)，
+上述 signed ID、显式目标表和不支持类型报错是 Laconic 的明确约定。
 
 ```dart
 await db.schema.create('posts', (table) {
@@ -102,7 +196,8 @@ await db.schema.table('users', (table) {
 ```
 
 `change()` 重新声明列类型、可空性和默认值：没有 `nullable()` 就是 NOT NULL，
-没有 `defaultTo()` 就移除原默认值。既有主键、唯一键及普通索引保留；
+没有 `defaultTo()` 就移除原默认值；MySQL/MariaDB 的 unsigned 也需要重新声明。
+既有主键、唯一键及普通索引保留；
 `change()` 不接受 `primary()`、`unique()` 或 `id()`，请用单独的键操作。
 自增/identity 属性不会因普通列类型修改而被移除。不存在的列、建表时使用 `change()`
 等用法会在执行 DDL 前报错。对同一回调中新添加的列，请直接定义其最终类型。
@@ -208,6 +303,11 @@ SQLite 的类型亲和性不会强制 varchar 长度或 decimal 精度。JSON/UU
 2. 在该 Grammar 实现 `compileColumnType`、`compileAutoIncrement`、
    `compileTableExists`、`compileColumnListing`，并覆盖需要定制的标识符、
    默认值、建表/改表编译方法。
+   `ColumnType` 新增高级类型，穷尽 switch 必须同步；不支持的类型应显式抛出异常。
+   `compileUnsigned` 默认拒绝 unsigned，`supportsNativeEnum` 默认 false，
+   此时 `compileColumnDefinition` 会给枚举添加 CHECK 并拒绝直接变更枚举成员。
+   `compileTemporalPrecision` 验证方言时间精度；列的 `allowed`、`fixed`、`isUnsigned`
+   参数应参与编译。不增加新的 grammar 或驱动接口。
    元数据实现 `compileTables/Views/Columns/Indexes/ForeignKeys`，按 SchemaBuilder 使用的
    字段别名返回行；需要时用 `normalizeColumnMetadata` 补齐原生信息。
    列修改实现 `compileChangeColumn`；`compileAlterTable` 新增可选的 `columns`、`objects`

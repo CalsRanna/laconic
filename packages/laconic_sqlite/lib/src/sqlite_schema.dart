@@ -26,27 +26,60 @@ mixin _SqliteSchema on SqlGrammar {
   @override
   String compileColumnType(ColumnDefinition column) {
     switch (column.type) {
+      case ColumnType.tinyInteger:
+      case ColumnType.smallInteger:
+      case ColumnType.mediumInteger:
+      case ColumnType.year:
       case ColumnType.integer:
       case ColumnType.bigInteger:
         return 'integer';
       case ColumnType.string:
         return 'varchar(${column.length ?? 255})';
+      case ColumnType.char:
+        return 'char(${column.length ?? 255})';
+      case ColumnType.tinyText:
+      case ColumnType.mediumText:
+      case ColumnType.longText:
+      case ColumnType.enumeration:
       case ColumnType.text:
       case ColumnType.json:
+      case ColumnType.jsonb:
       case ColumnType.date:
       case ColumnType.dateTime:
+      case ColumnType.dateTimeTz:
       case ColumnType.timestamp:
+      case ColumnType.timestampTz:
+      case ColumnType.time:
+      case ColumnType.timeTz:
         return 'text';
       case ColumnType.boolean:
         return 'boolean';
       case ColumnType.decimal:
         return 'numeric';
       case ColumnType.doublePrecision:
+      case ColumnType.float:
         return 'real';
       case ColumnType.binary:
+        if (column.length != null || column.fixed) {
+          throw LaconicException(
+            'SQLite BLOB does not support a fixed or maximum length',
+          );
+        }
         return 'blob';
       case ColumnType.uuid:
         return 'varchar(36)';
+      case ColumnType.ulid:
+        return 'char(26)';
+      case ColumnType.ipAddress:
+        return 'varchar(45)';
+      case ColumnType.macAddress:
+        return 'varchar(17)';
+      case ColumnType.set:
+      case ColumnType.geometry:
+      case ColumnType.geography:
+        throw LaconicException(
+          'SQLite does not support ${column.type.name} columns',
+        );
     }
   }
 

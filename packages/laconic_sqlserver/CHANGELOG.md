@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Add Blueprint shortcuts and advanced types: integer/text families, NCHAR, FLOAT,
+  JSONB/ULID, CHECK enums, DATETIMEOFFSET, precise temporal types, bounded binary,
+  network strings and geometry/geography. Reject unsigned, SET, TIME WITH TIME
+  ZONE and direct CHECK-enum member changes. Requires matching unreleased core
+  sources; see SCHEMA.md for native ranges and dependency limits.
+
 - Implement `change()` with default-constraint discovery/replacement and native
   ALTER COLUMN. Index/computed-column dependencies remain database restrictions.
 - Add typed catalog metadata with ordered keys and identity/computed details.

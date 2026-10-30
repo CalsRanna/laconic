@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Support Blueprint shortcuts and advanced types through the shared MySQL schema
+  compiler, including unsigned, ENUM/SET and geometry. Unsupported semantics fail
+  explicitly. Requires matching unreleased core/MySQL sources; see SCHEMA.md.
+
 - Inherit `change()` and typed structure metadata from the matching MySQL grammar;
   default values retain MariaDB's native expression representation.
 - Requires the matching unreleased core schema contract; coordinate published

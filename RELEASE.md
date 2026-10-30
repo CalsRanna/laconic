@@ -8,6 +8,7 @@
 - [ ] 移除 `raw()` 属于 breaking change：确定核心下一主版本，并协调驱动最低核心版本；升级调用为 `Expression()`，CLI 调用和配置按 MIGRATIONS.md 迁移
 
 - [ ] 为 Schema Builder、Migration 和 CLI 确定核心发布版本，并同步所有驱动的最低核心依赖版本；已发布的 6.0.0 不包含这些 API
+- [ ] Blueprint 快捷方法和高级类型新增 ColumnType 枚举值及类型参数；同步各驱动及第三方穷尽 switch，保留 signed ID 与现有默认映射，核对 SCHEMA.md 的 unsigned、时区、CHECK 枚举和 PostGIS 限制
 - [ ] 迁移 CLI 新增 reset/refresh/fresh、batch/pretend；生产环境脚本需加 `--force`。发布匹配的核心与 SQLite grammar wipe 实现，核对 MIGRATIONS.md 的清表范围和预览限制
 - [ ] 同步第三方 `compileAlterTable` 覆盖方法的列/对象快照参数，记录 `change()`、元数据接口及可选 `SchemaTransactionDriver` 的扩展契约
 - [ ] 记录 `implements SqlGrammar` 实现者必须补齐新增成员的兼容性变更

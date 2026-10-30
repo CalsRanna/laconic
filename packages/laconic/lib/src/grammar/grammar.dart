@@ -98,8 +98,34 @@ abstract class SqlGrammar {
     );
   }
 
+  /// Whether enums use a native column type rather than a CHECK constraint.
+  bool get supportsNativeEnum => false;
+
+  /// Compiles the unsigned modifier, rejecting unsupported dialects.
+  String compileUnsigned(ColumnDefinition column) {
+    if (column.isUnsigned) {
+      throw LaconicException(
+        'This database does not support unsigned integer columns',
+      );
+    }
+    return '';
+  }
+
+  /// Compiles an optional fractional-second precision for temporal types.
+  String compileTemporalPrecision(ColumnDefinition column, {int maximum = 6}) {
+    final precision = column.precision;
+    if (precision == null) return '';
+    if (precision < 0 || precision > maximum) {
+      throw LaconicException(
+        'This database supports fractional-second precision from 0 to $maximum',
+      );
+    }
+    return '($precision)';
+  }
+
   /// Compiles a column and its inline modifiers.
   String compileColumnDefinition(ColumnDefinition column) {
+    column.validate();
     if (column.isPrimary && column.isNullable) {
       throw LaconicException('Primary key columns cannot be nullable');
     }
@@ -112,6 +138,7 @@ abstract class SqlGrammar {
     final sql = StringBuffer(
       '${quoteSchemaIdentifier(column.name)} ${compileColumnType(column)}',
     );
+    sql.write(compileUnsigned(column));
     if (column.autoIncrement) sql.write(' ${compileAutoIncrement(column)}');
     sql.write(column.isNullable ? ' null' : ' not null');
     if (column.hasDefault) {
@@ -119,6 +146,11 @@ abstract class SqlGrammar {
     }
     if (column.isPrimary) sql.write(' primary key');
     if (column.isUnique) sql.write(' unique');
+    if (column.type == ColumnType.enumeration && !supportsNativeEnum) {
+      sql.write(
+        ' check (${quoteSchemaIdentifier(column.name)} in (${column.allowed.map(compileSchemaLiteral).join(', ')}))',
+      );
+    }
     return sql.toString();
   }
 
@@ -226,6 +258,11 @@ abstract class SqlGrammar {
 
   /// Validates modifiers supported when changing an existing column.
   void validateChangedColumn(ColumnDefinition column) {
+    if (column.type == ColumnType.enumeration && !supportsNativeEnum) {
+      throw LaconicException(
+        'Changing CHECK-backed enums requires explicitly replacing their constraint',
+      );
+    }
     if (column.isPrimary || column.isUnique || column.autoIncrement) {
       throw LaconicException(
         'change() preserves keys; use separate key commands',

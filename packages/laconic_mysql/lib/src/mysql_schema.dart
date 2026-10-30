@@ -26,12 +26,29 @@ mixin _MysqlSchema on SqlGrammar {
   @override
   String compileColumnType(ColumnDefinition column) {
     switch (column.type) {
+      case ColumnType.tinyInteger:
+        return 'tinyint';
+      case ColumnType.smallInteger:
+        return 'smallint';
+      case ColumnType.mediumInteger:
+        return 'mediumint';
       case ColumnType.integer:
         return 'integer';
       case ColumnType.bigInteger:
         return 'bigint';
       case ColumnType.string:
         return 'varchar(${column.length ?? 255})';
+      case ColumnType.char:
+        if ((column.length ?? 255) > 255) {
+          throw LaconicException('MySQL/MariaDB CHAR length cannot exceed 255');
+        }
+        return 'char(${column.length ?? 255})';
+      case ColumnType.tinyText:
+        return 'tinytext';
+      case ColumnType.mediumText:
+        return 'mediumtext';
+      case ColumnType.longText:
+        return 'longtext';
       case ColumnType.text:
         return 'text';
       case ColumnType.boolean:
@@ -40,23 +57,74 @@ mixin _MysqlSchema on SqlGrammar {
         return 'decimal(${column.precision ?? 10}, ${column.scale ?? 2})';
       case ColumnType.doublePrecision:
         return 'double';
+      case ColumnType.float:
+        return 'float(${column.precision ?? 53})';
       case ColumnType.date:
         return 'date';
       case ColumnType.dateTime:
-        return 'datetime';
+        return 'datetime${compileTemporalPrecision(column)}';
       case ColumnType.timestamp:
-        return 'timestamp';
+        return 'timestamp${compileTemporalPrecision(column)}';
+      case ColumnType.time:
+        return 'time${compileTemporalPrecision(column)}';
+      case ColumnType.year:
+        return 'year';
+      case ColumnType.dateTimeTz:
+      case ColumnType.timestampTz:
+      case ColumnType.timeTz:
+        throw LaconicException(
+          'MySQL/MariaDB has no timezone-aware column type; use explicit UTC dateTime/timestamp storage',
+        );
       case ColumnType.binary:
-        return 'blob';
+        if (column.length == null) return 'blob';
+        if (column.fixed && column.length! > 255 || column.length! > 65535) {
+          throw LaconicException(
+            'MySQL/MariaDB binary length exceeds the native type limit',
+          );
+        }
+        return '${column.fixed ? 'binary' : 'varbinary'}(${column.length})';
       case ColumnType.json:
+      case ColumnType.jsonb:
         return 'json';
       case ColumnType.uuid:
         return 'char(36)';
+      case ColumnType.ulid:
+        return 'char(26)';
+      case ColumnType.enumeration:
+      case ColumnType.set:
+        final values = column.allowed
+            .map((value) {
+              if (value.contains('\\')) {
+                throw LaconicException(
+                  'MySQL/MariaDB enum/set values containing backslashes depend on SQL mode and are not supported',
+                );
+              }
+              return "'${value.replaceAll("'", "''")}'";
+            })
+            .join(', ');
+        return '${column.type == ColumnType.set ? 'set' : 'enum'}($values)';
+      case ColumnType.ipAddress:
+        return 'varchar(45)';
+      case ColumnType.macAddress:
+        return 'varchar(17)';
+      case ColumnType.geometry:
+        return 'geometry';
+      case ColumnType.geography:
+        throw LaconicException(
+          'MySQL/MariaDB does not support geography columns',
+        );
     }
   }
 
   @override
   String compileAutoIncrement(ColumnDefinition column) => 'auto_increment';
+
+  @override
+  bool get supportsNativeEnum => true;
+
+  @override
+  String compileUnsigned(ColumnDefinition column) =>
+      column.isUnsigned ? ' unsigned' : '';
 
   @override
   String compileReferentialAction(String action) {
