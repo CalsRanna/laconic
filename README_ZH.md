@@ -426,6 +426,24 @@ final results = await laconic.table('users')
 
 ### 子查询
 
+`where` / `orWhere` 的左侧、`orderBy` / `orderByDesc`，以及 `update` 的值
+（PostgreSQL 还包括 `updateFrom`）均支持现成的 QueryBuilder 或同步构建回调。
+WHERE 和 ORDER BY 在组合时捕获子查询 SQL 与绑定，UPDATE 在调用时捕获；
+不会修改传入的 builder 或数据 Map。子查询必须返回一列、至多一行，遵循目标数据库
+的标量子查询规则。
+
+```dart
+final latestTotal = laconic.table('orders o').selectRaw('max(o.total)')
+    .whereColumn('o.user_id', 'u.id');
+final users = await laconic.table('users u')
+    .where(latestTotal, 100, comparator: '>')
+    .orderByDesc(latestTotal).get();
+await laconic.table('users u').where('u.id', 1)
+    .update({'last_order_total': latestTotal});
+```
+
+游标分页需要先用 `selectSub(..., 'alias')` 投影子查询，再按别名排序。
+
 ```dart
 // SELECT 子查询
 final users = await laconic.table('users u')

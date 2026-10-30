@@ -378,6 +378,26 @@ final results = await laconic.table('users').select(['id', 'name'])
 
 ### Subqueries
 
+Scalar subqueries are also accepted as the first argument of `where` / `orWhere`,
+by `orderBy` / `orderByDesc`, and as values in `update` (`updateFrom` on PostgreSQL).
+Pass an existing builder or a synchronous builder callback. WHERE and ORDER BY
+capture the subquery when composed; UPDATE captures it when called. Source
+builders and input maps are not modified. Subqueries must produce one column and
+at most one row, following the database's scalar-subquery rules.
+
+```dart
+final latestTotal = laconic.table('orders o').selectRaw('max(o.total)')
+    .whereColumn('o.user_id', 'u.id');
+final users = await laconic.table('users u')
+    .where(latestTotal, 100, comparator: '>')
+    .orderByDesc(latestTotal).get();
+await laconic.table('users u').where('u.id', 1)
+    .update({'last_order_total': latestTotal});
+```
+
+For cursor pagination, select the subquery with `selectSub(..., 'alias')` and
+order by that alias instead of ordering directly by the subquery.
+
 ```dart
 final users = await laconic.table('users u')
     .select(['u.id'])

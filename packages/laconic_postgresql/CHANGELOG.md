@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Rebase bound scalar subqueries used in UPDATE assignments, including repeated
+  and reordered numbered parameters. Requires the matching unreleased core.
+
 - Add session-pinned advisory migration locks and native pg_dump/psql baselines.
   Preserve schema-qualified history, support existing empty schemas on import,
   and restore inside one native transaction. Requires matching unreleased core

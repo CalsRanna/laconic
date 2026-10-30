@@ -4,6 +4,7 @@ import 'query_semantics_regressions.dart';
 import 'query_result_regressions.dart';
 import 'query_pagination_regressions.dart';
 import 'query_convenience_regressions.dart';
+import 'query_subquery_regressions.dart';
 
 // The same behavior checks run against each real database driver.
 
@@ -23,6 +24,7 @@ abstract final class QueryRegressions {
     );
     QueryPaginationRegressions.register(createDatabase);
     QueryConvenienceRegressions.register(createDatabase);
+    QuerySubqueryRegressions.register(createDatabase);
     QuerySemanticsRegressions.register(
       createDatabase,
       supportsOrderedWrites: supportsOrderedWrites,

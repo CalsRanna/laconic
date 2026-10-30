@@ -60,6 +60,18 @@ class PostgresqlGrammar extends SqlGrammar with _PostgresqlSchema {
   bool get numberedPlaceholders => true;
 
   @override
+  String parameter(Object? value, List<Object?> bindings) {
+    if (value is! CompiledQuery) return super.parameter(value, bindings);
+    final embedded = PostgresqlPlaceholders.compile(
+      value.sql,
+      value.bindings,
+      offset: bindings.length,
+    );
+    bindings.addAll(embedded.bindings);
+    return '(${embedded.sql})';
+  }
+
+  @override
   String inlineSubquery(CompiledQuery query) =>
       PostgresqlPlaceholders.toQuestionPlaceholders(query.sql);
 

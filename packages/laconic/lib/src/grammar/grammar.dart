@@ -764,9 +764,16 @@ abstract class SqlGrammar {
     throw LaconicException('This grammar does not support JSON selectors');
   }
 
-  /// Adds a value binding, or emits an explicit SQL expression.
+  /// Adds a value binding, or emits an expression or compiled scalar subquery.
+  ///
+  /// Subquery bindings are appended in SQL order. Dialects with numbered
+  /// placeholders must rebase [CompiledQuery] parameters to the current offset.
   String parameter(Object? value, List<Object?> bindings) {
     if (value is Expression) return value.sql;
+    if (value is CompiledQuery) {
+      bindings.addAll(value.bindings);
+      return '(${value.sql})';
+    }
     bindings.add(value);
     return numberedPlaceholders ? '\$${bindings.length}' : '?';
   }

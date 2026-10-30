@@ -28,6 +28,8 @@
 
 ## 2. 完整校验
 
+- [ ] 子查询组合需要同步核心与 PostgreSQL 驱动：WHERE 左侧、ORDER BY、UPDATE 值支持 builder/同步回调；第三方语法的赋值编译应通过 `parameter()` 处理 `CompiledQuery`，编号占位符须按绑定偏移重编号。运行五库共享子查询回归及 PostgreSQL 编号参数专项测试。
+
 从 workspace 根目录执行：
 
 ```bash

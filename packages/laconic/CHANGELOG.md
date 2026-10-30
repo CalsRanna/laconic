@@ -1,5 +1,12 @@
 ## Unreleased
 
+- Support scalar subqueries on the left of `where`/`orWhere`, in
+  `orderBy`/`orderByDesc`, and as `update`/`updateFrom` values. Accept existing
+  builders and synchronous callbacks, retaining correlated references and bound
+  values. Rebase PostgreSQL assignment subqueries without losing repeated
+  parameters. Add shared five-database regressions and PostgreSQL binding cases.
+  Release with the matching PostgreSQL driver; see RELEASE.md.
+
 - Add relative date conditions: past/future, inclusive now variants, today and
   inclusive/exclusive day boundaries, with all OR variants and column lists.
   Capture the application clock once, with an optional `now:` reference; bind

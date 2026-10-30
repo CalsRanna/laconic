@@ -839,9 +839,18 @@ class QueryBuilder {
 
   /// Adds an ORDER BY clause to the query.
   ///
-  /// [column] is the column name to order by.
+  /// [column] is a column name, a [QueryBuilder], or a synchronous callback
+  /// building a scalar subquery. Subquery SQL and bindings are captured now.
   /// [direction] must be 'asc' or 'desc' (defaults to 'asc').
-  QueryBuilder orderBy(String column, {String direction = 'asc'}) {
+  QueryBuilder orderBy(Object column, {String direction = 'asc'}) {
+    if (column is! String) {
+      final normalized = direction.toLowerCase();
+      if (normalized != 'asc' && normalized != 'desc') {
+        throw LaconicException('Invalid ordering direction: $direction');
+      }
+      final compiled = _grammar.compileInlineSubquery(_compileSubquery(column));
+      return orderByRaw('(${compiled.sql}) $normalized', compiled.bindings);
+    }
     _orders.add({'column': column, 'direction': direction});
     return this;
   }
@@ -859,7 +868,7 @@ class QueryBuilder {
   }
 
   /// Adds an ORDER BY ... DESC clause (shorthand).
-  QueryBuilder orderByDesc(String column) {
+  QueryBuilder orderByDesc(Object column) {
     return orderBy(column, direction: 'desc');
   }
 
@@ -1239,15 +1248,19 @@ class QueryBuilder {
 
   /// Adds an OR WHERE condition to the query.
   ///
-  /// [column] is the column name.
+  /// [column] is a column name or a scalar subquery, as in [where].
   /// [value] is the value to compare.
   /// [comparator] is the comparison operator (defaults to '=').
   QueryBuilder orWhere(
-    String column,
+    Object column,
     Object? value, {
     String comparator = '=',
   }) {
     final operator = SqlOperator.validate(comparator);
+
+    if (column is! String) {
+      return _whereSubquery(column, value, operator, 'or');
+    }
 
     if (value == null &&
         (operator == '=' || operator == '!=' || operator == '<>')) {
@@ -1981,6 +1994,8 @@ class QueryBuilder {
   /// Updates records matching the query.
   ///
   /// [data] is a map of column-value pairs to update. Must be non-empty.
+  /// Values may be scalar subqueries expressed as a [QueryBuilder] or a
+  /// synchronous callback, compiled with their bindings before execution.
   /// Returns the number of affected rows reported by the database.
   Future<int> update(Map<String, Object?> data) async {
     if (data.isEmpty) {
@@ -1989,7 +2004,7 @@ class QueryBuilder {
     _validateWriteScope();
     final compiled = _grammar.compileUpdate(
       table: _table,
-      data: data,
+      data: _compileUpdateValues(data),
       wheres: _wheres,
       joins: _joins,
       orders: _orders,
@@ -2002,11 +2017,16 @@ class QueryBuilder {
 
   /// Adds a WHERE condition to the query.
   ///
-  /// [column] is the column name.
-  /// [value] is the value to compare.
+  /// [column] is a column name, a [QueryBuilder], or a synchronous callback
+  /// building a scalar subquery. [value] may also be a scalar subquery.
+  /// Subquery SQL and bindings are captured when the condition is added.
   /// [comparator] is the comparison operator (defaults to '=').
-  QueryBuilder where(String column, Object? value, {String comparator = '='}) {
+  QueryBuilder where(Object column, Object? value, {String comparator = '='}) {
     final operator = SqlOperator.validate(comparator);
+
+    if (column is! String) {
+      return _whereSubquery(column, value, operator, 'and');
+    }
 
     // Laravel converts a `null` comparison with =, != or <> into IS NULL /
     // IS NOT NULL instead of emitting a comparison that can never match.
@@ -2037,6 +2057,48 @@ class QueryBuilder {
     });
     return this;
   }
+
+  QueryBuilder _whereSubquery(
+    Object query,
+    Object? value,
+    String operator,
+    String boolean,
+  ) {
+    final left = _grammar.compileInlineSubquery(_compileSubquery(query));
+    final bindings = List<Object?>.of(left.bindings);
+    final String sql;
+    if (value == null &&
+        (operator == '=' || operator == '!=' || operator == '<>')) {
+      sql = '(${left.sql}) is ${operator == '=' ? '' : 'not '}null';
+    } else {
+      final String right;
+      if (value is QueryBuilder || value is void Function(QueryBuilder)) {
+        final compiled = _grammar.compileInlineSubquery(
+          _compileSubquery(value as Object),
+        );
+        right = '(${compiled.sql})';
+        bindings.addAll(compiled.bindings);
+      } else if (value is Expression) {
+        right = value.sql;
+      } else {
+        right = '?';
+        bindings.add(value);
+      }
+      sql = '(${left.sql}) $operator $right';
+    }
+    return boolean == 'and'
+        ? whereRaw(sql, bindings)
+        : orWhereRaw(sql, bindings);
+  }
+
+  Map<String, Object?> _compileUpdateValues(Map<String, Object?> data) => {
+    for (final entry in data.entries)
+      entry.key:
+          entry.value is QueryBuilder ||
+                  entry.value is void Function(QueryBuilder)
+              ? _compileSubquery(entry.value as Object)
+              : entry.value,
+  };
 
   /// Adds a WHERE NOT EQUAL condition (shorthand), or negates a nested group
   /// when passed a `void Function(QueryBuilder)` callback.
@@ -3994,7 +4056,7 @@ class QueryBuilder {
     final compiled = _grammar.compileUpdateFrom(
       table: _table,
       from: from,
-      data: data,
+      data: _compileUpdateValues(data),
       wheres: _wheres,
     );
     return _laconic.affectingStatement(compiled.sql, compiled.bindings);
