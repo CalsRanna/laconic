@@ -158,14 +158,21 @@ class Laconic {
   Future<T> transaction<T>(Future<T> Function() action) =>
       _driver.transaction(action);
 
-  /// Runs an atomic table rebuild on a driver-reserved connection.
+  /// Runs atomic schema work on a driver-reserved connection.
   ///
-  /// Used by SchemaBuilder when the grammar requires reconstructing a table.
+  /// Used by SchemaBuilder for table rebuilds and atomic index replacement.
+  /// Index replacement leaves [disableForeignKeys] false.
   /// The driver must implement [SchemaTransactionDriver].
-  Future<T> schemaTransaction<T>(Future<T> Function() action) {
+  Future<T> schemaTransaction<T>(
+    Future<T> Function() action, {
+    bool disableForeignKeys = true,
+  }) {
     final driver = _driver;
     if (driver is SchemaTransactionDriver) {
-      return (driver as SchemaTransactionDriver).schemaTransaction(action);
+      return (driver as SchemaTransactionDriver).schemaTransaction(
+        action,
+        disableForeignKeys: disableForeignKeys,
+      );
     }
     throw LaconicException(
       'This driver does not support atomic schema rebuilds',

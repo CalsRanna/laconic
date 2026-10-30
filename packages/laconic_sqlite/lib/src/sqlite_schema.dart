@@ -80,11 +80,21 @@ mixin _SqliteSchema on SqlGrammar {
         throw LaconicException(
           'SQLite does not support ${column.type.name} columns',
         );
+      case ColumnType.computed:
+        throw LaconicException(
+          'SQLite uses typed virtualAs() or storedAs() columns',
+        );
     }
   }
 
   @override
   String compileAutoIncrement(ColumnDefinition column) => '';
+
+  @override
+  String compileColumnGeneration(ColumnDefinition column) =>
+      column.generationExpression == null
+          ? ''
+          : ' generated always as (${column.generationExpression}) ${column.isStored ? 'stored' : 'virtual'}';
 
   @override
   String compileColumnDefinition(ColumnDefinition column) {
@@ -101,13 +111,27 @@ mixin _SqliteSchema on SqlGrammar {
                 command.isPrimary ||
                 command.isUnique ||
                 command.autoIncrement ||
+                command.isStored ||
+                command.usesCurrentTime ||
                 command.hasDefault && command.defaultValue is Expression) ||
         command is ForeignKeyDefinition ||
         command is IndexDefinition && command.type == IndexType.primary ||
         command is SchemaChangeCommand &&
             (command.change == SchemaChange.dropColumn ||
+                command.change == SchemaChange.dropPrimary ||
                 command.change == SchemaChange.dropForeign),
   );
+
+  @override
+  bool requiresSchemaSnapshot(Blueprint blueprint) =>
+      requiresTableRebuild(blueprint) ||
+      blueprint.commands.any(
+        (c) => c is SchemaChangeCommand && c.change == SchemaChange.renameIndex,
+      );
+
+  @override
+  bool requiresSchemaTransaction(Blueprint blueprint) =>
+      requiresSchemaSnapshot(blueprint);
 
   @override
   List<CompiledQuery> compileAlterTable(
@@ -117,6 +141,53 @@ mixin _SqliteSchema on SqlGrammar {
   }) {
     if (requiresTableRebuild(blueprint)) {
       return _SqliteTableRebuild(this, blueprint, columns, objects).compile();
+    }
+    if (requiresSchemaSnapshot(blueprint)) {
+      final name = schemaTableParts(blueprint.table).last;
+      final indexes = [
+        for (final o in objects)
+          if (o['type'] == 'index' && o['tbl_name'] == name && o['sql'] != null)
+            Map<String, Object?>.of(o),
+      ];
+      final statements = <CompiledQuery>[];
+      for (final command in blueprint.commands) {
+        if (command is ColumnDefinition) {
+          statements.add(compileAddColumn(blueprint.table, command));
+        } else if (command is IndexDefinition) {
+          final query = compileSchemaIndex(blueprint.table, command);
+          statements.add(query);
+          indexes.add({'name': command.name, 'sql': query.sql});
+        } else if (command is SchemaChangeCommand) {
+          if (command.change == SchemaChange.renameIndex) {
+            final sql = _SqliteTableRebuild.renameIndex(
+              this,
+              blueprint.table,
+              indexes,
+              command,
+            );
+            statements.add(
+              compileSchemaChange(
+                blueprint.table,
+                SchemaChangeCommand(SchemaChange.dropIndex, command.name),
+              ),
+            );
+            statements.add(CompiledQuery(sql: sql, bindings: []));
+          } else {
+            statements.add(compileSchemaChange(blueprint.table, command));
+            if (command.change == SchemaChange.dropIndex) {
+              indexes.removeWhere((i) => i['name'] == command.name);
+            }
+            if (command.change == SchemaChange.renameColumn) {
+              // Native ALTER TABLE rewrites dependent expressions. Mixing it
+              // with index snapshots would replay the old column names.
+              throw LaconicException(
+                'Use separate SQLite table() calls for renameColumn() and renameIndex()',
+              );
+            }
+          }
+        }
+      }
+      return statements;
     }
     return super.compileAlterTable(
       blueprint,
@@ -130,6 +201,8 @@ mixin _SqliteSchema on SqlGrammar {
     if (column.isPrimary ||
         column.isUnique ||
         column.autoIncrement ||
+        column.isStored ||
+        column.usesCurrentTime ||
         column.hasDefault && column.defaultValue is Expression) {
       throw LaconicException(
         'SQLite ADD COLUMN does not support keys or expression defaults',
@@ -151,6 +224,9 @@ mixin _SqliteSchema on SqlGrammar {
 
   @override
   CompiledQuery compileSchemaIndex(String table, IndexDefinition index) {
+    if (index.type == IndexType.fullText) {
+      return super.compileSchemaIndex(table, index);
+    }
     final parts = schemaTableParts(table);
     final prefix =
         parts.length == 2 ? '${quoteSchemaIdentifier(parts.first)}.' : '';
@@ -220,7 +296,13 @@ mixin _SqliteSchema on SqlGrammar {
   @override
   Map<String, Object?> normalizeColumnMetadata(Map<String, Object?> row) {
     final sql = row['table_sql'] as String?;
-    if (sql == null || _SqliteDefinition.hasKeyword(sql, 'virtual')) return row;
+    if (sql == null ||
+        RegExp(
+          r'^\s*create\s+virtual\s+table\b',
+          caseSensitive: false,
+        ).hasMatch(sql)) {
+      return row;
+    }
     final table = _SqliteDefinition(sql);
     final definition =
         table.definitions

@@ -1,5 +1,14 @@
 ## Unreleased
 
+- Add atomic explicit-index renaming preserving expressions, collation, direction
+  and filters, plus named primary-key deletion through table rebuilds.
+- Add collations, current-time defaults and virtual/stored generated columns.
+  Rebuilds skip generated targets and preserve virtual-column definitions.
+- Update the optional schema transaction contract with `disableForeignKeys`:
+  index replacement preserves enforcement and supports nested savepoints;
+  table rebuilds retain their existing foreign-key restrictions. Requires the
+  matching unreleased core; coordinate minimum versions via RELEASE.md.
+
 - Support Blueprint lifecycle/foreign/morph helpers and advanced types using
   SQLite affinities, including CHECK enums, JSONB/ULID and temporal text storage.
   Reject unsigned, SET, spatial and bounded BLOB types, and direct CHECK-enum

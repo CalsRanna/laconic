@@ -77,7 +77,64 @@ SQLite 重建操作会在独占连接的事务中读取快照、完整编译并�
 | 二进制与网络 | `binary(length:, fixed:)`、`ipAddress`、`macAddress` |
 | 空间 | `geometry`、`geography`（原生类型；PostgreSQL 需要 PostGIS） |
 
-列修饰方法：`nullable()`、`defaultTo(value)`、`primary()`、`unique()`、`unsigned()`、`change()`。
+列修饰方法：`nullable()`、`defaultTo(value)`、`primary()`、`unique()`、`unsigned()`、`change()`，
+以及下面的注释、排序规则、列位置、时间默认值和生成列方法。
+
+### 常用列修饰
+
+| 修饰方法 | 支持与语义 |
+|---|---|
+| `comment(text)` | MySQL/MariaDB、PostgreSQL、SQL Server；SQLite 明确报错。`getColumns()` 的 `comment` 返回原生注释 |
+| `charset(name)` | MySQL/MariaDB 原生列字符集；其他数据库明确报错 |
+| `collation(name)` | 五种数据库的原生列排序规则；名称需在目标数据库中存在 |
+| `first()` / `after(column)` | MySQL/MariaDB 新增列或 `change()` 时调整位置；建表请直接按顺序声明列，其他数据库明确报错 |
+| `useCurrent()` | dateTime/timestamp 及受支持的带时区类型使用数据库当前时间作为默认值 |
+| `useCurrentOnUpdate()` | MySQL/MariaDB 的 dateTime/timestamp 原生自动更新时间；其他数据库明确报错 |
+
+```dart
+await db.schema.table('posts', (table) {
+  table.timestamp('published_at', precision: 3).nullable().useCurrent();
+  // MySQL / MariaDB:
+  table.timestamp('updated_at', precision: 3)
+      .useCurrent().useCurrentOnUpdate().after('published_at');
+  table.string('slug').charset('utf8mb4').collation('utf8mb4_bin')
+      .comment("Article's slug");
+});
+```
+
+`useCurrent()` 和 `defaultTo()` 以后调用的为准。`change()` 时需重新声明默认值、
+自动更新时间及注释；省略注释会清除原注释。需要保留的字符集和排序规则也应重新声明。
+MySQL/MariaDB 的 COMMENT 要求字符串字面量：为避免 SQL mode 造成内容变化，注释含反斜线或 NUL
+时会在编译阶段报错。SQL Server 使用原生扩展属性 `MS_Description` 保存注释。
+
+### 生成列
+
+```dart
+await db.schema.create('line_items', (table) {
+  // SQLite / MySQL / MariaDB / PostgreSQL:
+  table.id();
+  table.integer('quantity');
+  table.integer('price');
+  table.integer('total').storedAs('quantity * price').nullable();
+});
+// SQL Server 使用原生计算列，类型由表达式推导：
+await db.schema.table('line_items', (table) {
+  table.computed('subtotal', 'quantity * price').persisted();
+});
+```
+
+| 数据库 | 生成列接口 |
+|---|---|
+| SQLite | 类型方法后接 `virtualAs(sql)` / `storedAs(sql)`；给已有表添加 stored 列时原子重建 |
+| MySQL | 类型方法后接 `virtualAs(sql)` / `storedAs(sql)` |
+| MariaDB | 同 MySQL，但原生生成列不支持 NOT NULL，必须显式加 `nullable()` |
+| PostgreSQL | 项目支持的 PostgreSQL 15 基线使用 `storedAs(sql)`；`virtualAs` 明确报错 |
+| SQL Server | `computed(name, sql)`，可接 `persisted()`；类型和可空性默认由数据库推导，persisted 列可用 `nullable(false)` 强制 NOT NULL |
+
+表达式是调用者提供的可信原始 SQL，不会绑定或改写。各数据库对函数确定性、类型和依赖的限制仍适用。
+生成列不能设置普通默认值、自增、主键或自动更新时间；可以创建普通/唯一索引。
+`change()` 不转换普通列与生成列，也不修改既有生成列；请显式删除再添加，依赖索引/约束由调用方处理。
+其余列变化时会保留生成列，SQLite 复制数据时跳过生成列，由数据库重新计算。
 
 `id()` 使用 SQLite INTEGER 或服务端数据库的有符号 BIGINT 自增主键。
 `bigIncrements()` 与 `id()` 一致，其他 increments 方法使用对应的整数规格；
@@ -182,10 +239,36 @@ await db.schema.create('posts', (table) {
 });
 ```
 
-`primary`、`unique`、`index`、`foreign` 都接受列名列表，因此支持组合键。
-需要后续删除的唯一索引应使用表级 `unique([...], name: ...)`，然后 `dropIndex(name)`。
+`primary`、`unique`、`index`、`fullText`、`foreign` 都接受列名列表，因此支持组合键。
+`index`、`unique`、`primary`、`fullText` 返回 `IndexDefinition`。
+需要后续删除的唯一索引应使用表级 `unique([...], name: ...)`，然后 `dropUnique(name)` 或 `dropIndex(name)`。
+`dropPrimary(name)` 删除显式命名的表级主键约束；MySQL/MariaDB 总是使用原生 PRIMARY 名称。
+不会为自增列自动移除自增属性，也不会猜测和移除依赖外键。
 `dropForeign(name)` 删除显式命名的外键。默认名称为表名、列名和类型拼接，
 长表名或列名可能超过数据库标识符长度限制，此时应显式指定较短名称。
+
+### 全文索引与索引重命名
+
+```dart
+await db.schema.table('posts', (table) {
+  table.fullText(['title', 'body'], name: 'posts_search');
+  // PostgreSQL 可接 .language('english')，查询时使用相同的 language。
+});
+await db.schema.table('posts', (table) {
+  table.renameIndex('posts_search', 'posts_search_new');
+});
+await db.schema.table('posts', (table) => table.dropFullText('posts_search_new'));
+```
+
+MySQL/MariaDB 使用 FULLTEXT 索引，不接受 `language()`；PostgreSQL 使用 GIN 表达式索引，
+默认 `english`，对各列先 COALESCE 再拼接 tsvector，与现有 `whereFullText()` 保持一致。
+SQLite 的全文检索需要专门的 FTS 虚拟表，SQL Server 还需要目录和唯一键等配置，
+两者的 `fullText()` / `dropFullText()` 均明确报错；不会退化为普通索引。
+
+`renameIndex(from, to)` 保留索引定义。SQLite 只重建显式索引，保留唯一性、表达式、
+排序规则、方向和 WHERE 条件，整个过程使用事务/保存点；可在开启外键的外层事务中运行。
+SQLite 的自动约束索引不可重命名；仅索引重命名与 `renameColumn()` 请分开调用 `table()`，
+需要表重建的混合操作则沿用重建规则，将 `renameColumn()` 放在最后。
 
 ## 修改已有列
 
@@ -230,7 +313,7 @@ print(await db.schema.hasIndex('users', ['email'], type: 'unique'));
 | 返回类型 | 主要字段 |
 |---|---|
 | `SchemaTable`（表或视图） | `name`、`schema`、`qualifiedName`、可用时的 `definition` |
-| `SchemaColumn` | `name`、`typeName`、`type`、`nullable`、`defaultValue`、`autoIncrement`、`collation`、`generated`、`generation`、`primaryPosition`、`defaultConstraint` |
+| `SchemaColumn` | `name`、`typeName`、`type`、`nullable`、`defaultValue`、`autoIncrement`、`collation`、`comment`、`generated`、`generation`、`primaryPosition`、`defaultConstraint` |
 | `SchemaIndex` | `name`、按键顺序排列的 `columns`、`unique`、`primary`、`type`、可用时的 `definition` |
 | `SchemaForeignKey` | `name`、`columns`、`foreignSchema`、`foreignTable`、`foreignColumns`、`onUpdate`、`onDelete` |
 
@@ -278,6 +361,10 @@ bool get withinTransaction => false;
 | 创建、删除、重命名表 | 支持 | 支持 | 支持 | 支持 |
 | 添加、删除、重命名列 | 支持，必要时重建 | 支持 | 支持 | 支持，受依赖约束限制 |
 | 普通 / 唯一索引 | 支持 | 支持 | 支持 | 支持 |
+| 全文索引 | 明确报错，使用 FTS 虚拟表 | FULLTEXT | GIN + language | 明确报错 |
+| 索引重命名 / 删除 | 显式索引原子重建 / 删除 | 支持 | 支持 | 支持 |
+| 删除命名主键 | 重建 | 支持 | 支持 | 支持 |
+| 生成列 | virtual / stored | virtual / stored；MariaDB 需 nullable | stored | computed / persisted |
 | 建表时主键 / 外键 | 支持 | 支持 | 支持 | 支持 |
 | 改表时新增主键 / 外键、删除外键 | 重建支持 | 支持 | 支持 | 支持 |
 | `change()` / 结构元数据 | 支持 | 支持 | 支持 | 支持，受原生依赖限制 |
@@ -313,6 +400,12 @@ SQLite 的类型亲和性不会强制 varchar 长度或 decimal 精度。JSON/UU
    列修改实现 `compileChangeColumn`；`compileAlterTable` 新增可选的 `columns`、`objects`
    快照参数，已有覆盖方法必须同步签名。需要重建的方言实现 `requiresTableRebuild` 和
    `compileSchemaObjects`，驱动实现 `SchemaTransactionDriver`；编译器仍保持无状态、无 I/O。
+   新增 `ColumnType.computed`、`IndexType.fullText` 和索引变更的 `SchemaChange` 枚举值，
+   第三方穷尽 switch 必须同步；按需覆盖 `compileColumnCharset/Collation/Comment/Extras/Position/Default/OnUpdate/Generation/Nullability`
+   和 `compileCurrentTimestamp`。新增修饰的默认实现会拒绝不支持的功能。
+   仅需要索引快照时覆盖 `requiresSchemaSnapshot`；需要原子索引替换时覆盖 `requiresSchemaTransaction`。
+   `SchemaTransactionDriver.schemaTransaction` 新增 `disableForeignKeys` 命名参数（默认 true）：
+   索引操作传 false，必须保留外键检查并支持外层事务内的保存点。预览驱动仍只记录 SQL。
 3. 明确设置 `supportsSchemaTransactions`；默认值为 false。这个声明只适用于
    普通迁移 DDL，具体 migration 可以关闭自动事务。
 4. 复用 `packages/laconic/test/regressions/schema_regressions.dart` 的行为测试，并添加数据库特有用例。

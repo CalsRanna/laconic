@@ -65,7 +65,10 @@ class _PreviewDriver extends DatabaseDriver implements SchemaTransactionDriver {
   Future<T> transaction<T>(Future<T> Function() action) => action();
 
   @override
-  Future<T> schemaTransaction<T>(Future<T> Function() action) => action();
+  Future<T> schemaTransaction<T>(
+    Future<T> Function() action, {
+    bool disableForeignKeys = true,
+  }) => action();
 
   @override
   Future<void> close() async {}

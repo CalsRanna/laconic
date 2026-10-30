@@ -221,6 +221,13 @@ class Blueprint {
   ColumnDefinition geography(String name) =>
       _column(name, ColumnType.geography);
 
+  /// Adds a SQL Server computed column using trusted, unbound SQL.
+  ///
+  /// Its type and nullability are inferred by SQL Server. Use `persisted()`
+  /// to store the value, optionally with `nullable(false)` to enforce NOT NULL.
+  ColumnDefinition computed(String name, String expression) =>
+      _column(name, ColumnType.computed).virtualAs(expression).nullable();
+
   /// Adds a BIGINT foreign-key column matching the signed [id] convention.
   ForeignIdColumnDefinition foreignId(String name) =>
       _foreignColumn(name, ColumnType.bigInteger);
@@ -289,16 +296,20 @@ class Blueprint {
   }
 
   /// Adds a named non-unique index.
-  void index(List<String> columns, {String? name}) =>
+  IndexDefinition index(List<String> columns, {String? name}) =>
       _index(columns, IndexType.normal, name);
 
   /// Adds a named unique index.
-  void unique(List<String> columns, {String? name}) =>
+  IndexDefinition unique(List<String> columns, {String? name}) =>
       _index(columns, IndexType.unique, name);
 
   /// Adds a named primary key, including composite keys.
-  void primary(List<String> columns, {String? name}) =>
+  IndexDefinition primary(List<String> columns, {String? name}) =>
       _index(columns, IndexType.primary, name);
+
+  /// Adds a full-text index on MySQL, MariaDB, or PostgreSQL.
+  IndexDefinition fullText(List<String> columns, {String? name}) =>
+      _index(columns, IndexType.fullText, name);
 
   /// Adds a foreign key that must be completed with `references(...).on(...)`.
   ForeignKeyDefinition foreign(List<String> columns, {String? name}) {
@@ -321,6 +332,23 @@ class Blueprint {
   /// Drops an explicitly named index, including a unique index.
   void dropIndex(String name) =>
       _commands.add(SchemaChangeCommand(SchemaChange.dropIndex, name));
+
+  /// Renames an explicitly named index, preserving its definition.
+  void renameIndex(String from, String to) =>
+      _commands.add(SchemaChangeCommand(SchemaChange.renameIndex, from, to));
+
+  /// Drops a named unique index created with [unique].
+  void dropUnique(String name) => dropIndex(name);
+
+  /// Drops an explicitly named primary key constraint.
+  ///
+  /// MySQL and MariaDB always identify this key as PRIMARY.
+  void dropPrimary(String name) =>
+      _commands.add(SchemaChangeCommand(SchemaChange.dropPrimary, name));
+
+  /// Drops a named full-text index on a supported database.
+  void dropFullText(String name) =>
+      _commands.add(SchemaChangeCommand(SchemaChange.dropFullText, name));
 
   /// Drops an explicitly named foreign key constraint.
   void dropForeign(String name) =>
@@ -367,14 +395,18 @@ class Blueprint {
     index(['${name}_type', '${name}_id'], name: indexName);
   }
 
-  void _index(List<String> columns, IndexType type, String? name) {
-    _commands.add(
-      IndexDefinition(
-        name ?? _name(columns, type == IndexType.normal ? 'index' : type.name),
-        columns,
-        type,
-      ),
+  IndexDefinition _index(List<String> columns, IndexType type, String? name) {
+    final definition = IndexDefinition(
+      name ??
+          _name(
+            columns,
+            type == IndexType.normal ? 'index' : type.name.toLowerCase(),
+          ),
+      columns,
+      type,
     );
+    _commands.add(definition);
+    return definition;
   }
 
   String _name(List<String> columns, String suffix) =>

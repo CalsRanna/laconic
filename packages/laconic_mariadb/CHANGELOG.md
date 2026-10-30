@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Support full-text indexes, index renaming/drops, column modifiers and generated
+  columns through the shared MySQL compiler. MariaDB generated columns require
+  explicit `nullable()` because native NOT NULL is unsupported. Requires the
+  matching unreleased core and MySQL driver; coordinate versions via RELEASE.md.
+
 - Support Blueprint shortcuts and advanced types through the shared MySQL schema
   compiler, including unsigned, ENUM/SET and geometry. Unsupported semantics fail
   explicitly. Requires matching unreleased core/MySQL sources; see SCHEMA.md.

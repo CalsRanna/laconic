@@ -2,12 +2,14 @@ import 'package:laconic/laconic.dart';
 import 'package:test/test.dart';
 import 'schema_metadata_regressions.dart';
 import 'schema_type_regressions.dart';
+import 'schema_feature_regressions.dart';
 
 abstract final class SchemaRegressions {
   static void register(
     Laconic Function() createDatabase, {
     Future<void> Function()? prepare,
     bool sqlite = false,
+    bool mariadb = false,
     String? namespace,
   }) {
     group('Schema builder', () {
@@ -20,6 +22,12 @@ abstract final class SchemaRegressions {
       SchemaTypeRegressions.register(
         createDatabase,
         sqlite: sqlite,
+        namespace: namespace,
+      );
+      SchemaFeatureRegressions.register(
+        createDatabase,
+        sqlite: sqlite,
+        mariadb: mariadb,
         namespace: namespace,
       );
       const users = 'laconic_schema_users';

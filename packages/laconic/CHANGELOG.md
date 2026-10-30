@@ -1,5 +1,27 @@
 ## Unreleased
 
+- Add full-text indexes with PostgreSQL language selection, index renaming,
+  and explicit `dropUnique`, `dropPrimary`, and `dropFullText` operations.
+  Index builders now return `IndexDefinition`; existing statement-style calls
+  continue to work. Named unique indexes retain their existing semantics.
+- Add column comments, character sets, collations, MySQL/MariaDB placement and
+  automatic timestamps, portable `useCurrent`, and generated/computed columns.
+  Expose native column comments in `SchemaColumn.comment`. See SCHEMA.md for
+  dialect restrictions and the explicit drop/add policy for generated changes.
+- **Third-party driver migration:** update exhaustive switches for
+  `ColumnType.computed`, `IndexType.fullText`, and new `SchemaChange` values;
+  implement the required modifier hooks and snapshot/transaction hooks.
+  `SchemaTransactionDriver.schemaTransaction` now accepts
+  `disableForeignKeys: true`; index replacement passes false and must preserve
+  foreign-key checks and support savepoints inside existing transactions.
+  Release matching core and all five drivers together; current published core
+  6.0 / SQLite and PostgreSQL 4.0 / MySQL 5.0 lack this schema contract, while
+  MariaDB and SQL Server 1.0 remain unpublished. Coordinate minimum versions
+  using RELEASE.md before publishing.
+- Add shared regression coverage across all five databases, including full-text
+  query index usage, escaped index names, comment round trips, generated data,
+  and SQLite index rollback and generated-column rebuilds.
+
 - **Breaking query return contracts:** `min`/`max` return `Future<Object?>`,
   preserving text, numeric text, date and numeric driver values; `sum` returns
   `Future<num>` with zero for empty/all-null results. `avg` stays nullable.

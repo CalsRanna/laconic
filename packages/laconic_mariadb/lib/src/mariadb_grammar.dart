@@ -3,6 +3,19 @@ import 'package:laconic_mysql/laconic_mysql.dart';
 
 /// MariaDB 10.11+ grammar, sharing the common MySQL SQL syntax.
 class MariadbGrammar extends MysqlGrammar {
+  @override
+  String compileColumnNullability(ColumnDefinition column) {
+    if (column.generationExpression != null) {
+      if (!column.isNullable) {
+        throw LaconicException(
+          'MariaDB generated columns cannot enforce NOT NULL; explicitly use nullable()',
+        );
+      }
+      return '';
+    }
+    return super.compileColumnNullability(column);
+  }
+
   void _validateJoins(List<Map<String, dynamic>> joins) {
     if (joins.any((join) => join['type'] == 'lateral')) {
       throw LaconicException('MariaDB does not support LATERAL joins');

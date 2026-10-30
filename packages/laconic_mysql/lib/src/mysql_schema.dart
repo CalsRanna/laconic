@@ -113,6 +113,10 @@ mixin _MysqlSchema on SqlGrammar {
         throw LaconicException(
           'MySQL/MariaDB does not support geography columns',
         );
+      case ColumnType.computed:
+        throw LaconicException(
+          'MySQL/MariaDB uses typed virtualAs() or storedAs() columns',
+        );
     }
   }
 
@@ -127,6 +131,67 @@ mixin _MysqlSchema on SqlGrammar {
       column.isUnsigned ? ' unsigned' : '';
 
   @override
+  String compileColumnCharset(ColumnDefinition column) =>
+      column.characterSet == null
+          ? ''
+          : ' character set ${quoteSchemaIdentifier(column.characterSet!)}';
+
+  @override
+  String compileColumnComment(ColumnDefinition column) {
+    final comment = column.commentText;
+    if (comment == null) return '';
+    // COMMENT requires a string literal, not an expression. Backslash escaping
+    // changes with SQL mode, so reject it instead of storing different text.
+    if (comment.contains('\\') || comment.contains('\u0000')) {
+      throw LaconicException(
+        'MySQL/MariaDB comments cannot contain backslashes or NUL',
+      );
+    }
+    return " comment '${comment.replaceAll("'", "''")}'";
+  }
+
+  @override
+  String compileColumnPosition(ColumnDefinition column) =>
+      column.isFirst
+          ? ' first'
+          : column.afterColumn == null
+          ? ''
+          : ' after ${quoteSchemaIdentifier(column.afterColumn!)}';
+
+  @override
+  String compileCurrentTimestamp(ColumnDefinition column) =>
+      'current_timestamp${compileTemporalPrecision(column)}';
+
+  @override
+  String compileColumnOnUpdate(ColumnDefinition column) =>
+      column.updatesCurrentTime
+          ? ' on update ${compileCurrentTimestamp(column)}'
+          : '';
+
+  @override
+  String compileColumnGeneration(ColumnDefinition column) =>
+      column.generationExpression == null
+          ? ''
+          : ' generated always as (${column.generationExpression}) ${column.isStored ? 'stored' : 'virtual'}';
+
+  @override
+  CompiledQuery compileSchemaIndex(String table, IndexDefinition index) {
+    if (index.fullTextLanguage != null) {
+      throw LaconicException(
+        'MySQL/MariaDB full-text indexes do not support language()',
+      );
+    }
+    if (index.type != IndexType.fullText) {
+      return super.compileSchemaIndex(table, index);
+    }
+    return CompiledQuery(
+      sql:
+          'create fulltext index ${quoteSchemaIdentifier(index.name)} on ${quoteSchemaIdentifier(table, qualified: true)} (${compileSchemaColumns(index.columns)})',
+      bindings: [],
+    );
+  }
+
+  @override
   String compileReferentialAction(String action) {
     if (action == 'set default') {
       throw LaconicException(
@@ -138,10 +203,26 @@ mixin _MysqlSchema on SqlGrammar {
 
   @override
   CompiledQuery compileSchemaChange(String table, SchemaChangeCommand command) {
-    if (command.change == SchemaChange.dropIndex) {
+    if (command.change == SchemaChange.dropIndex ||
+        command.change == SchemaChange.dropFullText) {
       return CompiledQuery(
         sql:
             'drop index ${quoteSchemaIdentifier(command.name)} on ${quoteSchemaIdentifier(table, qualified: true)}',
+        bindings: [],
+      );
+    }
+    if (command.change == SchemaChange.renameIndex) {
+      return CompiledQuery(
+        sql:
+            'alter table ${quoteSchemaIdentifier(table, qualified: true)} rename index ${quoteSchemaIdentifier(command.name)} to ${quoteSchemaIdentifier(command.newName!)}',
+        bindings: [],
+      );
+    }
+    if (command.change == SchemaChange.dropPrimary) {
+      quoteSchemaIdentifier(command.name);
+      return CompiledQuery(
+        sql:
+            'alter table ${quoteSchemaIdentifier(table, qualified: true)} drop primary key',
         bindings: [],
       );
     }
@@ -184,7 +265,7 @@ mixin _MysqlSchema on SqlGrammar {
     CompiledQuery(
       sql:
           'alter table ${quoteSchemaIdentifier(table, qualified: true)} modify column '
-          '${compileColumnDefinition(column)}${previous.autoIncrement ? ' auto_increment' : ''}',
+          '${compileColumnDefinition(column)}${previous.autoIncrement ? ' auto_increment' : ''}${compileColumnPosition(column)}',
       bindings: [],
     ),
   ];
@@ -216,6 +297,7 @@ mixin _MysqlSchema on SqlGrammar {
           "select column_name as name, data_type as type_name, column_type as type, "
           "is_nullable = 'YES' as nullable, column_default as default_value, "
           "extra like '%auto_increment%' as auto_increment, collation_name as collation, "
+          "nullif(column_comment, '') as comment, "
           "nullif(generation_expression, '') as generation, generation_expression <> '' as `generated`, "
           "coalesce((select k.ordinal_position from information_schema.key_column_usage k "
           "where k.table_schema = c.table_schema and k.table_name = c.table_name "

@@ -51,7 +51,7 @@ class SchemaBuilder {
               ? await getColumns(table)
               : <SchemaColumn>[];
       final objects =
-          rebuild
+          grammar.requiresSchemaSnapshot(blueprint)
               ? await _rows(grammar.compileSchemaObjects(table))
               : <Map<String, Object?>>[];
       await _execute(
@@ -63,8 +63,8 @@ class SchemaBuilder {
       );
     }
 
-    if (rebuild) {
-      await _database.schemaTransaction(execute);
+    if (grammar.requiresSchemaTransaction(blueprint)) {
+      await _database.schemaTransaction(execute, disableForeignKeys: rebuild);
     } else {
       await execute();
     }
@@ -165,6 +165,7 @@ class SchemaBuilder {
               defaultValue: row['default_value']?.toString(),
               autoIncrement: _boolean(row['auto_increment']),
               collation: row['collation'] as String?,
+              comment: row['comment'] as String?,
               generation: row['generation'] as String?,
               generated: _boolean(row['generated']),
               defaultConstraint: row['default_constraint'] as String?,

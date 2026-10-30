@@ -51,13 +51,19 @@ class _SqliteTableRebuild {
           if (at < 0) {
             throw LaconicException('Column does not exist: ${command.name}');
           }
+          if (columns.any((c) => c.name == command.name && c.generated)) {
+            throw LaconicException(
+              'Changing a generated column requires explicitly dropping and adding it',
+            );
+          }
           final column = _SqliteColumn(definitions[at]);
           final kept = column.constraints.where(
             (c) =>
-                !const [
+                ![
                   'not',
                   'null',
                   'default',
+                  if (command.collationName != null) 'collate',
                 ].contains(_SqliteDefinition.constraintKind(c)),
           );
           definitions[at] =
@@ -69,6 +75,7 @@ class _SqliteTableRebuild {
           }
           definitions.add(grammar.compileColumnDefinition(command));
           additions[command.name] = command;
+          dropped.remove(command.name);
         }
       } else if (command is ForeignKeyDefinition) {
         definitions.add(grammar.compileForeignKey(command));
@@ -117,6 +124,30 @@ class _SqliteTableRebuild {
               );
             }
             indexes.removeAt(at);
+          case SchemaChange.renameIndex:
+            renameIndex(grammar, blueprint.table, indexes, command);
+          case SchemaChange.dropFullText:
+            throw LaconicException(
+              'SQLite full-text search requires an FTS virtual table; dropFullText() is not supported',
+            );
+          case SchemaChange.dropPrimary:
+            final at = definitions.indexWhere(
+              (d) =>
+                  _SqliteDefinition.columnName(d) == null &&
+                  _SqliteDefinition.constraintKind(d) == 'primary' &&
+                  _SqliteDefinition.constraintName(d) == command.name,
+            );
+            if (at < 0) {
+              throw LaconicException(
+                'Named primary key does not exist: ${command.name}',
+              );
+            }
+            if (_SqliteDefinition.hasKeyword(original.suffix, 'without')) {
+              throw LaconicException(
+                'Cannot drop the primary key of a WITHOUT ROWID table',
+              );
+            }
+            definitions.removeAt(at);
           case SchemaChange.dropForeign:
             var found = false;
             for (var i = definitions.length - 1; i >= 0; i--) {
@@ -189,16 +220,24 @@ class _SqliteTableRebuild {
     final targets = <String>[];
     final sources = <String>[];
     for (final column in names) {
-      if (sourceColumns[column]?.generated ?? false) continue;
+      final definition = definitions.singleWhere(
+        (d) => _SqliteDefinition.columnName(d) == column,
+      );
+      if (_SqliteColumn(definition).constraints.any(
+        (c) => const [
+          'generated',
+          'as',
+        ].contains(_SqliteDefinition.constraintKind(c)),
+      )) {
+        continue;
+      }
       targets.add(grammar.quoteSchemaIdentifier(column));
       if (sourceColumns.containsKey(column) && !additions.containsKey(column)) {
         sources.add(grammar.quoteSchemaIdentifier(column));
       } else {
         final added = additions[column]!;
         sources.add(
-          added.hasDefault
-              ? grammar.compileSchemaLiteral(added.defaultValue)
-              : 'null',
+          added.hasDefault ? grammar.compileColumnDefault(added) : 'null',
         );
       }
     }
@@ -266,6 +305,41 @@ class _SqliteTableRebuild {
     return statements
         .map((sql) => CompiledQuery(sql: sql, bindings: []))
         .toList();
+  }
+
+  static String renameIndex(
+    SqlGrammar grammar,
+    String table,
+    List<Map<String, Object?>> indexes,
+    SchemaChangeCommand command,
+  ) {
+    final matches = indexes.where((i) => i['name'] == command.name);
+    if (matches.length != 1 ||
+        indexes.any((i) => i['name'] == command.newName)) {
+      throw LaconicException(
+        'Cannot rename explicit index ${command.name} to ${command.newName}',
+      );
+    }
+    final index = matches.single;
+    final sql = index['sql'] as String;
+    final tokens = _SqliteDefinition.tokens(sql);
+    var at = tokens.indexWhere((t) => t.keyword == 'index') + 1;
+    if (tokens[at].keyword == 'if') at += 3;
+    var end = tokens[at].end;
+    if (tokens[at + 1].value == '.') end = tokens[at + 2].end;
+    final parts = grammar.schemaTableParts(table);
+    final prefix =
+        parts.length == 2
+            ? '${grammar.quoteSchemaIdentifier(parts.first)}.'
+            : '';
+    final renamed = sql.replaceRange(
+      tokens[at].start,
+      end,
+      '$prefix${grammar.quoteSchemaIdentifier(command.newName!)}',
+    );
+    index['name'] = command.newName;
+    index['sql'] = renamed;
+    return renamed;
   }
 
   String _qualifyObject(String sql, String schema, String kind) {
@@ -350,12 +424,12 @@ class _SqliteDefinition {
 
   _SqliteDefinition(this.sql) {
     final parsed = tokens(sql);
-    if (parsed.any((t) => t.keyword == 'virtual')) {
-      throw LaconicException('SQLite virtual tables cannot be rebuilt');
-    }
     final open = parsed.indexWhere((t) => t.value == '(');
     if (open < 0) {
       throw LaconicException('Cannot parse SQLite table definition');
+    }
+    if (parsed.take(open).any((t) => t.keyword == 'virtual')) {
+      throw LaconicException('SQLite virtual tables cannot be rebuilt');
     }
     final close = parsed.indexWhere((t) => t.value == ')' && t.depth == 0);
     if (close < 0) {

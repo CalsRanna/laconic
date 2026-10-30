@@ -42,6 +42,7 @@ enum ColumnType {
   macAddress,
   geometry,
   geography,
+  computed,
 }
 
 /// A table definition command consumed by [SqlGrammar].
@@ -96,6 +97,33 @@ class ColumnDefinition extends SchemaCommand {
   /// The literal default or trusted raw SQL expression.
   Object? defaultValue;
 
+  /// The native character set, supported by MySQL and MariaDB.
+  String? characterSet;
+
+  /// The native collation name.
+  String? collationName;
+
+  /// The column's database comment.
+  String? commentText;
+
+  /// Whether an added or changed column should be first in its table.
+  bool isFirst = false;
+
+  /// The column after which an added or changed column should appear.
+  String? afterColumn;
+
+  /// Whether the default uses the database's current timestamp.
+  bool usesCurrentTime = false;
+
+  /// Whether updates automatically refresh this timestamp.
+  bool updatesCurrentTime = false;
+
+  /// The trusted SQL expression for a generated or computed column.
+  String? generationExpression;
+
+  /// Whether the generated value is stored rather than computed on reads.
+  bool isStored = false;
+
   /// Creates a column definition for a schema compiler.
   ColumnDefinition(
     this.name,
@@ -110,6 +138,33 @@ class ColumnDefinition extends SchemaCommand {
 
   /// Validates portable type parameters before compiling or executing DDL.
   void validate() {
+    if (isFirst && afterColumn != null) {
+      throw LaconicException('first() and after() cannot be combined');
+    }
+    if ((usesCurrentTime || updatesCurrentTime) &&
+        !const [
+          ColumnType.dateTime,
+          ColumnType.timestamp,
+          ColumnType.dateTimeTz,
+          ColumnType.timestampTz,
+        ].contains(type)) {
+      throw LaconicException(
+        'Current timestamp modifiers require a date-time or timestamp column',
+      );
+    }
+    if (generationExpression != null) {
+      if (generationExpression!.trim().isEmpty ||
+          generationExpression!.contains('\u0000')) {
+        throw LaconicException(
+          'A generated column requires a nonempty SQL expression without NUL',
+        );
+      }
+      if (hasDefault || autoIncrement || updatesCurrentTime || isPrimary) {
+        throw LaconicException(
+          'Generated columns cannot have defaults, identities, primary keys, or automatic update timestamps',
+        );
+      }
+    }
     if (length != null && length! <= 0) {
       throw LaconicException('Column length must be positive');
     }
@@ -190,7 +245,77 @@ class ColumnDefinition extends SchemaCommand {
   /// Sets a literal default or a trusted `Expression()` expression.
   ColumnDefinition defaultTo(Object? value) {
     hasDefault = true;
+    usesCurrentTime = false;
     defaultValue = value;
+    return this;
+  }
+
+  /// Sets a native character set on MySQL or MariaDB.
+  ColumnDefinition charset(String value) {
+    characterSet = value;
+    return this;
+  }
+
+  /// Sets the database collation for this column.
+  ColumnDefinition collation(String value) {
+    collationName = value;
+    return this;
+  }
+
+  /// Sets a column comment on databases with native comment storage.
+  ColumnDefinition comment(String value) {
+    commentText = value;
+    return this;
+  }
+
+  /// Places an added or changed column first on MySQL or MariaDB.
+  ColumnDefinition first() {
+    isFirst = true;
+    return this;
+  }
+
+  /// Places an added or changed column after [column] on MySQL or MariaDB.
+  ColumnDefinition after(String column) {
+    afterColumn = column;
+    return this;
+  }
+
+  /// Defaults this temporal column to the database's current timestamp.
+  ColumnDefinition useCurrent() {
+    hasDefault = true;
+    usesCurrentTime = true;
+    return this;
+  }
+
+  /// Refreshes this timestamp automatically on MySQL or MariaDB row updates.
+  ColumnDefinition useCurrentOnUpdate() {
+    updatesCurrentTime = true;
+    return this;
+  }
+
+  /// Computes a generated column on reads using trusted, unbound SQL.
+  ///
+  /// Supported by SQLite, MySQL, and MariaDB. For SQL Server use
+  /// [Blueprint.computed]; PostgreSQL's supported baseline requires [storedAs].
+  ColumnDefinition virtualAs(String expression) {
+    generationExpression = expression;
+    isStored = false;
+    return this;
+  }
+
+  /// Stores a generated value computed from trusted, unbound SQL.
+  ColumnDefinition storedAs(String expression) {
+    generationExpression = expression;
+    isStored = true;
+    return this;
+  }
+
+  /// Persists a SQL Server [Blueprint.computed] column.
+  ColumnDefinition persisted([bool value = true]) {
+    if (type != ColumnType.computed) {
+      throw LaconicException('persisted() requires a computed() column');
+    }
+    isStored = value;
     return this;
   }
 
@@ -269,10 +394,40 @@ class ForeignIdColumnDefinition extends ColumnDefinition {
     super.change();
     return this;
   }
+
+  @override
+  ForeignIdColumnDefinition comment(String value) {
+    super.comment(value);
+    return this;
+  }
+
+  @override
+  ForeignIdColumnDefinition charset(String value) {
+    super.charset(value);
+    return this;
+  }
+
+  @override
+  ForeignIdColumnDefinition collation(String value) {
+    super.collation(value);
+    return this;
+  }
+
+  @override
+  ForeignIdColumnDefinition first() {
+    super.first();
+    return this;
+  }
+
+  @override
+  ForeignIdColumnDefinition after(String column) {
+    super.after(column);
+    return this;
+  }
 }
 
 /// The supported index and key kinds.
-enum IndexType { normal, unique, primary }
+enum IndexType { normal, unique, primary, fullText }
 
 /// A named index or primary key over one or more columns.
 class IndexDefinition extends SchemaCommand {
@@ -285,9 +440,26 @@ class IndexDefinition extends SchemaCommand {
   /// The kind of index or key.
   final IndexType type;
 
+  /// The PostgreSQL text-search configuration for a full-text index.
+  String? fullTextLanguage;
+
   /// Creates an index definition with a snapshot of [columns].
   IndexDefinition(this.name, List<String> columns, this.type)
     : columns = List.unmodifiable(columns);
+
+  /// Selects the PostgreSQL full-text language, defaulting to English.
+  ///
+  /// Use the same language with `whereFullText()`. Other drivers reject it.
+  IndexDefinition language(String value) {
+    if (type != IndexType.fullText ||
+        !RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(value)) {
+      throw LaconicException(
+        'language() requires a full-text index and a valid language name',
+      );
+    }
+    fullTextLanguage = value;
+    return this;
+  }
 }
 
 /// A named foreign key with explicit referenced table and columns.
@@ -378,7 +550,15 @@ class ForeignKeyDefinition extends SchemaCommand {
 }
 
 /// The alterations that operate on existing named objects.
-enum SchemaChange { dropColumn, renameColumn, dropIndex, dropForeign }
+enum SchemaChange {
+  dropColumn,
+  renameColumn,
+  dropIndex,
+  dropForeign,
+  renameIndex,
+  dropPrimary,
+  dropFullText,
+}
 
 /// An alteration to an existing column, index, or foreign key.
 class SchemaChangeCommand extends SchemaCommand {
@@ -388,7 +568,7 @@ class SchemaChangeCommand extends SchemaCommand {
   /// The existing object's unquoted name.
   final String name;
 
-  /// The new column name for a rename.
+  /// The new column or index name for a rename.
   final String? newName;
 
   /// Creates an alteration command.

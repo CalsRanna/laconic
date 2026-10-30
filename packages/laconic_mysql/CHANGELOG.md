@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Add native full-text indexes, index renaming and typed drops, column comments,
+  character sets/collations, placement, automatic timestamps, and virtual/stored
+  generated columns. Preserve signed identity conventions and existing defaults.
+  Requires the matching unreleased core schema hooks and enum values; coordinate
+  minimum core/driver versions via RELEASE.md.
+
 - Support the new Blueprint shortcuts and advanced type families, including
   unsigned, native ENUM/SET, temporal precision, bounded binary and geometry.
   Reject timezone-aware/geography types and SQL-mode-dependent enum/set backslashes.

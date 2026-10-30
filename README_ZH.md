@@ -677,6 +677,9 @@ MIT License
 
 ## Schema 与迁移（未发布）
 
+已支持 MySQL/MariaDB 与 PostgreSQL 全文索引、索引重命名和删除、列注释/排序规则、
+时间修饰及生成列；各数据库的支持范围和第三方驱动升级要求见 SCHEMA.md。
+
 支持 `change()`、表/视图/列/索引/外键的类型化元数据，以及 SQLite 原子重建；
 事务限制与方言差异见 Schema 指南。
 Blueprint 已补外键、软删除和 morphs 快捷方法，以及枚举/集合、JSONB/ULID、

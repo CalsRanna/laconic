@@ -4,4 +4,5 @@ import 'test_helper.dart';
 void main() => SchemaRegressions.register(
   MariadbTestDatabase.createDatabase,
   namespace: 'testdb',
+  mariadb: true,
 );

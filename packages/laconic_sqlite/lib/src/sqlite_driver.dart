@@ -319,14 +319,15 @@ class SqliteDriver implements DatabaseDriver, SchemaTransactionDriver {
 
   @override
   Future<T> schemaTransaction<T>(
-    Future<T> Function() action,
-  ) => _execute(() async {
+    Future<T> Function() action, {
+    bool disableForeignKeys = true,
+  }) => _execute(() async {
     final foreignKeys =
         _db.select('pragma foreign_keys').single.values.first == 1;
     final legacy =
         _db.select('pragma legacy_alter_table').single.values.first == 1;
     final nested = Zone.current[_transactionKey] != null;
-    if (nested && foreignKeys) {
+    if (nested && foreignKeys && disableForeignKeys) {
       throw LaconicException(
         'SQLite table rebuilds with foreign keys enabled must start outside a transaction; '
         'set Migration.withinTransaction to false for this migration',
@@ -335,7 +336,7 @@ class SqliteDriver implements DatabaseDriver, SchemaTransactionDriver {
     final transaction = nested ? null : _SqliteTransaction();
     var started = false;
     try {
-      if (!nested) {
+      if (!nested && disableForeignKeys) {
         _db.execute('pragma foreign_keys = off');
         if (_db.select('pragma foreign_keys').single.values.first != 0) {
           throw LaconicException(
@@ -343,7 +344,7 @@ class SqliteDriver implements DatabaseDriver, SchemaTransactionDriver {
           );
         }
       }
-      _db.execute('pragma legacy_alter_table = on');
+      if (disableForeignKeys) _db.execute('pragma legacy_alter_table = on');
       _db.execute(
         nested ? 'savepoint laconic_schema_rebuild' : 'begin immediate',
       );
@@ -355,7 +356,7 @@ class SqliteDriver implements DatabaseDriver, SchemaTransactionDriver {
                 action,
                 zoneValues: {_transactionKey: transaction},
               );
-      if (foreignKeys) {
+      if (foreignKeys && disableForeignKeys) {
         for (final row in _db.select('pragma database_list')) {
           final schema = _grammar.quoteSchemaIdentifier(row['name'] as String);
           if (_db.select('pragma $schema.foreign_key_check').isNotEmpty) {
@@ -388,8 +389,10 @@ class SqliteDriver implements DatabaseDriver, SchemaTransactionDriver {
       rethrow;
     } finally {
       if (transaction != null) transaction.active = false;
-      _db.execute('pragma legacy_alter_table = ${legacy ? 'on' : 'off'}');
-      if (!nested) {
+      if (disableForeignKeys) {
+        _db.execute('pragma legacy_alter_table = ${legacy ? 'on' : 'off'}');
+      }
+      if (!nested && disableForeignKeys) {
         _db.execute('pragma foreign_keys = ${foreignKeys ? 'on' : 'off'}');
       }
       _invalidateCache();

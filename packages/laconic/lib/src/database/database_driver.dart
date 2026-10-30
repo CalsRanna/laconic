@@ -79,6 +79,12 @@ abstract class DatabaseDriver {
 /// The callback uses the driver's ordinary query methods on the reserved
 /// connection. Implementations restore connection settings on success or failure.
 abstract interface class SchemaTransactionDriver {
-  /// Runs a schema rebuild atomically, including its metadata reads.
-  Future<T> schemaTransaction<T>(Future<T> Function() action);
+  /// Runs schema work atomically, including its metadata reads.
+  ///
+  /// Index-only operations pass [disableForeignKeys] as false and must work
+  /// inside an existing transaction without disabling foreign-key enforcement.
+  Future<T> schemaTransaction<T>(
+    Future<T> Function() action, {
+    bool disableForeignKeys = true,
+  });
 }

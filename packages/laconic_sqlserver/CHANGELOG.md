@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Add index renaming and named primary/unique index deletion, column collations,
+  current-time defaults, comments via MS_Description, and computed/persisted
+  columns. Typed virtualAs/storedAs and fullText indexes fail explicitly.
+  Requires the matching unreleased core schema hooks and enum values;
+  coordinate minimum core/driver versions via RELEASE.md.
+
 - Add Blueprint shortcuts and advanced types: integer/text families, NCHAR, FLOAT,
   JSONB/ULID, CHECK enums, DATETIMEOFFSET, precise temporal types, bounded binary,
   network strings and geometry/geography. Reject unsigned, SET, TIME WITH TIME

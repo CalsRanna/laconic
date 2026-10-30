@@ -41,6 +41,9 @@ class SchemaColumn {
   /// The column collation, when available.
   final String? collation;
 
+  /// The native column comment, when available.
+  final String? comment;
+
   /// The generated-column expression, when available.
   final String? generation;
 
@@ -62,6 +65,7 @@ class SchemaColumn {
     this.defaultValue,
     this.autoIncrement = false,
     this.collation,
+    this.comment,
     this.generation,
     this.generated = false,
     this.defaultConstraint,

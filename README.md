@@ -732,6 +732,10 @@ Issues and Pull Requests are welcome!
 
 ## Schema and migrations (unreleased)
 
+Includes full-text indexes on MySQL/MariaDB and PostgreSQL, index renaming and
+deletion, column comments/collations, timestamp modifiers and generated columns.
+See SCHEMA.md for dialect support and the third-party driver upgrade contract.
+
 Supports `change()`, typed table/view/column/index/foreign-key metadata, and
 atomic SQLite table rebuilds. See the schema guide for transaction restrictions.
 Blueprint includes foreign-key, soft-delete and morph shortcuts, plus enum/SET,

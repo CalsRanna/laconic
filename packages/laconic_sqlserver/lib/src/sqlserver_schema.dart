@@ -99,11 +99,75 @@ mixin _SqlserverSchema on SqlGrammar {
         return 'geometry';
       case ColumnType.geography:
         return 'geography';
+      case ColumnType.computed:
+        throw LaconicException(
+          'SQL Server infers computed column types from their expressions',
+        );
     }
   }
 
   @override
   String compileAutoIncrement(ColumnDefinition column) => 'identity(1,1)';
+
+  @override
+  String compileColumnCollation(ColumnDefinition column) {
+    final collation = column.collationName;
+    if (collation == null) return '';
+    if (!RegExp(r'^[A-Za-z][A-Za-z0-9_]*$').hasMatch(collation)) {
+      throw LaconicException('Invalid SQL Server collation name: $collation');
+    }
+    return ' collate $collation';
+  }
+
+  @override
+  String compileColumnDefinition(ColumnDefinition column) {
+    if (column.type != ColumnType.computed) {
+      return super.compileColumnDefinition(column);
+    }
+    column.validate();
+    compileColumnPosition(column);
+    compileColumnCharset(column);
+    compileUnsigned(column);
+    if (column.generationExpression == null ||
+        column.collationName != null ||
+        !column.isStored && !column.isNullable) {
+      throw LaconicException(
+        'computed() requires an expression; put COLLATE in the expression and use persisted() for NOT NULL',
+      );
+    }
+    return '${quoteSchemaIdentifier(column.name)} as (${column.generationExpression})'
+        '${column.isStored ? ' persisted${column.isNullable ? '' : ' not null'}' : ''}'
+        '${column.isUnique ? ' unique' : ''}';
+  }
+
+  @override
+  String compileColumnComment(ColumnDefinition column) => '';
+
+  @override
+  List<CompiledQuery> compileColumnExtras(
+    String table,
+    ColumnDefinition column,
+  ) {
+    if (column.commentText == null && !column.isChange) return [];
+    final parts = schemaTableParts(table);
+    const arguments =
+        "@name=N'MS_Description', @level0type=N'SCHEMA', @level0name=@schema, @level1type=N'TABLE', @level1name=@table, @level2type=N'COLUMN', @level2name=@column";
+    final exists =
+        "exists (select 1 from sys.extended_properties p join sys.tables t on t.object_id = p.major_id join sys.schemas s on s.schema_id = t.schema_id join sys.columns c on c.object_id = t.object_id and c.column_id = p.minor_id where p.class = 1 and p.name = N'MS_Description' and s.name = @schema and t.name = @table and c.name = @column)";
+    return [
+      CompiledQuery(
+        sql:
+            'declare @schema sysname = ${parts.length == 2 ? '?' : 'schema_name()'}; declare @table sysname = ?; declare @column sysname = ?; '
+            '${column.commentText == null ? 'if $exists exec sys.sp_dropextendedproperty $arguments' : 'declare @value nvarchar(4000) = ?; if $exists exec sys.sp_updateextendedproperty $arguments, @value=@value; else exec sys.sp_addextendedproperty $arguments, @value=@value'}',
+        bindings: [
+          if (parts.length == 2) parts.first,
+          parts.last,
+          column.name,
+          if (column.commentText != null) column.commentText,
+        ],
+      ),
+    ];
+  }
 
   @override
   String compileReferentialAction(String action) {
@@ -134,10 +198,12 @@ mixin _SqlserverSchema on SqlGrammar {
         bindings: [],
       );
     }
-    if (command.change == SchemaChange.renameColumn) {
+    if (command.change == SchemaChange.renameColumn ||
+        command.change == SchemaChange.renameIndex) {
       quoteSchemaIdentifier(command.newName!);
       return CompiledQuery(
-        sql: "exec sp_rename @objname = ?, @newname = ?, @objtype = 'COLUMN'",
+        sql:
+            "exec sp_rename @objname = ?, @newname = ?, @objtype = '${command.change == SchemaChange.renameIndex ? 'INDEX' : 'COLUMN'}'",
         bindings: [
           '${quoteSchemaIdentifier(table, qualified: true)}.${quoteSchemaIdentifier(command.name)}',
           command.newName,
@@ -190,7 +256,7 @@ mixin _SqlserverSchema on SqlGrammar {
         ),
       CompiledQuery(
         sql:
-            'alter table $target alter column $name ${compileColumnType(column)} '
+            'alter table $target alter column $name ${compileColumnType(column)}${compileColumnCollation(column)} '
             '${column.isNullable ? 'null' : 'not null'}',
         bindings: [],
       ),
@@ -198,7 +264,7 @@ mixin _SqlserverSchema on SqlGrammar {
         CompiledQuery(
           sql:
               'alter table $target add default '
-              '${compileSchemaLiteral(column.defaultValue)} for $name',
+              '${compileColumnDefault(column)} for $name',
           bindings: [],
         ),
     ];
@@ -230,6 +296,7 @@ mixin _SqlserverSchema on SqlGrammar {
         "when t.name in ('decimal','numeric') then '(' + cast(c.precision as varchar(10)) + ',' + cast(c.scale as varchar(10)) + ')' "
         "else '' end as type, c.is_nullable as nullable, d.definition as default_value, "
         "c.is_identity as auto_increment, c.collation_name as collation, cc.definition as generation, c.is_computed as generated, "
+        "cast((select p.value from sys.extended_properties p where p.class = 1 and p.major_id = c.object_id and p.minor_id = c.column_id and p.name = N'MS_Description') as nvarchar(4000)) as comment, "
         "d.name as default_constraint, coalesce((select ic.key_ordinal from sys.indexes i "
         "join sys.index_columns ic on ic.object_id = i.object_id and ic.index_id = i.index_id "
         "where i.object_id = c.object_id and i.is_primary_key = 1 and ic.column_id = c.column_id), 0) as primary_position "

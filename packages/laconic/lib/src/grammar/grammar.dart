@@ -123,9 +123,84 @@ abstract class SqlGrammar {
     return '($precision)';
   }
 
+  /// Compiles a column's native character set, rejecting unsupported dialects.
+  String compileColumnCharset(ColumnDefinition column) {
+    if (column.characterSet != null) {
+      throw LaconicException(
+        'This database does not support per-column character sets',
+      );
+    }
+    return '';
+  }
+
+  /// Compiles a native column collation.
+  String compileColumnCollation(ColumnDefinition column) =>
+      column.collationName == null
+          ? ''
+          : ' collate ${quoteSchemaIdentifier(column.collationName!)}';
+
+  /// Compiles an inline column comment, rejecting unsupported dialects.
+  String compileColumnComment(ColumnDefinition column) {
+    if (column.commentText != null) {
+      throw LaconicException('This database does not support column comments');
+    }
+    return '';
+  }
+
+  /// Compiles comments stored outside a column definition.
+  List<CompiledQuery> compileColumnExtras(
+    String table,
+    ColumnDefinition column,
+  ) => [];
+
+  /// Compiles a column position for ADD or MODIFY COLUMN.
+  String compileColumnPosition(ColumnDefinition column) {
+    if (column.isFirst || column.afterColumn != null) {
+      throw LaconicException(
+        'This database does not support first() or after()',
+      );
+    }
+    return '';
+  }
+
+  /// Compiles the default value, including useCurrent().
+  String compileColumnDefault(ColumnDefinition column) =>
+      column.usesCurrentTime
+          ? compileCurrentTimestamp(column)
+          : compileSchemaLiteral(column.defaultValue);
+
+  /// Compiles the current timestamp for a temporal column.
+  String compileCurrentTimestamp(ColumnDefinition column) =>
+      'current_timestamp';
+
+  /// Compiles automatic update timestamps, rejecting unsupported dialects.
+  String compileColumnOnUpdate(ColumnDefinition column) {
+    if (column.updatesCurrentTime) {
+      throw LaconicException(
+        'This database does not support useCurrentOnUpdate()',
+      );
+    }
+    return '';
+  }
+
+  /// Compiles a generated column's expression and storage mode.
+  String compileColumnGeneration(ColumnDefinition column) {
+    if (column.generationExpression != null) {
+      throw LaconicException(
+        'This database does not support this generated column',
+      );
+    }
+    return '';
+  }
+
+  /// Compiles native column nullability.
+  String compileColumnNullability(ColumnDefinition column) =>
+      column.isNullable ? ' null' : ' not null';
+
   /// Compiles a column and its inline modifiers.
   String compileColumnDefinition(ColumnDefinition column) {
     column.validate();
+    compileColumnPosition(column);
     if (column.isPrimary && column.isNullable) {
       throw LaconicException('Primary key columns cannot be nullable');
     }
@@ -139,11 +214,15 @@ abstract class SqlGrammar {
       '${quoteSchemaIdentifier(column.name)} ${compileColumnType(column)}',
     );
     sql.write(compileUnsigned(column));
+    sql.write(compileColumnCharset(column));
+    sql.write(compileColumnCollation(column));
+    sql.write(compileColumnGeneration(column));
     if (column.autoIncrement) sql.write(' ${compileAutoIncrement(column)}');
-    sql.write(column.isNullable ? ' null' : ' not null');
+    sql.write(compileColumnNullability(column));
     if (column.hasDefault) {
-      sql.write(' default ${compileSchemaLiteral(column.defaultValue)}');
+      sql.write(' default ${compileColumnDefault(column)}');
     }
+    sql.write(compileColumnOnUpdate(column));
     if (column.isPrimary) sql.write(' primary key');
     if (column.isUnique) sql.write(' unique');
     if (column.type == ColumnType.enumeration && !supportsNativeEnum) {
@@ -151,6 +230,7 @@ abstract class SqlGrammar {
         ' check (${quoteSchemaIdentifier(column.name)} in (${column.allowed.map(compileSchemaLiteral).join(', ')}))',
       );
     }
+    sql.write(compileColumnComment(column));
     return sql.toString();
   }
 
@@ -160,6 +240,11 @@ abstract class SqlGrammar {
     final columns = blueprint.commands.whereType<ColumnDefinition>().toList();
     if (columns.any((column) => column.isChange)) {
       throw LaconicException('change() requires an existing table');
+    }
+    if (columns.any((column) => column.isFirst || column.afterColumn != null)) {
+      throw LaconicException(
+        'first() and after() require an existing table; order create() columns directly',
+      );
     }
     if (columns.isEmpty) {
       throw LaconicException('A table requires at least one column');
@@ -203,6 +288,8 @@ abstract class SqlGrammar {
         bindings: [],
       ),
       ...indexes,
+      for (final column in columns)
+        ...compileColumnExtras(blueprint.table, column),
     ];
   }
 
@@ -224,12 +311,18 @@ abstract class SqlGrammar {
           if (existing.isEmpty) {
             throw LaconicException('Column does not exist: ${command.name}');
           }
+          if (existing.single.generated) {
+            throw LaconicException(
+              'Changing a generated column requires explicitly dropping and adding it',
+            );
+          }
           statements.addAll(
             compileChangeColumn(blueprint.table, command, existing.single),
           );
         } else {
           statements.add(compileAddColumn(blueprint.table, command));
         }
+        statements.addAll(compileColumnExtras(blueprint.table, command));
       } else if (command is IndexDefinition) {
         if (command.type == IndexType.primary) {
           statements.add(
@@ -258,6 +351,11 @@ abstract class SqlGrammar {
 
   /// Validates modifiers supported when changing an existing column.
   void validateChangedColumn(ColumnDefinition column) {
+    if (column.generationExpression != null) {
+      throw LaconicException(
+        'Changing a generated column requires explicitly dropping and adding it',
+      );
+    }
     if (column.type == ColumnType.enumeration && !supportsNativeEnum) {
       throw LaconicException(
         'Changing CHECK-backed enums requires explicitly replacing their constraint',
@@ -282,6 +380,14 @@ abstract class SqlGrammar {
 
   /// Whether alterations require a snapshot and a driver-managed table rebuild.
   bool requiresTableRebuild(Blueprint blueprint) => false;
+
+  /// Whether alterations need a schema-object snapshot for compilation.
+  bool requiresSchemaSnapshot(Blueprint blueprint) =>
+      requiresTableRebuild(blueprint);
+
+  /// Whether alterations need the driver's connection-exclusive DDL transaction.
+  bool requiresSchemaTransaction(Blueprint blueprint) =>
+      requiresTableRebuild(blueprint);
 
   /// Compiles the schema-object snapshot required for rebuilding a table.
   CompiledQuery compileSchemaObjects(String table) {
@@ -324,19 +430,23 @@ abstract class SqlGrammar {
     ColumnDefinition column,
   ) => CompiledQuery(
     sql:
-        'alter table ${quoteSchemaIdentifier(table, qualified: true)} add column ${compileColumnDefinition(column)}',
+        'alter table ${quoteSchemaIdentifier(table, qualified: true)} add column ${compileColumnDefinition(column)}${compileColumnPosition(column)}',
     bindings: [],
   );
 
   /// Compiles a non-primary index.
-  CompiledQuery compileSchemaIndex(
-    String table,
-    IndexDefinition index,
-  ) => CompiledQuery(
-    sql:
-        'create ${index.type == IndexType.unique ? 'unique ' : ''}index ${quoteSchemaIdentifier(index.name)} on ${quoteSchemaIdentifier(table, qualified: true)} (${compileSchemaColumns(index.columns)})',
-    bindings: [],
-  );
+  CompiledQuery compileSchemaIndex(String table, IndexDefinition index) {
+    if (index.type == IndexType.fullText) {
+      throw LaconicException(
+        'This database does not support full-text indexes through fullText()',
+      );
+    }
+    return CompiledQuery(
+      sql:
+          'create ${index.type == IndexType.unique ? 'unique ' : ''}index ${quoteSchemaIdentifier(index.name)} on ${quoteSchemaIdentifier(table, qualified: true)} (${compileSchemaColumns(index.columns)})',
+      bindings: [],
+    );
+  }
 
   /// Compiles a nonempty list of unqualified column identifiers.
   String compileSchemaColumns(List<String> columns) {
@@ -400,6 +510,18 @@ abstract class SqlGrammar {
         final prefix =
             parts.length == 2 ? '${quoteSchemaIdentifier(parts.first)}.' : '';
         return CompiledQuery(sql: 'drop index $prefix$name', bindings: []);
+      case SchemaChange.renameIndex:
+        final parts = schemaTableParts(table);
+        final prefix =
+            parts.length == 2 ? '${quoteSchemaIdentifier(parts.first)}.' : '';
+        return CompiledQuery(
+          sql:
+              'alter index $prefix$name rename to ${quoteSchemaIdentifier(command.newName!)}',
+          bindings: [],
+        );
+      case SchemaChange.dropFullText:
+        throw LaconicException('This database does not support dropFullText()');
+      case SchemaChange.dropPrimary:
       case SchemaChange.dropForeign:
         return CompiledQuery(
           sql: 'alter table $target drop constraint $name',

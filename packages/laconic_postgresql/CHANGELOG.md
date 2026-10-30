@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Add GIN full-text indexes with language selection matching `whereFullText`,
+  index renaming/drops, comments, collations, current-time defaults and stored
+  generated columns. Virtual columns remain unsupported on the PostgreSQL 15
+  baseline. Requires the matching unreleased core schema hooks and enum values;
+  coordinate minimum core/driver versions via RELEASE.md.
+
 - Add Blueprint shortcuts, integer/text families, FLOAT, JSONB/ULID, CHECK enums,
   precise/timezone-aware temporal types, INET/MACADDR and PostGIS geometry/geography.
   Reject unsigned, SET, bounded BYTEA and direct CHECK-enum member changes.
