@@ -17,6 +17,33 @@ abstract class SqlGrammar {
   /// Individual migrations must opt out when using non-transactional statements.
   bool get supportsSchemaTransactions => false;
 
+  /// Whether dropping all tables needs a connection-exclusive schema transaction.
+  bool get requiresSchemaTransactionForDropAllTables => false;
+
+  /// Compiles a table wipe from a complete snapshot of tables and foreign keys.
+  ///
+  /// Foreign keys are removed before any tables to support cyclic references.
+  List<CompiledQuery> compileDropAllTables(
+    List<SchemaTable> tables,
+    Map<String, List<SchemaForeignKey>> foreignKeys,
+  ) => [
+    for (final table in tables)
+      for (final key
+          in foreignKeys[table.qualifiedName] ?? <SchemaForeignKey>[])
+        compileSchemaChange(
+          table.qualifiedName,
+          SchemaChangeCommand(
+            SchemaChange.dropForeign,
+            key.name ??
+                (throw LaconicException(
+                  'Cannot drop an unnamed foreign key on ${table.qualifiedName}',
+                )),
+          ),
+        ),
+    for (final table in tables)
+      ...compileDropTable(table.qualifiedName, ifExists: true),
+  ];
+
   /// Quotes a schema identifier, or each component of a qualified table name.
   String quoteSchemaIdentifier(String name, {bool qualified = false}) {
     final parts = qualified ? schemaTableParts(name) : [name];

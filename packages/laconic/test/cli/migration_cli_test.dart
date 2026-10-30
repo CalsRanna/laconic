@@ -123,4 +123,81 @@ void main() {
     expect(errors.toString(), contains('Missing migrations directory'));
     expect(output.toString(), isEmpty);
   });
+
+  test('lifecycle options are validated before opening a connection', () async {
+    var calls = 0;
+    Future<int> run(List<String> args, {String environment = 'testing'}) =>
+        MigrationCli.runCommand(
+          args,
+          createDatabase: () {
+            calls++;
+            throw StateError('unexpected factory');
+          },
+          migrations: () {
+            calls++;
+            return [];
+          },
+          environment: environment,
+          output: output,
+          errorOutput: errors,
+        );
+    for (final command in [
+      'migrate',
+      'rollback',
+      'reset',
+      'refresh',
+      'fresh',
+    ]) {
+      expect(await run([command, '--help']), 0);
+      expect(
+        await run(['migrate:$command', '--help']),
+        command == 'migrate' ? 64 : 0,
+      );
+      expect(await run([command], environment: 'production'), 78);
+    }
+    expect(calls, 0);
+    for (final args in [
+      ['refresh', '--step=0'],
+      ['refresh', '--step=abc'],
+      ['rollback', '--batch=-1'],
+      ['rollback', '--batch=2', '--step=1'],
+      ['reset', '--step=1'],
+      ['fresh', '--pretend'],
+      ['status', '--force'],
+    ]) {
+      output.clear();
+      errors.clear();
+      expect(await run(args), 64, reason: args.join(' '));
+      expect(output.toString(), isEmpty);
+      expect(errors.toString(), contains('Usage:'));
+    }
+    expect(calls, 0);
+  });
+
+  test(
+    'make supports local path and alter stubs without no-op migrations',
+    () async {
+      expect(
+        await cli([
+          'make:migration',
+          'add_email',
+          '--table=users',
+          '--path=changes',
+        ]),
+        0,
+      );
+      final file =
+          Directory(
+            p.join(temporary.path, 'changes'),
+          ).listSync().whereType<File>().single;
+      final source = await file.readAsString();
+      expect(source, contains('database.schema.table("users"'));
+      expect(RegExp('UnimplementedError').allMatches(source), hasLength(2));
+      expect(await cli(['make', 'bad', '--table=users', '--create=users']), 64);
+      expect(
+        Directory(p.join(temporary.path, 'changes')).listSync(),
+        hasLength(1),
+      );
+    },
+  );
 }

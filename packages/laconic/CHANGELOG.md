@@ -1,5 +1,24 @@
 ## Unreleased
 
+- Complete the migration CLI lifecycle with `reset`, `refresh [--step=N]`,
+  `fresh [--step]`, their `migrate:*` aliases, and `rollback --batch=N`.
+  Add corresponding Migrator methods, per-migration progress callbacks, and
+  errors identifying the failed migration and direction.
+- Add `--pretend` to migrate/rollback/reset. Capture migration SQL and bindings
+  while reading live schema metadata; no migration writes or history updates.
+  Previews do not simulate earlier DDL or isolate application side effects.
+- **CLI behavior change:** mutating commands require `--force` when
+  `APP_ENV=production` (or `runCommand(environment: 'production')`). Refusal uses
+  exit code 78. Add force to production deployment scripts. Status/previews are exempt.
+- Accept project options after database commands and add `make --table` alteration
+  stubs. Both directions fail explicitly until implemented. Command-local values
+  override global values; local make `--table` identifies the altered table.
+- Add schema-scoped `dropAllTables()` using metadata and FK removal, with native
+  DDL transactions or SQLite's reserved schema transaction. Requires matching
+  core/driver sources; SQLite needs the new grammar wipe override. Existing
+  DatabaseDriver interfaces and workspace version numbers remain unchanged.
+  See MIGRATIONS.md for destructive scope, partial failures, and preview limits.
+
 - Add `ColumnDefinition.change()` for native type, nullability, and default
   changes. Restate nullable/default modifiers to retain them; existing keys and
   identities are preserved. Key changes use separate Blueprint commands.

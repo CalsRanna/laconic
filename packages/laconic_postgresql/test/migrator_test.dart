@@ -15,4 +15,5 @@ void main() => MigratorRegressions.register(
       ),
     ),
   ),
+  namespaceType: 'schema',
 );

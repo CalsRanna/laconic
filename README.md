@@ -701,5 +701,7 @@ atomic SQLite table rebuilds. See the schema guide for transaction restrictions.
 The core now provides `db.schema` for table creation, alteration, and inspection.
 DDL uses the existing `SqlGrammar`; concrete dialects live in their driver packages.
 The core also includes `Migration`, `Migrator`, and the `dart run laconic` CLI.
+CLI commands include reset/refresh/fresh, batch rollback, SQL previews, and
+production `--force` protection.
 See [Schema Builder and driver extension](SCHEMA.md) and the
 [migration guide](packages/laconic/MIGRATIONS.md).

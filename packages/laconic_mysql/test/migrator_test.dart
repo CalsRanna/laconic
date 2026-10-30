@@ -14,4 +14,5 @@ void main() => MigratorRegressions.register(
       ),
     ),
   ),
+  namespaceType: 'database',
 );

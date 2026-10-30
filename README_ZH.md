@@ -656,3 +656,4 @@ MIT License
 具体方言仍在各驱动包内。详见 [Schema Builder 与驱动扩展](SCHEMA.md)，
 以及内置的 [Migration 与 CLI](packages/laconic/MIGRATIONS.md)。
 `Migration`、`Migrator` 直接从核心包导入，CLI 使用 `dart run laconic`。
+CLI 已支持 reset/refresh/fresh、按批次回滚、SQL 预览和生产环境 `--force` 保护。

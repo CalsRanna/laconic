@@ -37,7 +37,14 @@ class MigrationCommandRunner extends CommandRunner<int> {
 
   MigrationCommandRunner(this.output, ExecuteMigrationCommand execute)
     : super('laconic', 'Generate and run Laconic database migrations.') {
-    for (final name in ['migrate', 'rollback', 'status']) {
+    for (final name in [
+      'migrate',
+      'rollback',
+      'reset',
+      'refresh',
+      'fresh',
+      'status',
+    ]) {
       addCommand(DatabaseMigrationCommand(name, output, execute));
     }
   }
@@ -50,20 +57,29 @@ class MigrationCommandRequest {
   final String name;
   final bool step;
   final int? steps;
+  final int? batch;
   final bool json;
+  final bool pretend;
+  final bool force;
 
   MigrationCommandRequest(
     this.name, {
     this.step = false,
     this.steps,
+    this.batch,
     this.json = false,
+    this.pretend = false,
+    this.force = false,
   });
 
   List<String> get arguments => [
     name,
     if (step) '--step',
     if (steps != null) '--step=$steps',
+    if (batch != null) '--batch=$batch',
     if (json) '--json',
+    if (pretend) '--pretend',
+    if (force) '--force',
   ];
 }
 
@@ -74,23 +90,47 @@ class DatabaseMigrationCommand extends Command<int> {
   final ExecuteMigrationCommand execute;
 
   DatabaseMigrationCommand(this.name, this.output, this.execute) {
-    if (name == 'migrate') {
+    if (name == 'migrate' || name == 'fresh') {
       argParser.addFlag(
         'step',
         negatable: false,
         help: 'Give each migration its own batch.',
       );
-    } else if (name == 'rollback') {
+    } else if (name == 'rollback' || name == 'refresh') {
       argParser.addOption(
         'step',
         valueHelp: 'count',
-        help: 'Roll back this many migrations instead of the latest batch.',
+        help:
+            name == 'refresh'
+                ? 'Roll back this many migrations instead of all, then migrate.'
+                : 'Roll back this many migrations instead of the latest batch.',
       );
-    } else {
+    } else if (name == 'status') {
       argParser.addFlag(
         'json',
         negatable: false,
         help: 'Output machine-readable migration status.',
+      );
+    }
+    if (name == 'rollback') {
+      argParser.addOption(
+        'batch',
+        valueHelp: 'number',
+        help: 'Roll back one specific batch. Cannot be combined with --step.',
+      );
+    }
+    if (const ['migrate', 'rollback', 'reset'].contains(name)) {
+      argParser.addFlag(
+        'pretend',
+        negatable: false,
+        help: 'Print migration SQL without executing it or changing history.',
+      );
+    }
+    if (name != 'status') {
+      argParser.addFlag(
+        'force',
+        negatable: false,
+        help: 'Allow this command when APP_ENV is production.',
       );
     }
   }
@@ -99,6 +139,9 @@ class DatabaseMigrationCommand extends Command<int> {
   String get description => switch (name) {
     'migrate' => 'Execute pending migrations.',
     'rollback' => 'Roll back the latest batch or a number of migrations.',
+    'reset' => 'Roll back all recorded migrations.',
+    'refresh' => 'Roll back migrations, then execute pending migrations.',
+    'fresh' => 'Drop every table in the history schema, then migrate.',
     _ => 'Show pending, applied, and missing migrations.',
   };
 
@@ -113,19 +156,34 @@ class DatabaseMigrationCommand extends Command<int> {
     if (argResults!.rest.isNotEmpty) {
       usageException('Unexpected positional arguments.');
     }
-    int? steps;
-    if (name == 'rollback' && argResults!.option('step') != null) {
-      steps = int.tryParse(argResults!.option('step')!);
-      if (steps == null || steps <= 0) {
-        usageException('--step must be a positive integer.');
+    int? positiveOption(String option) {
+      final value = argResults!.option(option);
+      if (value == null) return null;
+      final number = int.tryParse(value);
+      if (number == null || number <= 0) {
+        usageException('--$option must be a positive integer.');
       }
+      return number;
+    }
+
+    final steps =
+        name == 'rollback' || name == 'refresh' ? positiveOption('step') : null;
+    final batch = name == 'rollback' ? positiveOption('batch') : null;
+    if (steps != null && batch != null) {
+      usageException('--step and --batch cannot be combined.');
     }
     return execute(
       MigrationCommandRequest(
         name,
-        step: name == 'migrate' && argResults!.flag('step'),
+        step:
+            (name == 'migrate' || name == 'fresh') && argResults!.flag('step'),
         steps: steps,
+        batch: batch,
         json: name == 'status' && argResults!.flag('json'),
+        pretend:
+            const ['migrate', 'rollback', 'reset'].contains(name) &&
+            argResults!.flag('pretend'),
+        force: name != 'status' && argResults!.flag('force'),
       ),
       this,
     );

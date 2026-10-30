@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Support schema-scoped table wipes for migration CLI `fresh`, including cyclic
+  foreign keys and virtual tables. Reuse the atomic schema transaction and restore
+  foreign-key settings on success/failure. Use with matching unreleased core sources.
+
 - Rebuild tables atomically for column changes/drops and key alterations, retaining
   data, rowids, autoincrement high-water marks, constraints, generated columns,
   indexes, triggers, and view references. Restore PRAGMA settings on every exit.

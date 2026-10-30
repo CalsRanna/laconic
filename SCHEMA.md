@@ -17,6 +17,11 @@ DDL 实现，没有新增公开的 SchemaGrammar 或 SchemaProvider。
 真实数据库的迁移测试归各驱动包所有。文件生成与命令用法见
 [Migration CLI](packages/laconic/MIGRATIONS.md#cli)。
 
+迁移 CLI 支持 `migrate/rollback/status/reset/refresh/fresh`、按批次回滚、SQL
+预览和生产环境 `--force`。`fresh` 通过 `db.schema.dropAllTables(schema: ...)`
+清理历史表所在 schema 内的全部表（包括未登记迁移的表），随后重跑迁移。
+视图及外部依赖不会自动删除；具体范围、事务与预览限制见迁移指南。
+
 ## 创建与修改表
 
 ```dart

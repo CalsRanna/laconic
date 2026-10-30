@@ -578,4 +578,6 @@ atomic SQLite table rebuilds. See the schema guide for transaction restrictions.
 [the schema guide](../../SCHEMA.md) for supported operations and custom drivers.
 The core also exports `Migration` and `Migrator` and provides the
 `dart run laconic` CLI. See the [migration guide](MIGRATIONS.md).
+Commands include reset/refresh/fresh, batch rollback, SQL previews, and production
+`--force` protection.
 Applications supply their chosen database driver; the core has no driver dependencies.

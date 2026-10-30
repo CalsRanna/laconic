@@ -11,17 +11,22 @@ abstract final class MigrationGenerator {
     required Directory directory,
     required String name,
     String? createTable,
+    String? alterTable,
     DateTime? timestamp,
   }) async {
     if (!RegExp(r'^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$').hasMatch(name)) {
       throw FormatException('Migration names must use lower_snake_case.');
     }
-    if (createTable != null &&
+    if (createTable != null && alterTable != null) {
+      throw FormatException('--create and --table cannot be combined.');
+    }
+    final target = createTable ?? alterTable;
+    if (target != null &&
         !RegExp(
           r'^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$',
-        ).hasMatch(createTable)) {
+        ).hasMatch(target)) {
       throw FormatException(
-        '--create must be a table or schema.table identifier.',
+        '--create/--table must be a table or schema.table identifier.',
       );
     }
     final now = (timestamp ?? DateTime.now()).toUtc();
@@ -37,14 +42,22 @@ abstract final class MigrationGenerator {
       );
     }
     final up =
-        createTable == null
+        alterTable != null
+            ? 'await database.schema.table(${DartSource.stringLiteral(alterTable)}, (table) {\n'
+                "      throw UnimplementedError('Define the table changes before running this migration.');\n"
+                '    });'
+            : createTable == null
             ? "throw UnimplementedError('Implement up() before running this migration.');"
             : 'await database.schema.create(${DartSource.stringLiteral(createTable)}, (table) {\n'
                 '      table.id();\n'
                 '      // Add the remaining columns and constraints here.\n'
                 '    });';
     final down =
-        createTable == null
+        alterTable != null
+            ? 'await database.schema.table(${DartSource.stringLiteral(alterTable)}, (table) {\n'
+                "      throw UnimplementedError('Define the reverse changes before rolling back this migration.');\n"
+                '    });'
+            : createTable == null
             ? "throw UnimplementedError('Implement down() before rolling back this migration.');"
             : 'await database.schema.drop(${DartSource.stringLiteral(createTable)});';
     final source = '''import 'package:laconic/laconic.dart';

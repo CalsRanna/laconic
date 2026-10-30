@@ -16,6 +16,13 @@ class MakeMigrationCommand extends Command<int> {
       valueHelp: 'table',
       help: 'Generate create-table and drop-table operations.',
     );
+    argParser
+      ..addOption(
+        'table',
+        valueHelp: 'table',
+        help: 'Generate up/down stubs for altering an existing table.',
+      )
+      ..addOption('path', help: 'Override the output migrations directory.');
   }
 
   @override
@@ -37,10 +44,16 @@ class MakeMigrationCommand extends Command<int> {
     try {
       final file = await MigrationGenerator.generate(
         directory: Directory(
-          p.normalize(p.join(project.path, globalResults!.option('path')!)),
+          p.normalize(
+            p.join(
+              project.path,
+              argResults!.option('path') ?? globalResults!.option('path')!,
+            ),
+          ),
         ),
         name: argResults!.rest.single,
         createTable: argResults!.option('create'),
+        alterTable: argResults!.option('table'),
       );
       output.writeln('Created: ${p.relative(file.path, from: project.path)}');
       return ExitCode.success.code;

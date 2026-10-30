@@ -48,11 +48,24 @@ default string collation is case-sensitive.
   this does not create or modify the history table.
 - `rollback()`: reverse the most recent batch, in reverse execution order.
 - `rollback(steps: n)`: reverse the latest n recorded migrations across batches.
+- `rollback(batch: n)`: reverse exactly that batch; mutually exclusive with steps.
 - `reset()`: reverse all recorded migrations. The history table remains.
+- `refresh(steps: n)`: reverse the latest n migrations (all when omitted), then
+  run all pending migrations, including previously pending definitions.
+- `fresh(step: true)`: drop all tables in the history table's schema and migrate;
+  `step` is optional and defaults to false. This also removes untracked tables.
+- `migrate`, `rollback`, and `reset` accept `pretend: true` and an `onQuery`
+  callback for SQL previews. See the limitations below.
+
+`onApplied` and `onRolledBack` callbacks report each completed migration before
+the next one starts. The CLI uses these to preserve progress output on failures.
+`fresh` also has `onDropped`, called after the table wipe succeeds.
 
 The history table defaults to `migrations`; pass `table:` to override it.
 Rollback checks that every selected migration definition exists before executing
 the first `down()`.
+Refresh stops if any rollback fails. Refresh/fresh hold the instance's operation
+guard across both phases, but do not wrap the whole workflow in one transaction.
 
 ## Failure and transaction behavior
 
@@ -111,19 +124,38 @@ dart run laconic status --json
 # Roll back the latest batch, or the latest two individual migrations.
 dart run laconic rollback
 dart run laconic rollback --step=2
+dart run laconic rollback --batch=3
+
+# Reverse all migrations, or reverse and run them again.
+dart run laconic reset
+dart run laconic refresh
+dart run laconic refresh --step=2
+
+# Delete all tables in the history schema (including untracked tables), then migrate.
+dart run laconic fresh
+dart run laconic fresh --step
+
+# Preview migration SQL and bound values without executing that SQL.
+dart run laconic migrate --pretend
+dart run laconic rollback --pretend
+dart run laconic reset --pretend
 
 # Give every pending migration its own batch.
 dart run laconic migrate --step
 
 # Generate an arbitrary change with up/down stubs to fill in.
 dart run laconic make add_user_preferences
+
+# Generate up/down table-alteration stubs (both must be filled in).
+dart run laconic make add_user_preferences --table=users
 ```
 
-`make:migration`, `migrate:rollback`, and `migrate:status` are aliases. Use `--help`
+`make:migration` and `migrate:{rollback,status,reset,refresh,fresh}` are aliases. Use `--help`
 on the CLI or a command for details. Plain stubs throw `UnimplementedError` until
 filled in, so unfinished work is never silently recorded as successful.
 
-Global options go before the command:
+Project options can go before or after database commands. A command-local value
+overrides a global one. The generator also accepts a local `--path`:
 
 ```sh
 dart run laconic \
@@ -131,6 +163,8 @@ dart run laconic \
   --path database/changes \
   --table app_migrations \
   status --json
+
+dart run laconic status --path=database/changes --table=app_migrations --json
 ```
 
 | Option | Default | Meaning |
@@ -140,6 +174,9 @@ dart run laconic \
 | `--table` | `migrations` | Database migration history table |
 
 Paths are relative to the working directory; absolute paths are also supported.
+For `make`, local `--table` selects the table to alter; the global `--table`
+still names migration history. `make --create` and `make --table` are mutually
+exclusive. Explicit names are used; table names are not inferred from filenames.
 The generator creates the migrations directory when needed. Execution commands
 report a missing directory instead of silently running an empty registry.
 
@@ -168,11 +205,58 @@ commands exit with 0; usage errors use 64, invalid migration data uses 65, missi
 configuration uses 78, and migration failures use 70. Dart compilation failures
 propagate the SDK's nonzero exit code.
 
-Commands have no interactive confirmation and are suitable for deployment
-scripts. `rollback` executes user-authored `down()` methods and can delete data.
+### Production and destructive operations
+
+Commands have no interactive confirmation. When `APP_ENV=production`, `migrate`,
+`rollback`, `reset`, `refresh`, and `fresh` require `--force`; refusal returns 78
+before calling the configuration factory. `status`, help, and `--pretend` do not
+require force. Applications using `runCommand` can supply `environment:` instead
+of reading `APP_ENV`. Environment detection does not inspect database credentials.
+
+```sh
+APP_ENV=production dart run laconic migrate --force
+```
+
+`rollback`, `reset`, and `refresh` execute user-authored `down()` methods and can
+delete data. `fresh` uses `SchemaBuilder.dropAllTables()` without calling `down()`.
+It wipes the schema containing the configured history table: `main` on SQLite,
+the selected database on MySQL/MariaDB, and the default schema on PostgreSQL/SQL
+Server unless history is schema-qualified. Other schemas are preserved. Migrations
+must target that schema themselves; `--table=app.history` does not rewrite their SQL.
+Views and other external dependencies remain and may block drops; remove them
+explicitly when necessary. The CLI does not silently cascade into other schemas.
+
+Foreign keys owned by the selected tables are dropped before the tables, so
+cycles work on MySQL, MariaDB, PostgreSQL, and SQL Server. SQLite uses its reserved
+schema transaction with foreign keys temporarily disabled and restored afterward,
+including on failure. SQLite virtual tables are dropped before their shadow
+tables. PostgreSQL/SQL Server/SQLite table wipes are transactional; MySQL/MariaDB
+may leave partial changes if a drop fails. A successful wipe is not undone if a
+later migration fails.
+
+### SQL previews
+
+`--pretend` is supported by `migrate`, `rollback`, and `reset`. It prints `SQL:`
+and separate JSON `Bindings:` lines, then `Would migrate:` or `Would roll back:`.
+It reads history and structure metadata, but never executes migration SQL or
+creates/updates history. Even raw SQL sent via `select`/`selectStream`, write
+methods, and transactions on the supplied connection is captured without execution.
+Normal queries return no rows or zero IDs/counts, so data-dependent code can take
+a different branch or fail. Configuration must still connect to a real database;
+opening a new SQLite file can create that empty file.
+
+Existing-table `change()` and SQLite rebuild previews use current structure
+metadata. Earlier previewed DDL is not applied or simulated: a later alteration
+of a newly previewed table can fail because the table does not exist. A preview
+can therefore be incomplete and is not a guarantee that execution will succeed.
+Migration methods still execute Dart code; external side effects or separately
+opened connections are outside the preview. Use trusted migrations.
+
 The CLI does not add a cross-process lock: serialize execution in your deployment
-system as described above. Automatic schema diff and schema snapshots are not
-provided.
+system as described above. `--isolated`, seeding, schema dump/squashing, and
+automatic schema diff are not provided. Unknown options fail with usage code 64.
+Command semantics are based on [Laravel's migration lifecycle](https://laravel.com/framework/docs/13.x/migrations#running-migrations),
+with the schema-scoped wipe and preview limits described here.
 
 See [Schema Builder](../../SCHEMA.md) for the dialect support matrix and
 [the example](../laconic_sqlite/example/migrations_example.dart) for a runnable workflow.

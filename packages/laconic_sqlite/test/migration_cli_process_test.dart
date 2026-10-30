@@ -70,6 +70,7 @@ abstract final class DatabaseConfiguration {
     List<String> arguments, {
     String? binary,
     int? expected = 0,
+    String environment = 'testing',
   }) async {
     final process = await TestProcess.start(
       binary ?? dart,
@@ -77,7 +78,7 @@ abstract final class DatabaseConfiguration {
           ? ['run', '--verbosity=error', 'laconic', ...arguments]
           : arguments,
       workingDirectory: project.path,
-      environment: {'DART_SDK': cli_util.sdkPath!},
+      environment: {'DART_SDK': cli_util.sdkPath!, 'APP_ENV': environment},
     );
     final out = process.stdoutStream().join('\n');
     final err = process.stderrStream().join('\n');
@@ -141,6 +142,80 @@ abstract final class DatabaseConfiguration {
       expect(result.code, isNot(0));
       expect(result.error, contains('Error'));
       expect(File(p.join(project.path, 'test.db')).existsSync(), isFalse);
+      expect(
+        Directory(p.join(project.path, '.dart_tool', 'laconic')).listSync(),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
+    'lifecycle aliases, previews, local options and production force survive the launcher',
+    () async {
+      await run(['make', 'create_items', '--create=items', '--path=changes']);
+      await run(['make', 'create_posts', '--create=posts', '--path=changes']);
+      Future<({int code, String output, String error})> command(
+        List<String> args, {
+        int expected = 0,
+        String environment = 'testing',
+      }) => run(
+        [...args, '--path=changes', '--table=custom_history'],
+        expected: expected,
+        environment: environment,
+      );
+      final blocked = await command(
+        ['migrate'],
+        environment: 'production',
+        expected: 78,
+      );
+      expect(blocked.error, contains('--force'));
+      expect(File(p.join(project.path, 'test.db')).existsSync(), isFalse);
+      final preview = await command([
+        'migrate',
+        '--pretend',
+      ], environment: 'production');
+      expect(preview.output, contains('SQL: create table'));
+      expect(preview.output, contains('Would migrate:'));
+      await command([
+        'migrate',
+        '--force',
+        '--step',
+      ], environment: 'production');
+      await command(['migrate:rollback', '--batch=2', '--pretend']);
+      final applied =
+          jsonDecode((await command(['status', '--json'])).output) as List;
+      expect(applied.map((s) => s['batch']), [1, 2]);
+      await command(['migrate:refresh', '--step=1']);
+      final refreshed =
+          jsonDecode((await command(['status', '--json'])).output) as List;
+      expect(refreshed.map((s) => s['batch']), [1, 2]);
+      await command(['migrate:reset']);
+      final pending =
+          jsonDecode((await command(['status', '--json'])).output) as List;
+      expect(pending.every((s) => s['status'] == 'pending'), isTrue);
+      await command(['migrate']);
+      final db = Laconic(
+        SqliteDriver(SqliteConfig(p.join(project.path, 'test.db'))),
+      );
+      await db.schema.create('untracked', (t) => t.id());
+      await db.close();
+      expect(
+        (await command(['migrate:fresh', '--step'])).output,
+        contains('Dropped all tables.'),
+      );
+      final check = Laconic(
+        SqliteDriver(SqliteConfig(p.join(project.path, 'test.db'))),
+      );
+      try {
+        expect(await check.schema.hasTable('untracked'), isFalse);
+        expect((await check.schema.getTables()).map((t) => t.name).toSet(), {
+          'items',
+          'posts',
+          'custom_history',
+        });
+      } finally {
+        await check.close();
+      }
       expect(
         Directory(p.join(project.path, '.dart_tool', 'laconic')).listSync(),
         isEmpty,

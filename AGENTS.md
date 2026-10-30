@@ -207,7 +207,8 @@ packages/laconic_postgresql/lib/src/
 - 编译器保持无状态、无 I/O；一次操作先完整编译再逐条执行。改列时由 SchemaBuilder 读取列元数据；SQLite 重建时额外读取 schema 对象快照，传入 `compileAlterTable`。查询钩子由现有 Laconic 执行入口统一触发。
 - SQLite 重建逻辑位于 `sqlite_table.dart` part，驱动实现可选 `SchemaTransactionDriver` 独占连接并处理事务、外键校验、PRAGMA 恢复；外层事务已开启外键时在 DDL 前报错，迁移可重写 `bool get withinTransaction => false`。SQLite 专项重建测试位于 `test/schema_rebuild_test.dart`，跨方言元数据/改列测试位于核心 `test/regressions/schema_metadata_regressions.dart`。
 - 核心包内置迁移引擎 `lib/src/migration/`，从 `laconic.dart` 导出 Migration/MigrationStatus/Migrator；每个普通迁移按 grammar 的 `supportsSchemaTransactions` 声明处理事务。MySQL/MariaDB 不自动开启 DDL 事务。
-- Migration CLI 实现位于 `lib/src/cli/`，公共 `MigrationCli` 类从 `lib/laconic.dart` 导出，支持 make/migrate/rollback/status。项目配置提供 `DatabaseConfiguration.createDatabase()` 静态方法，迁移文件导出具有无参构造器的 `DatabaseMigration` 类；通过临时静态 import 入口运行，不使用反射。可执行入口为 `bin/laconic.dart`，使用 `dart run laconic`。核心仅增加 args/cli_util/io/path 工具依赖，dependencies 和 dev_dependencies 均不引入具体数据库驱动。
+- Migration CLI 实现位于 `lib/src/cli/`，公共 `MigrationCli` 类从 `lib/laconic.dart` 导出，支持 make/migrate/rollback/status/reset/refresh/fresh、batch 回滚和 migrate/rollback/reset 的 pretend 预览。生产环境 APP_ENV=production 的写操作必须传 --force。项目配置提供 `DatabaseConfiguration.createDatabase()` 静态方法，迁移文件导出具有无参构造器的 `DatabaseMigration` 类；通过临时静态 import 入口运行，不使用反射。可执行入口为 `bin/laconic.dart`，使用 `dart run laconic`。核心仅增加 args/cli_util/io/path 工具依赖，dependencies 和 dev_dependencies 均不引入具体数据库驱动。
+- `Migrator.fresh()` 按历史表所在 schema 调用 `dropAllTables()`；编译阶段先移除所选表自身外键，SQLite 则复用 schemaTransaction 并先删虚拟表。迁移预览驱动只记录 SQL，结构检查通过 SchemaBuilder 的 metadataDatabase 读取真实结构；不执行 SQL、不修改历史，也不模拟之前预览的 DDL。
 - 跨方言 Schema/Migration 行为测试位于核心 `test/regressions/schema_regressions.dart` 和 `test/regressions/migrator_regressions.dart`，由各驱动的测试入口调用。核心 `test/cli/migration_cli_test.dart` 测试无驱动 CLI 行为；SQLite 包负责 CLI 数据库与子进程集成测试，迁移示例也位于 SQLite 包。
 - 详细 API、限制和第三方扩展契约见根目录 SCHEMA.md。版本号暂保留原发布线，发布前须按 RELEASE.md 协调新 API 的最低版本。
 

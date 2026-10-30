@@ -5,6 +5,25 @@ mixin _SqliteSchema on SqlGrammar {
   bool get supportsSchemaTransactions => true;
 
   @override
+  bool get requiresSchemaTransactionForDropAllTables => true;
+
+  @override
+  List<CompiledQuery> compileDropAllTables(
+    List<SchemaTable> tables,
+    Map<String, List<SchemaForeignKey>> foreignKeys,
+  ) => [
+    // Dropping a virtual table also removes its shadow tables.
+    for (final table in [...tables]..sort((a, b) {
+      final aVirtual =
+          a.definition?.toLowerCase().startsWith('create virtual') ?? false;
+      final bVirtual =
+          b.definition?.toLowerCase().startsWith('create virtual') ?? false;
+      return (aVirtual ? 0 : 1).compareTo(bVirtual ? 0 : 1);
+    }))
+      ...compileDropTable(table.qualifiedName, ifExists: true),
+  ];
+
+  @override
   String compileColumnType(ColumnDefinition column) {
     switch (column.type) {
       case ColumnType.integer:

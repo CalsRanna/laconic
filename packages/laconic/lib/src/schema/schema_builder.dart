@@ -13,9 +13,15 @@ import '../exception.dart';
 /// table rebuilds use a driver-managed transaction or savepoint.
 class SchemaBuilder {
   final Laconic _database;
+  final Laconic _metadataDatabase;
 
   /// Creates a schema builder using [database]'s connection and query hooks.
-  SchemaBuilder(Laconic database) : _database = database;
+  ///
+  /// [metadataDatabase] supplies live metadata when compiling a SQL preview.
+  /// It defaults to the connection that executes the statements.
+  SchemaBuilder(Laconic database, {Laconic? metadataDatabase})
+    : _database = database,
+      _metadataDatabase = metadataDatabase ?? database;
 
   /// Creates a table and its indexes and constraints.
   Future<void> create(
@@ -72,6 +78,36 @@ class SchemaBuilder {
   Future<void> dropIfExists(String table) =>
       _execute(_database.grammar.compileDropTable(table, ifExists: true));
 
+  /// Drops every table in [schema], including tables outside migration history.
+  ///
+  /// Omitting [schema] selects the grammar's default schema. Foreign keys owned
+  /// by these tables are removed first. Views and external dependencies are not
+  /// dropped; they can prevent the operation. Transactional DDL engines roll
+  /// back a failed wipe. MySQL and MariaDB may retain partial changes.
+  Future<void> dropAllTables({String? schema}) async {
+    final grammar = _database.grammar;
+    Future<void> execute() async {
+      final tables = await getTables(schema: schema);
+      final foreignKeys = <String, List<SchemaForeignKey>>{};
+      if (!grammar.requiresSchemaTransactionForDropAllTables) {
+        for (final table in tables) {
+          foreignKeys[table.qualifiedName] = await getForeignKeys(
+            table.qualifiedName,
+          );
+        }
+      }
+      await _execute(grammar.compileDropAllTables(tables, foreignKeys));
+    }
+
+    if (grammar.requiresSchemaTransactionForDropAllTables) {
+      await _database.schemaTransaction(execute);
+    } else if (grammar.supportsSchemaTransactions) {
+      await _database.transaction(execute);
+    } else {
+      await execute();
+    }
+  }
+
   /// Renames a table within its current database schema.
   ///
   /// [to] is an unqualified table name.
@@ -81,13 +117,16 @@ class SchemaBuilder {
   /// Returns whether a table exists in the selected database schema.
   Future<bool> hasTable(String table) async {
     final query = _database.grammar.compileTableExists(table);
-    return (await _database.select(query.sql, query.bindings)).isNotEmpty;
+    return (await _metadataDatabase.select(
+      query.sql,
+      query.bindings,
+    )).isNotEmpty;
   }
 
   /// Returns the column names in their database-defined order.
   Future<List<String>> getColumnListing(String table) async {
     final query = _database.grammar.compileColumnListing(table);
-    final rows = await _database.select(query.sql, query.bindings);
+    final rows = await _metadataDatabase.select(query.sql, query.bindings);
     return rows.map((row) => row['name'] as String).toList();
   }
 
@@ -247,7 +286,7 @@ class SchemaBuilder {
   static int _integer(Object? value) => value == null ? 0 : int.parse('$value');
 
   Future<List<Map<String, Object?>>> _rows(CompiledQuery query) async =>
-      (await _database.select(
+      (await _metadataDatabase.select(
         query.sql,
         query.bindings,
       )).map((row) => row.toMap()).toList();

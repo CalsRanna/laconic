@@ -28,6 +28,7 @@ abstract final class MigratorRegressions {
   static void register(
     Laconic Function() createDatabase, {
     Future<void> Function()? prepare,
+    String? namespaceType,
   }) {
     group('Migrator', () {
       const history = 'laconic_migration_history';
@@ -61,6 +62,59 @@ abstract final class MigratorRegressions {
           await db.close();
         }
       });
+
+      if (namespaceType != null) {
+        test(
+          'fresh removes cycles in an isolated namespace and preserves other tables',
+          () async {
+            final namespace =
+                'laconic_wipe_${DateTime.now().microsecondsSinceEpoch}';
+            final quoted = db.grammar.quoteSchemaIdentifier(namespace);
+            await db.statement('create $namespaceType $quoted');
+            try {
+              await db.schema.create(users, (t) => t.id());
+              await db.schema.create('$namespace.a', (t) {
+                t.id();
+                t.bigInteger('b_id').nullable();
+              });
+              await db.schema.create('$namespace.b', (t) {
+                t.id();
+                t.bigInteger('a_id').nullable();
+                t.foreign(['a_id']).references(['id']).on('$namespace.a');
+              });
+              await db.schema.table(
+                '$namespace.a',
+                (t) =>
+                    t.foreign(['b_id']).references(['id']).on('$namespace.b'),
+              );
+              final a = await db.table('$namespace.a').insertGetId({
+                'b_id': null,
+              });
+              final b = await db.table('$namespace.b').insertGetId({'a_id': a});
+              await db.table('$namespace.a').where('id', a).update({'b_id': b});
+              final migration = create('001_items', '$namespace.items');
+              final migrator = Migrator(
+                db,
+                migrations: [migration],
+                table: '$namespace.history',
+              );
+              await migrator.migrate();
+              expect(await migrator.fresh(), [migration.name]);
+              expect(
+                (await db.schema.getTables(
+                  schema: namespace,
+                )).map((t) => t.name).toSet(),
+                {'items', 'history'},
+              );
+              expect(await db.schema.hasTable(users), isTrue);
+              expect((await migrator.status()).single.batch, 1);
+            } finally {
+              await db.schema.dropAllTables(schema: namespace);
+              await db.statement('drop $namespaceType $quoted');
+            }
+          },
+        );
+      }
 
       test(
         'status is read-only and migrate orders names and skips applied work',
@@ -97,6 +151,62 @@ abstract final class MigratorRegressions {
         expect((await migrator.status()).map((s) => s.batch), [1, 2]);
         expect(await migrator.rollback(steps: 2), [second.name, first.name]);
       });
+
+      test(
+        'batch selection and refresh preserve execution and history order',
+        () async {
+          final first = create('001_users', users);
+          final second = create('002_posts', posts);
+          final migrator = runner([first, second]);
+          await migrator.migrate(step: true);
+          expect(await migrator.rollback(batch: 1), [first.name]);
+          expect((await migrator.status()).map((s) => s.batch), [null, 2]);
+          expect(await migrator.rollback(batch: 99), isEmpty);
+          final progress = <String>[];
+          expect(
+            await migrator.refresh(
+              steps: 1,
+              onRolledBack: (name) => progress.add('down:$name'),
+              onApplied: (name) => progress.add('up:$name'),
+            ),
+            [first.name, second.name],
+          );
+          expect(progress, [
+            'down:${second.name}',
+            'up:${first.name}',
+            'up:${second.name}',
+          ]);
+          expect((await migrator.status()).map((s) => s.batch), [1, 1]);
+          expect(await migrator.refresh(), [first.name, second.name]);
+        },
+      );
+
+      test(
+        'preview captures bound SQL without writing schema or history',
+        () async {
+          final queries = <LaconicQuery>[];
+          final migration = TestMigration('001_users', (db) async {
+            await db.schema.create(users, (t) => t.integer('id'));
+            await db.table(users).insert([
+              {'id': 17},
+            ]);
+          }, (db) => db.schema.drop(users));
+          final migrator = runner([migration]);
+          expect(await migrator.migrate(pretend: true, onQuery: queries.add), [
+            migration.name,
+          ]);
+          expect(queries, hasLength(2));
+          expect(queries.last.bindings, [17]);
+          expect(await db.schema.hasTable(users), isFalse);
+          expect(await db.schema.hasTable(history), isFalse);
+          await migrator.migrate();
+          queries.clear();
+          await migrator.rollback(pretend: true, onQuery: queries.add);
+          expect(queries, hasLength(1));
+          expect(await db.table(users).count(), 1);
+          expect((await migrator.status()).single.hasRun, isTrue);
+        },
+      );
 
       test(
         'an up failure is not recorded and stops subsequent migrations',
@@ -185,6 +295,18 @@ abstract final class MigratorRegressions {
           );
           await expectLater(
             runner([]).rollback(steps: 0),
+            throwsA(isA<LaconicException>()),
+          );
+          await expectLater(
+            runner([]).rollback(batch: 0),
+            throwsA(isA<LaconicException>()),
+          );
+          await expectLater(
+            runner([]).rollback(batch: 1, steps: 1),
+            throwsA(isA<LaconicException>()),
+          );
+          await expectLater(
+            runner([]).refresh(steps: 0),
             throwsA(isA<LaconicException>()),
           );
           expect(await db.schema.hasTable(history), isFalse);

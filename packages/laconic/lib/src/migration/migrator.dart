@@ -1,10 +1,12 @@
 import '../database/result.dart';
+import '../database/query.dart';
 import '../exception.dart';
 import '../laconic.dart';
 import '../query/query_builder.dart';
 
 import 'migration.dart';
 import 'migration_status.dart';
+import 'migration_preview.dart';
 
 /// Runs explicitly registered migrations and records successful operations.
 ///
@@ -69,13 +71,36 @@ class Migrator {
   ///
   /// One call normally forms one batch. With [step], each migration forms its
   /// own batch. Each completed migration is recorded before the next begins.
-  Future<List<String>> migrate({bool step = false}) => _exclusive(() async {
+  /// With [pretend], captures migration SQL through [onQuery] without executing
+  /// it or updating history. Schema inspection still reads the current database;
+  /// ordinary queries return empty rows or zero. Earlier previewed DDL is not
+  /// visible to later inspection. Application side effects are not sandboxed.
+  Future<List<String>> migrate({
+    bool step = false,
+    bool pretend = false,
+    void Function(LaconicQuery query)? onQuery,
+    void Function(String name)? onApplied,
+  }) => _exclusive(
+    () => _migrate(
+      step: step,
+      pretend: pretend,
+      onQuery: onQuery,
+      onApplied: onApplied,
+    ),
+  );
+
+  Future<List<String>> _migrate({
+    bool step = false,
+    bool pretend = false,
+    void Function(LaconicQuery query)? onQuery,
+    void Function(String name)? onApplied,
+  }) async {
     final history = await _history();
     final completed = history.map((row) => row['migration'] as String).toSet();
     final pending =
         _migrations.where((m) => !completed.contains(m.name)).toList();
     if (pending.isEmpty) return [];
-    if (!await database.schema.hasTable(table)) {
+    if (!pretend && !await database.schema.hasTable(table)) {
       await database.schema.create(table, (blueprint) {
         blueprint.id();
         blueprint.string('migration');
@@ -90,25 +115,58 @@ class Migrator {
     }
     final executed = <String>[];
     for (final migration in pending) {
-      await _run(migration, () async {
-        await migration.up(database);
-        await _historyTable.insert([
-          {'migration': migration.name, 'batch': batch},
-        ]);
+      await _execute(migration, 'up', () async {
+        if (pretend) {
+          await migration.up(
+            MigrationPreviewDatabase(database, onQuery ?? (_) {}),
+          );
+        } else {
+          await _run(migration, () async {
+            await migration.up(database);
+            await _historyTable.insert([
+              {'migration': migration.name, 'batch': batch},
+            ]);
+          });
+        }
       });
       executed.add(migration.name);
+      onApplied?.call(migration.name);
       if (step) batch++;
     }
     return executed;
-  });
+  }
 
   /// Rolls back the latest batch in reverse execution order.
   ///
   /// With [steps], rolls back that many latest migrations across batches.
   /// All required definitions are checked before the first rollback executes.
-  Future<List<String>> rollback({int? steps}) => _exclusive(() async {
+  /// [batch] selects one batch and cannot be combined with [steps]. [pretend]
+  /// captures SQL with the same limitations as [migrate]. [onRolledBack] runs
+  /// after each successful rollback (or preview), including before later failures.
+  Future<List<String>> rollback({
+    int? steps,
+    int? batch,
+    bool pretend = false,
+    void Function(LaconicQuery query)? onQuery,
+    void Function(String name)? onRolledBack,
+  }) => _exclusive(
+    () async => _rollback(
+      await _selectRollback(steps: steps, batch: batch),
+      pretend: pretend,
+      onQuery: onQuery,
+      onRolledBack: onRolledBack,
+    ),
+  );
+
+  Future<List<LaconicResult>> _selectRollback({int? steps, int? batch}) async {
     if (steps != null && steps <= 0) {
       throw LaconicException('Rollback steps must be positive');
+    }
+    if (batch != null && batch <= 0) {
+      throw LaconicException('Rollback batch must be positive');
+    }
+    if (steps != null && batch != null) {
+      throw LaconicException('Rollback steps and batch cannot be combined');
     }
     final history = (await _history()).reversed.toList();
     if (history.isEmpty) return [];
@@ -118,15 +176,67 @@ class Migrator {
     final selected =
         steps != null
             ? history.take(steps).toList()
-            : history.where((row) => row['batch'] == latestBatch).toList();
-    return _rollback(selected);
-  });
+            : history
+                .where((row) => row['batch'] == (batch ?? latestBatch))
+                .toList();
+    return selected;
+  }
 
   /// Rolls back all recorded migrations in reverse execution order.
-  Future<List<String>> reset() =>
-      _exclusive(() async => _rollback((await _history()).reversed.toList()));
+  Future<List<String>> reset({
+    bool pretend = false,
+    void Function(LaconicQuery query)? onQuery,
+    void Function(String name)? onRolledBack,
+  }) => _exclusive(
+    () async => _rollback(
+      (await _history()).reversed.toList(),
+      pretend: pretend,
+      onQuery: onQuery,
+      onRolledBack: onRolledBack,
+    ),
+  );
 
-  Future<List<String>> _rollback(List<LaconicResult> selected) async {
+  /// Rolls back all migrations, or the latest [steps], then runs pending ones.
+  ///
+  /// A rollback failure prevents the migrate phase. Successfully reverted
+  /// migrations remain reverted if a later rollback or migration fails.
+  Future<List<String>> refresh({
+    int? steps,
+    void Function(String name)? onApplied,
+    void Function(String name)? onRolledBack,
+  }) => _exclusive(() async {
+    final selected =
+        steps == null
+            ? (await _history()).reversed.toList()
+            : await _selectRollback(steps: steps);
+    await _rollback(selected, onRolledBack: onRolledBack);
+    return _migrate(onApplied: onApplied);
+  });
+
+  /// Drops all tables in the history table's schema, then runs migrations.
+  ///
+  /// Includes tables not managed by migrations. Unqualified history tables use
+  /// the grammar's default schema. Views and external dependencies remain and
+  /// may prevent dropping tables. The wipe and migrations are separate operations.
+  Future<List<String>> fresh({
+    bool step = false,
+    void Function()? onDropped,
+    void Function(String name)? onApplied,
+  }) => _exclusive(() async {
+    final parts = database.grammar.schemaTableParts(table);
+    await database.schema.dropAllTables(
+      schema: parts.length == 2 ? parts.first : null,
+    );
+    onDropped?.call();
+    return _migrate(step: step, onApplied: onApplied);
+  });
+
+  Future<List<String>> _rollback(
+    List<LaconicResult> selected, {
+    bool pretend = false,
+    void Function(LaconicQuery query)? onQuery,
+    void Function(String name)? onRolledBack,
+  }) async {
     final definitions = {
       for (final migration in _migrations) migration.name: migration,
     };
@@ -140,11 +250,20 @@ class Migrator {
     final rolledBack = <String>[];
     for (final row in selected) {
       final migration = definitions[row['migration']]!;
-      await _run(migration, () async {
-        await migration.down(database);
-        await _historyTable.where('id', row['id']).delete();
+      await _execute(migration, 'down', () async {
+        if (pretend) {
+          await migration.down(
+            MigrationPreviewDatabase(database, onQuery ?? (_) {}),
+          );
+        } else {
+          await _run(migration, () async {
+            await migration.down(database);
+            await _historyTable.where('id', row['id']).delete();
+          });
+        }
       });
       rolledBack.add(migration.name);
+      onRolledBack?.call(migration.name);
     }
     return rolledBack;
   }
@@ -160,6 +279,20 @@ class Migrator {
       await database.transaction(action);
     } else {
       await action();
+    }
+  }
+
+  Future<void> _execute(
+    Migration migration,
+    String direction,
+    Future<void> Function() action,
+  ) async {
+    try {
+      await action();
+    } catch (error) {
+      throw LaconicException(
+        'Migration ${migration.name} ($direction) failed: $error',
+      );
     }
   }
 

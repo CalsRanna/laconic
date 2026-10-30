@@ -28,9 +28,15 @@ abstract final class MigrationCli {
       out,
       (request, command) => MigrationProject.run(
         project: project,
-        configPath: command.globalResults!.option('config')!,
-        migrationsPath: command.globalResults!.option('path')!,
-        table: command.globalResults!.option('table')!,
+        configPath:
+            command.argResults!.option('config') ??
+            command.globalResults!.option('config')!,
+        migrationsPath:
+            command.argResults!.option('path') ??
+            command.globalResults!.option('path')!,
+        table:
+            command.argResults!.option('table') ??
+            command.globalResults!.option('table')!,
         arguments: request.arguments,
         output: out,
         errorOutput: err,
@@ -52,6 +58,12 @@ abstract final class MigrationCli {
         defaultsTo: 'migrations',
         help: 'Database table storing migration history.',
       );
+    for (final command in runner.commands.values.toSet()) {
+      command.argParser
+        ..addOption('config', help: 'Override the database configuration file.')
+        ..addOption('path', help: 'Override the migrations directory.')
+        ..addOption('table', help: 'Override the migration history table.');
+    }
     runner.addCommand(MakeMigrationCommand(out, project));
     return runner.runSafely(arguments, err);
   }
@@ -61,6 +73,8 @@ abstract final class MigrationCli {
   /// Suitable for generated entrypoints or an application's own compiled CLI.
   /// The factories are called only after command validation, never for help.
   /// Owns and closes the connection returned by [createDatabase].
+  /// [environment] defaults to `APP_ENV`. Mutating commands require `--force`
+  /// in production; status and SQL previews do not. No interactive prompt is used.
   static Future<int> runCommand(
     List<String> arguments, {
     required FutureOr<Laconic> Function() createDatabase,
@@ -68,6 +82,7 @@ abstract final class MigrationCli {
     String table = 'migrations',
     StringSink? output,
     StringSink? errorOutput,
+    String? environment,
   }) async {
     final out = output ?? stdout;
     final err = errorOutput ?? stderr;
@@ -78,6 +93,7 @@ abstract final class MigrationCli {
         migrations: migrations,
         table: table,
         output: out,
+        environment: environment ?? Platform.environment['APP_ENV'],
       );
     });
     return runner.runSafely(arguments, err);
