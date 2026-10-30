@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Implement `change()` and catalog metadata for tables, views, columns, indexes,
+  and foreign keys, preserving composite-key order and generated/identity flags.
+- Requires the matching unreleased core schema contract; coordinate published
+  minimum core/driver versions before release.
+
 - Quote query identifiers and support JSON scalar selectors/path updates. Retain
   joined, ordered, and paginated writes using tableoid/ctid target subqueries
   with correctly numbered bindings.

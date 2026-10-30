@@ -570,6 +570,9 @@ MIT License
 
 ## Schema Builder (unreleased)
 
+Supports `change()`, typed table/view/column/index/foreign-key metadata, and
+atomic SQLite table rebuilds. See the schema guide for transaction restrictions.
+
 `Laconic.schema` exposes the core Schema Builder. SQL compilation stays in
 `SqlGrammar`, with concrete behavior supplied by the selected driver. See
 [the schema guide](../../SCHEMA.md) for supported operations and custom drivers.

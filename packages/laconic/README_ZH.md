@@ -442,6 +442,9 @@ MIT License
 
 ## Schema Builder（未发布）
 
+支持 `change()`、表/视图/列/索引/外键的类型化元数据，以及 SQLite 原子重建；
+事务限制与方言差异见 Schema 指南。
+
 `Laconic.schema` 提供建表、改表与结构检查，DDL 统一使用 `SqlGrammar`。
 参见 [Schema 使用与自定义驱动说明](../../SCHEMA.md)。核心同时内置 `Migration`、
 `Migrator` 和 `dart run laconic` CLI，详见 [迁移指南](MIGRATIONS.md)。

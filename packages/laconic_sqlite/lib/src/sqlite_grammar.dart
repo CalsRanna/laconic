@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:laconic/laconic.dart';
 
 part 'sqlite_schema.dart';
+part 'sqlite_table.dart';
 
 /// SQLite-specific SQL grammar.
 ///

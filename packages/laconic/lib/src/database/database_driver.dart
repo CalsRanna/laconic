@@ -73,3 +73,12 @@ abstract class DatabaseDriver {
   /// Closes the database connection and releases resources.
   Future<void> close();
 }
+
+/// An optional driver capability for atomic, connection-exclusive schema rebuilds.
+///
+/// The callback uses the driver's ordinary query methods on the reserved
+/// connection. Implementations restore connection settings on success or failure.
+abstract interface class SchemaTransactionDriver {
+  /// Runs a schema rebuild atomically, including its metadata reads.
+  Future<T> schemaTransaction<T>(Future<T> Function() action);
+}

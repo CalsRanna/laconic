@@ -695,6 +695,9 @@ Issues and Pull Requests are welcome!
 
 ## Schema and migrations (unreleased)
 
+Supports `change()`, typed table/view/column/index/foreign-key metadata, and
+atomic SQLite table rebuilds. See the schema guide for transaction restrictions.
+
 The core now provides `db.schema` for table creation, alteration, and inspection.
 DDL uses the existing `SqlGrammar`; concrete dialects live in their driver packages.
 The core also includes `Migration`, `Migrator`, and the `dart run laconic` CLI.

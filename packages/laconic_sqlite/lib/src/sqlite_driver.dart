@@ -18,7 +18,7 @@ import 'package:sqlite3/sqlite3.dart';
 /// final driver = SqliteDriver(SqliteConfig('app.db'));
 /// final laconic = Laconic(driver);
 /// ```
-class SqliteDriver implements DatabaseDriver {
+class SqliteDriver implements DatabaseDriver, SchemaTransactionDriver {
   final SqliteConfig config;
   Database? _database;
   static final _grammar = SqliteGrammar();
@@ -314,6 +314,85 @@ class SqliteDriver implements DatabaseDriver {
       rethrow;
     } finally {
       transaction.active = false;
+    }
+  });
+
+  @override
+  Future<T> schemaTransaction<T>(
+    Future<T> Function() action,
+  ) => _execute(() async {
+    final foreignKeys =
+        _db.select('pragma foreign_keys').single.values.first == 1;
+    final legacy =
+        _db.select('pragma legacy_alter_table').single.values.first == 1;
+    final nested = Zone.current[_transactionKey] != null;
+    if (nested && foreignKeys) {
+      throw LaconicException(
+        'SQLite table rebuilds with foreign keys enabled must start outside a transaction; '
+        'set Migration.withinTransaction to false for this migration',
+      );
+    }
+    final transaction = nested ? null : _SqliteTransaction();
+    var started = false;
+    try {
+      if (!nested) {
+        _db.execute('pragma foreign_keys = off');
+        if (_db.select('pragma foreign_keys').single.values.first != 0) {
+          throw LaconicException(
+            'Cannot disable SQLite foreign keys inside an existing transaction',
+          );
+        }
+      }
+      _db.execute('pragma legacy_alter_table = on');
+      _db.execute(
+        nested ? 'savepoint laconic_schema_rebuild' : 'begin immediate',
+      );
+      started = true;
+      final result =
+          nested
+              ? await action()
+              : await runZoned(
+                action,
+                zoneValues: {_transactionKey: transaction},
+              );
+      if (foreignKeys) {
+        for (final row in _db.select('pragma database_list')) {
+          final schema = _grammar.quoteSchemaIdentifier(row['name'] as String);
+          if (_db.select('pragma $schema.foreign_key_check').isNotEmpty) {
+            throw LaconicException(
+              'SQLite table rebuild would violate foreign key constraints',
+            );
+          }
+        }
+      }
+      _db.execute(
+        nested ? 'release savepoint laconic_schema_rebuild' : 'commit',
+      );
+      started = false;
+      return result;
+    } catch (error) {
+      if (started) {
+        try {
+          _db.execute(
+            nested
+                ? 'rollback to savepoint laconic_schema_rebuild'
+                : 'rollback',
+          );
+          if (nested) _db.execute('release savepoint laconic_schema_rebuild');
+        } catch (rollbackError) {
+          throw LaconicException(
+            'Schema rebuild failed: $error. Rollback also failed: $rollbackError',
+          );
+        }
+      }
+      rethrow;
+    } finally {
+      if (transaction != null) transaction.active = false;
+      _db.execute('pragma legacy_alter_table = ${legacy ? 'on' : 'off'}');
+      if (!nested) {
+        _db.execute('pragma foreign_keys = ${foreignKeys ? 'on' : 'off'}');
+      }
+      _invalidateCache();
     }
   });
 

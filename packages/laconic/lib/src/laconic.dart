@@ -2,6 +2,7 @@ import 'database/database_driver.dart';
 import 'database/query.dart';
 import 'database/result.dart';
 import 'grammar/grammar.dart';
+import 'exception.dart';
 import 'query/query_builder.dart';
 import 'schema/schema_builder.dart';
 
@@ -156,6 +157,20 @@ class Laconic {
   /// ```
   Future<T> transaction<T>(Future<T> Function() action) =>
       _driver.transaction(action);
+
+  /// Runs an atomic table rebuild on a driver-reserved connection.
+  ///
+  /// Used by SchemaBuilder when the grammar requires reconstructing a table.
+  /// The driver must implement [SchemaTransactionDriver].
+  Future<T> schemaTransaction<T>(Future<T> Function() action) {
+    final driver = _driver;
+    if (driver is SchemaTransactionDriver) {
+      return (driver as SchemaTransactionDriver).schemaTransaction(action);
+    }
+    throw LaconicException(
+      'This driver does not support atomic schema rebuilds',
+    );
+  }
 
   /// Closes the database connection and releases resources.
   ///

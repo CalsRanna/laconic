@@ -1,5 +1,15 @@
 ## Unreleased
 
+- Rebuild tables atomically for column changes/drops and key alterations, retaining
+  data, rowids, autoincrement high-water marks, constraints, generated columns,
+  indexes, triggers, and view references. Restore PRAGMA settings on every exit.
+- Use savepoints in foreign-keys-off transactions. Reject rebuilds inside an
+  existing foreign-keys-on transaction before DDL; use a non-transactional
+  migration wrapper for these operations. See SCHEMA.md for rename ordering.
+- Add table/view/column/index/foreign-key metadata and native SQL details.
+- Requires the matching unreleased core schema contract; coordinate published
+  minimum core/driver versions before release.
+
 - Quote query identifiers and support JSON scalar selectors/path updates. Retain
   joined, ordered, and paginated writes using rowid target subqueries (requires
   a rowid table).

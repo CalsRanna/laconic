@@ -1,5 +1,17 @@
 ## Unreleased
 
+- Add `ColumnDefinition.change()` for native type, nullability, and default
+  changes. Restate nullable/default modifiers to retain them; existing keys and
+  identities are preserved. Key changes use separate Blueprint commands.
+- Add typed `getTables`, `getViews`, `getColumns`, `getIndexes`, and
+  `getForeignKeys` metadata, plus `hasColumns`, `getColumnType`, and `hasIndex`.
+- **Driver contract:** `compileAlterTable` gains optional column/object snapshots.
+  Add metadata/change compilation hooks and optional `SchemaTransactionDriver`
+  for connection-exclusive rebuilds. Existing `DatabaseDriver` methods are unchanged.
+  Third-party grammar overrides must adopt the new signature. Release with all
+  matching drivers and updated minimum core versions; workspace versions remain
+  unchanged pending release planning. See SCHEMA.md for field contracts and limits.
+
 - **Breaking:** quote query identifiers, qualified names, and aliases. Replace
   SQL expressions passed as column/table strings with `Expression` or the
   corresponding `*Raw` method. Ordinary JSON selectors now compile for scalar

@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../exception.dart';
 import '../schema/blueprint.dart';
 import '../schema/schema_command.dart';
+import '../schema/schema_metadata.dart';
 import 'compiled_query.dart';
 import 'expression.dart';
 
@@ -98,6 +99,9 @@ abstract class SqlGrammar {
   List<CompiledQuery> compileCreateTable(Blueprint blueprint) {
     final table = quoteSchemaIdentifier(blueprint.table, qualified: true);
     final columns = blueprint.commands.whereType<ColumnDefinition>().toList();
+    if (columns.any((column) => column.isChange)) {
+      throw LaconicException('change() requires an existing table');
+    }
     if (columns.isEmpty) {
       throw LaconicException('A table requires at least one column');
     }
@@ -144,12 +148,29 @@ abstract class SqlGrammar {
   }
 
   /// Compiles ordered alterations, rejecting unsupported operations eagerly.
-  List<CompiledQuery> compileAlterTable(Blueprint blueprint) {
+  List<CompiledQuery> compileAlterTable(
+    Blueprint blueprint, {
+    List<SchemaColumn> columns = const [],
+    List<Map<String, Object?>> objects = const [],
+  }) {
     final table = quoteSchemaIdentifier(blueprint.table, qualified: true);
     final statements = <CompiledQuery>[];
     for (final command in blueprint.commands) {
       if (command is ColumnDefinition) {
-        statements.add(compileAddColumn(blueprint.table, command));
+        if (command.isChange) {
+          validateChangedColumn(command);
+          final existing = columns.where(
+            (column) => column.name == command.name,
+          );
+          if (existing.isEmpty) {
+            throw LaconicException('Column does not exist: ${command.name}');
+          }
+          statements.addAll(
+            compileChangeColumn(blueprint.table, command, existing.single),
+          );
+        } else {
+          statements.add(compileAddColumn(blueprint.table, command));
+        }
       } else if (command is IndexDefinition) {
         if (command.type == IndexType.primary) {
           statements.add(
@@ -174,6 +195,63 @@ abstract class SqlGrammar {
       }
     }
     return statements;
+  }
+
+  /// Validates modifiers supported when changing an existing column.
+  void validateChangedColumn(ColumnDefinition column) {
+    if (column.isPrimary || column.isUnique || column.autoIncrement) {
+      throw LaconicException(
+        'change() preserves keys; use separate key commands',
+      );
+    }
+    compileColumnDefinition(column);
+  }
+
+  /// Compiles changes to a column using its current metadata.
+  List<CompiledQuery> compileChangeColumn(
+    String table,
+    ColumnDefinition column,
+    SchemaColumn previous,
+  ) {
+    throw LaconicException('This grammar does not support changing columns');
+  }
+
+  /// Whether alterations require a snapshot and a driver-managed table rebuild.
+  bool requiresTableRebuild(Blueprint blueprint) => false;
+
+  /// Compiles the schema-object snapshot required for rebuilding a table.
+  CompiledQuery compileSchemaObjects(String table) {
+    throw LaconicException('This grammar does not support table rebuilds');
+  }
+
+  /// Compiles inspection of tables in the selected schema.
+  CompiledQuery compileTables({String? schema}) {
+    throw LaconicException('This grammar does not implement table metadata');
+  }
+
+  /// Compiles inspection of views in the selected schema.
+  CompiledQuery compileViews({String? schema}) {
+    throw LaconicException('This grammar does not implement view metadata');
+  }
+
+  /// Compiles ordered column metadata with normalized field names.
+  CompiledQuery compileColumns(String table) {
+    throw LaconicException('This grammar does not implement column metadata');
+  }
+
+  /// Normalizes column details that require interpretation of native schema SQL.
+  Map<String, Object?> normalizeColumnMetadata(Map<String, Object?> row) => row;
+
+  /// Compiles index metadata, one row per ordered key column.
+  CompiledQuery compileIndexes(String table) {
+    throw LaconicException('This grammar does not implement index metadata');
+  }
+
+  /// Compiles foreign-key metadata, one row per ordered column pair.
+  CompiledQuery compileForeignKeys(String table) {
+    throw LaconicException(
+      'This grammar does not implement foreign-key metadata',
+    );
   }
 
   /// Compiles adding a column to an existing table.

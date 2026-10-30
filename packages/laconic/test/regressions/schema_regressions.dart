@@ -1,5 +1,6 @@
 import 'package:laconic/laconic.dart';
 import 'package:test/test.dart';
+import 'schema_metadata_regressions.dart';
 
 abstract final class SchemaRegressions {
   static void register(
@@ -10,6 +11,11 @@ abstract final class SchemaRegressions {
   }) {
     group('Schema builder', () {
       late Laconic db;
+      SchemaMetadataRegressions.register(
+        createDatabase,
+        sqlite: sqlite,
+        namespace: namespace,
+      );
       const users = 'laconic_schema_users';
       const posts = 'laconic_schema_posts';
       const renamed = 'laconic_schema_renamed';
@@ -224,20 +230,17 @@ abstract final class SchemaRegressions {
       }
 
       if (sqlite) {
-        test(
-          'unsupported SQLite alterations do not partially execute',
-          () async {
-            await db.schema.create(users, (table) => table.id());
-            await expectLater(
-              db.schema.table(users, (table) {
-                table.integer('new_column').nullable();
-                table.foreign(['new_column']).references(['id']).on(users);
-              }),
-              throwsA(isA<LaconicException>()),
-            );
-            expect(await db.schema.hasColumn(users, 'new_column'), isFalse);
-          },
-        );
+        test('SQLite can add a column and a foreign key atomically', () async {
+          await db.schema.create(users, (table) => table.id());
+          await db.schema.table(users, (table) {
+            table.integer('new_column').nullable();
+            table.foreign(['new_column']).references(['id']).on(users);
+          });
+          expect(await db.schema.hasColumn(users, 'new_column'), isTrue);
+          expect((await db.schema.getForeignKeys(users)).single.columns, [
+            'new_column',
+          ]);
+        });
       }
     });
   }

@@ -63,6 +63,7 @@ export 'src/grammar/grammar.dart';
 export 'src/schema/blueprint.dart';
 export 'src/schema/schema_builder.dart';
 export 'src/schema/schema_command.dart';
+export 'src/schema/schema_metadata.dart';
 
 export 'src/migration/migration.dart';
 export 'src/migration/migration_status.dart';

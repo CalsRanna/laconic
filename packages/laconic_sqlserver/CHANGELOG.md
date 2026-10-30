@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Implement `change()` with default-constraint discovery/replacement and native
+  ALTER COLUMN. Index/computed-column dependencies remain database restrictions.
+- Add typed catalog metadata with ordered keys and identity/computed details.
+- Requires the matching unreleased core schema contract; coordinate published
+  minimum core/driver versions before release.
+
 - Quote query identifiers and support JSON scalar selectors/path updates. Retain
   joined writes and TOP limits; reject ordered writes and nonzero write offsets.
 - **Breaking:** adopt the matching unreleased core query compiler contract and

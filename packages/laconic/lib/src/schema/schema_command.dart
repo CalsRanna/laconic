@@ -46,6 +46,9 @@ class ColumnDefinition extends SchemaCommand {
   /// Whether the database generates successive integer values.
   final bool autoIncrement;
 
+  /// Whether this definition modifies an existing column.
+  bool isChange = false;
+
   /// Whether the column permits nulls.
   bool isNullable = false;
 
@@ -70,6 +73,15 @@ class ColumnDefinition extends SchemaCommand {
     this.scale,
     this.autoIncrement = false,
   });
+
+  /// Changes an existing column's type, nullability, and default.
+  ///
+  /// Restate [nullable] and [defaultTo] to keep these modifiers. Existing keys
+  /// remain unchanged; use Blueprint key commands to modify indexes separately.
+  ColumnDefinition change() {
+    isChange = true;
+    return this;
+  }
 
   /// Sets whether this column permits nulls.
   ColumnDefinition nullable([bool value = true]) {

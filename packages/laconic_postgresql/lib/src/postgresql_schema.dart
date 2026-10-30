@@ -61,4 +61,99 @@ mixin _PostgresqlSchema on SqlGrammar {
         'select attname as name from pg_catalog.pg_attribute where attrelid = to_regclass(\$1) and attnum > 0 and not attisdropped order by attnum',
     bindings: [quoteSchemaIdentifier(table, qualified: true)],
   );
+
+  @override
+  List<CompiledQuery> compileChangeColumn(
+    String table,
+    ColumnDefinition column,
+    SchemaColumn previous,
+  ) {
+    final target = quoteSchemaIdentifier(table, qualified: true);
+    final name = quoteSchemaIdentifier(column.name);
+    final identity = previous.autoIncrement && previous.defaultValue == null;
+    if (identity && column.hasDefault) {
+      throw LaconicException(
+        'An identity column cannot have a separate default',
+      );
+    }
+    final clauses = [
+      if (!identity) 'alter column $name drop default',
+      'alter column $name type ${compileColumnType(column)}',
+      'alter column $name ${column.isNullable ? 'drop' : 'set'} not null',
+      if (column.hasDefault)
+        'alter column $name set default ${compileSchemaLiteral(column.defaultValue)}'
+      else if (previous.autoIncrement && previous.defaultValue != null)
+        'alter column $name set default ${previous.defaultValue}',
+    ];
+    return [
+      CompiledQuery(
+        sql: 'alter table $target ${clauses.join(', ')}',
+        bindings: [],
+      ),
+    ];
+  }
+
+  @override
+  CompiledQuery compileTables({String? schema}) => CompiledQuery(
+    sql:
+        "select c.relname as name, n.nspname as schema from pg_catalog.pg_class c "
+        "join pg_catalog.pg_namespace n on n.oid = c.relnamespace "
+        "where c.relkind in ('r', 'p') and n.nspname = ${schema == null ? 'current_schema()' : r'$1'} order by c.relname",
+    bindings: [if (schema != null) schema],
+  );
+
+  @override
+  CompiledQuery compileViews({String? schema}) => CompiledQuery(
+    sql:
+        "select c.relname as name, n.nspname as schema, pg_get_viewdef(c.oid, true) as definition "
+        "from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace "
+        "where c.relkind in ('v', 'm') and n.nspname = ${schema == null ? 'current_schema()' : r'$1'} order by c.relname",
+    bindings: [if (schema != null) schema],
+  );
+
+  @override
+  CompiledQuery compileColumns(String table) => CompiledQuery(
+    sql:
+        r"select a.attname as name, t.typname as type_name, format_type(a.atttypid, a.atttypmod) as type, "
+        r"not a.attnotnull as nullable, case when a.attgenerated = '' then pg_get_expr(d.adbin, d.adrelid) end as default_value, "
+        r"(a.attidentity <> '' or pg_get_expr(d.adbin, d.adrelid) like 'nextval(%') as auto_increment, "
+        r"co.collname as collation, case when a.attgenerated <> '' then pg_get_expr(d.adbin, d.adrelid) end as generation, "
+        r"a.attgenerated <> '' as generated, coalesce((select k.ord from pg_index i, "
+        r"unnest(i.indkey) with ordinality k(attnum, ord) where i.indrelid = a.attrelid "
+        r"and i.indisprimary and k.attnum = a.attnum), 0) as primary_position "
+        r"from pg_catalog.pg_attribute a join pg_catalog.pg_type t on t.oid = a.atttypid "
+        r"left join pg_catalog.pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum "
+        r"left join pg_catalog.pg_collation co on co.oid = a.attcollation "
+        r"where a.attrelid = to_regclass($1) and a.attnum > 0 and not a.attisdropped order by a.attnum",
+    bindings: [quoteSchemaIdentifier(table, qualified: true)],
+  );
+
+  @override
+  CompiledQuery compileIndexes(String table) => CompiledQuery(
+    sql:
+        r"select ci.relname as name, a.attname as column_name, k.ord as position, "
+        r"i.indisunique as is_unique, i.indisprimary as is_primary, am.amname as type, pg_get_indexdef(i.indexrelid) as definition "
+        r"from pg_catalog.pg_index i join pg_catalog.pg_class ci on ci.oid = i.indexrelid "
+        r"join pg_catalog.pg_am am on am.oid = ci.relam "
+        r"cross join lateral unnest(i.indkey) with ordinality k(attnum, ord) "
+        r"left join pg_catalog.pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum "
+        r"where i.indrelid = to_regclass($1) and k.ord <= i.indnkeyatts order by ci.relname, k.ord",
+    bindings: [quoteSchemaIdentifier(table, qualified: true)],
+  );
+
+  @override
+  CompiledQuery compileForeignKeys(String table) => CompiledQuery(
+    sql:
+        r"select c.conname as name, a.attname as column_name, k.ord as position, "
+        r"n.nspname as foreign_schema, f.relname as foreign_table, fa.attname as foreign_column, "
+        r"case c.confupdtype when 'a' then 'no action' when 'r' then 'restrict' when 'c' then 'cascade' when 'n' then 'set null' when 'd' then 'set default' end as on_update, "
+        r"case c.confdeltype when 'a' then 'no action' when 'r' then 'restrict' when 'c' then 'cascade' when 'n' then 'set null' when 'd' then 'set default' end as on_delete "
+        r"from pg_catalog.pg_constraint c join pg_catalog.pg_class f on f.oid = c.confrelid "
+        r"join pg_catalog.pg_namespace n on n.oid = f.relnamespace "
+        r"cross join lateral unnest(c.conkey, c.confkey) with ordinality k(local_key, foreign_key, ord) "
+        r"join pg_catalog.pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.local_key "
+        r"join pg_catalog.pg_attribute fa on fa.attrelid = c.confrelid and fa.attnum = k.foreign_key "
+        r"where c.conrelid = to_regclass($1) and c.contype = 'f' order by c.conname, k.ord",
+    bindings: [quoteSchemaIdentifier(table, qualified: true)],
+  );
 }

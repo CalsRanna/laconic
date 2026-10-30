@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Implement `change()` with MODIFY COLUMN and typed schema metadata queries,
+  preserving index/key definitions and existing auto-increment behavior.
+- Requires the matching unreleased core schema contract; coordinate published
+  minimum core/driver versions before release.
+
 - Quote query identifiers, support JSON scalar selectors/path updates, and retain
   joined or ordered/limited writes. Reject nonzero write offsets and JOIN with
   ORDER BY/LIMIT.

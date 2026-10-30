@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Inherit `change()` and typed structure metadata from the matching MySQL grammar;
+  default values retain MariaDB's native expression representation.
+- Requires the matching unreleased core schema contract; coordinate published
+  minimum core/driver versions before release.
+
 - Inherit identifier quoting, JSON selectors/path updates, and write scopes from
   MySQL; reject nonzero write offsets and JOIN with ORDER BY/LIMIT. Compile
   aliased DELETE using MariaDB 10.11 syntax and reject ORDER BY/LIMIT on it.
