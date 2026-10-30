@@ -196,6 +196,20 @@ final results = await laconic.table('users')
     .get();
 ```
 
+`sum()` returns `num` and returns `0` for empty or all-null input. `avg()`
+returns `double?`; `min()` and `max()` return `Object?`, preserving the driver's
+numeric, string, or date value. The latter three return `null` when no non-null
+value matches. `first()` and `find()` still throw for missing records.
+
+`insertUsing()`, `insertOrIgnoreUsing()`, `insertOrIgnore()`, and `upsert()` return
+`Future<int>` with the database's affected row count. MySQL/MariaDB may count an
+upsert update as two affected rows. `insert()` retains `Future<bool>`; empty
+insert/upsert input is still rejected. `updateOrInsert()` accepts a values map
+or a `(bool exists)` callback (sync or async), and returns whether a write affects
+a row; an empty update map succeeds without a write. `existsOr()` and
+`doesntExistOr()` now accept lazy callbacks and return `true` or the callback's
+result, including an awaited result.
+
 ### Aggregates
 
 `exists()` and `doesntExist()` retain GROUP BY and HAVING conditions.
@@ -352,6 +366,24 @@ await laconic.table('users_archive')
 
 ### Pagination and Streaming
 
+Cursor pagination retains the query's complete `orderBy` sequence, including
+mixed ascending/descending columns. The ordering tuple must be unique and all
+ordering values must be selected and non-null; add a unique tie-breaker such as
+`id`. `nextCursor` and `previousCursor` are `LaconicCursor?` objects containing
+`parameters` and `pointsToNextItems`. Pass either object back to the same query;
+rows always remain in the original order, including when fetching a previous
+page. A null cursor starts the first page, so navigate only when the corresponding
+cursor is non-null. Empty pages have no cursors. `hasMorePages` describes the
+forward direction; `hasPreviousPages` describes the backward direction.
+
+Single-column scalar cursor inputs remain supported. Without explicit ordering,
+`column:` (default `id`) supplies ascending ordering. For `groupLimit`, the
+existing ordering selects rows within each partition; `column:` orders the outer
+pages. Use `fromSub()` around a group-limited query to supply a composite outer
+ordering. Raw ORDER BY fragments are rejected; select an expression with an alias
+and use `orderBy(alias)` instead. Selected aliases, grouped results and UNIONs
+are filtered at the outer query level, preserving their result sets and bindings.
+
 ```dart
 final page = await laconic.table('users').orderBy('id').paginate(2, perPage: 20);
 page.data;
@@ -360,11 +392,16 @@ page.lastPage;
 page.hasMorePages;
 
 final simple = await laconic.table('users').simplePaginate(2, perPage: 20);
-final cursor = await laconic.table('users').cursorPaginate(20);
-final next = await laconic.table('users').cursorPaginate(
-  20,
-  cursor: cursor.nextCursor,
-);
+final ordered = laconic.table('users').orderByDesc('created_at').orderBy('id');
+final firstPage = await ordered.cursorPaginate(20);
+if (firstPage.nextCursor != null) {
+  final nextPage = await ordered.cursorPaginate(20, cursor: firstPage.nextCursor);
+  if (nextPage.previousCursor != null) {
+    final previousPage = await ordered.cursorPaginate(
+      20, cursor: nextPage.previousCursor,
+    );
+  }
+}
 
 await for (final row in laconic.table('users').orderBy('id').cursor()) {
   print(row['name']);
@@ -555,7 +592,7 @@ class MyDriver implements DatabaseDriver {
 ## Upgrading to 6.0
 
 - Install the core and driver versions shown above: SQLite/PostgreSQL use the 4.0 series and MySQL uses the 5.0 series.
-- `sum()`, `max()` and `min()` return `num?`; `avg()` remains `double?`.
+- Published 6.0 uses nullable numeric aggregates; see the unreleased return contracts above for this workspace.
 - `insert()` returns `Future<bool>`.
 - `where('column', null)` compiles to `IS NULL`.
 - `SqlGrammar.compileSelect` has new optional parameters; custom overrides must add them.

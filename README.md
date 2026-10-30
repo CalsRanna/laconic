@@ -268,6 +268,20 @@ final results = await laconic.table('users u')
 final results = await laconic.table('users').crossJoin('roles').get();
 ```
 
+`sum()` returns `num` and returns `0` for empty or all-null input. `avg()`
+returns `double?`; `min()` and `max()` return `Object?`, preserving the driver's
+numeric, string, or date value. The latter three return `null` when no non-null
+value matches. `first()` and `find()` still throw for missing records.
+
+`insertUsing()`, `insertOrIgnoreUsing()`, `insertOrIgnore()`, and `upsert()` return
+`Future<int>` with the database's affected row count. MySQL/MariaDB may count an
+upsert update as two affected rows. `insert()` retains `Future<bool>`; empty
+insert/upsert input is still rejected. `updateOrInsert()` accepts a values map
+or a `(bool exists)` callback (sync or async), and returns whether a write affects
+a row; an empty update map succeeds without a write. `existsOr()` and
+`doesntExistOr()` now accept lazy callbacks and return `true` or the callback's
+result, including an awaited result.
+
 ### Aggregates
 
 `exists()` and `doesntExist()` retain GROUP BY and HAVING conditions.
@@ -420,6 +434,24 @@ await laconic.table('users_archive')
 
 ### Pagination
 
+Cursor pagination retains the query's complete `orderBy` sequence, including
+mixed ascending/descending columns. The ordering tuple must be unique and all
+ordering values must be selected and non-null; add a unique tie-breaker such as
+`id`. `nextCursor` and `previousCursor` are `LaconicCursor?` objects containing
+`parameters` and `pointsToNextItems`. Pass either object back to the same query;
+rows always remain in the original order, including when fetching a previous
+page. A null cursor starts the first page, so navigate only when the corresponding
+cursor is non-null. Empty pages have no cursors. `hasMorePages` describes the
+forward direction; `hasPreviousPages` describes the backward direction.
+
+Single-column scalar cursor inputs remain supported. Without explicit ordering,
+`column:` (default `id`) supplies ascending ordering. For `groupLimit`, the
+existing ordering selects rows within each partition; `column:` orders the outer
+pages. Use `fromSub()` around a group-limited query to supply a composite outer
+ordering. Raw ORDER BY fragments are rejected; select an expression with an alias
+and use `orderBy(alias)` instead. Selected aliases, grouped results and UNIONs
+are filtered at the outer query level, preserving their result sets and bindings.
+
 ```dart
 final page = await laconic.table('users').orderBy('id').paginate(2, perPage: 20);
 page.data;          // List<LaconicResult>
@@ -430,11 +462,16 @@ page.hasMorePages;
 final simple = await laconic.table('users').orderBy('id').simplePaginate(2, perPage: 20);
 simple.hasMorePages;
 
-final cursor = await laconic.table('users').cursorPaginate(20);
-final next = await laconic.table('users').cursorPaginate(
-  20,
-  cursor: cursor.nextCursor,
-);
+final ordered = laconic.table('users').orderByDesc('created_at').orderBy('id');
+final firstPage = await ordered.cursorPaginate(20);
+if (firstPage.nextCursor != null) {
+  final nextPage = await ordered.cursorPaginate(20, cursor: firstPage.nextCursor);
+  if (nextPage.previousCursor != null) {
+    final previousPage = await ordered.cursorPaginate(
+      20, cursor: nextPage.previousCursor,
+    );
+  }
+}
 ```
 
 ### Streaming
@@ -660,7 +697,7 @@ statement disposal.
 ## Upgrading to the current release
 
 - The core is `6.0.0`, SQLite is `4.0.0`, MySQL is `5.0.0`, and PostgreSQL is `4.0.0`. Update the core and your chosen drivers together.
-- `sum()`, `max()` and `min()` now return `num?`; `avg()` remains `double?`.
+- Published 6.0 uses nullable numeric aggregates; see the unreleased return contracts above for this workspace.
 - `insert()` returns `Future<bool>`.
 - `where('column', null)` now compiles to `IS NULL` instead of `= NULL`.
 - Custom grammars overriding `SqlGrammar.compileSelect` must add the new optional parameters (`selectBindings`, `groupBindings`, `distinctColumns`, `fromSubquery`, `fromAlias`, `indexHints`).

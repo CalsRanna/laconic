@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../database/result.dart';
 import '../exception.dart';
 import '../grammar/compiled_query.dart';
@@ -302,20 +304,21 @@ class QueryBuilder {
   }
 
   /// Inserts rows produced by a subquery:
-  /// `insert into table (columns) <subquery>`.
-  Future<bool> insertUsing(List<String> columns, Object query) async {
+  /// `insert into table (columns) <subquery>`, returning the affected row count.
+  Future<int> insertUsing(List<String> columns, Object query) async {
     if (columns.isEmpty) {
       throw LaconicException('insertUsing requires at least one column');
     }
     final compiled = _compileSubquery(query);
     final sql =
         'insert into ${_grammar.wrapTable(_table)} (${columns.map(_grammar.wrap).join(', ')}) ${compiled.sql}';
-    await _laconic.statement(sql, compiled.bindings);
-    return true;
+    return _laconic.affectingStatement(sql, compiled.bindings);
   }
 
   /// Inserts rows produced by a subquery, ignoring duplicate-key errors.
-  Future<bool> insertOrIgnoreUsing(List<String> columns, Object query) async {
+  ///
+  /// Returns the affected row count reported by the database.
+  Future<int> insertOrIgnoreUsing(List<String> columns, Object query) async {
     if (columns.isEmpty) {
       throw LaconicException(
         'insertOrIgnoreUsing requires at least one column',
@@ -327,8 +330,7 @@ class QueryBuilder {
       columns: columns,
       sql: compiled.sql,
     );
-    await _laconic.statement(sql, compiled.bindings);
-    return true;
+    return _laconic.affectingStatement(sql, compiled.bindings);
   }
 
   /// Inserts a single record and returns the auto-increment ID.
@@ -347,19 +349,22 @@ class QueryBuilder {
 
   /// Inserts records while ignoring duplicate key errors.
   /// For SQLite: `INSERT OR IGNORE INTO ...`. For MySQL: `INSERT IGNORE INTO ...`.
-  Future<void> insertOrIgnore(List<Map<String, Object?>> data) async {
+  /// Returns the affected row count reported by the database.
+  Future<int> insertOrIgnore(List<Map<String, Object?>> data) async {
     if (data.isEmpty) {
       throw LaconicException('Cannot insert an empty list of data');
     }
     final compiled = _grammar.compileInsertOrIgnore(table: _table, data: data);
-    await _laconic.statement(compiled.sql, compiled.bindings);
+    return _laconic.affectingStatement(compiled.sql, compiled.bindings);
   }
 
   /// Performs an upsert: inserts new records or updates existing ones.
   ///
   /// [uniqueBy] lists the columns that determine uniqueness.
   /// If [update] is null, all non-unique columns are updated on conflict.
-  Future<void> upsert(
+  /// Returns the database's affected row count, including its upsert-specific
+  /// counting rules.
+  Future<int> upsert(
     List<Map<String, Object?>> data, {
     required List<String> uniqueBy,
     List<String>? update,
@@ -373,7 +378,7 @@ class QueryBuilder {
       uniqueBy: uniqueBy,
       update: update,
     );
-    await _laconic.statement(compiled.sql, compiled.bindings);
+    return _laconic.affectingStatement(compiled.sql, compiled.bindings);
   }
 
   /// Adds an INNER JOIN clause to the query.
@@ -719,9 +724,13 @@ class QueryBuilder {
 
   /// Updates the row matching [attributes], or inserts a new row when none
   /// exists. [values] are applied on update and merged into the inserted row.
+  /// [values] accepts a map or a synchronous/asynchronous callback receiving
+  /// whether a matching row exists and returning a map.
+  /// Returns whether an insert succeeds or an update affects a row; an empty
+  /// update map returns `true` without issuing an update.
   Future<bool> updateOrInsert(
     Map<String, Object?> attributes, [
-    Map<String, Object?> values = const {},
+    Object values = const <String, Object?>{},
   ]) async {
     if (attributes.isEmpty) {
       throw LaconicException('updateOrInsert requires non-empty attributes');
@@ -732,16 +741,24 @@ class QueryBuilder {
       matches.where(entry.key, entry.value);
     }
 
-    if (await matches.exists()) {
-      if (values.isNotEmpty) {
-        await matches.limit(1).update(values);
-      }
+    final exists = await matches.exists();
+    final Map<String, Object?> data;
+    if (values is Map<String, Object?>) {
+      data = values;
+    } else if (values is FutureOr<Map<String, Object?>> Function(bool)) {
+      data = await values(exists);
     } else {
-      await insert([
-        {...attributes, ...values},
+      throw LaconicException(
+        'updateOrInsert expects a map or a values callback',
+      );
+    }
+    if (!exists) {
+      return insert([
+        {...attributes, ...data},
       ]);
     }
-    return true;
+    if (data.isEmpty) return true;
+    return await matches.limit(1).update(data) > 0;
   }
 
   /// Adds a `FOR UPDATE` lock to the query.
@@ -1001,10 +1018,17 @@ class QueryBuilder {
     );
   }
 
-  /// Returns a keyset-paginated page ordered by [column].
+  /// Returns a page using the query's ORDER BY columns as a keyset.
   ///
-  /// [cursor] is the last value from the previous page. The cursor column must
-  /// be part of the selected columns.
+  /// Ordering must be unique as a whole and all ordering values must be selected
+  /// and non-null. Mixed ascending and descending columns are supported. Raw
+  /// ordering is unsupported; select an expression with an alias and order by
+  /// that alias instead. [column] supplies ascending ordering when no ORDER BY
+  /// exists, and supplies the outer ordering for a group-limited query.
+  ///
+  /// Pass a page's next or previous [LaconicCursor] as [cursor] to move in either
+  /// direction. A scalar cursor is also accepted for a single ordering column
+  /// and moves forward. Returned rows always retain the query's ordering.
   Future<LaconicCursorPage> cursorPaginate(
     int perPage, {
     String column = 'id',
@@ -1013,11 +1037,90 @@ class QueryBuilder {
     if (perPage < 1) {
       throw LaconicException('perPage must be greater than zero');
     }
-    final q = _paginationQuery()..reorder();
-    final cursorColumn =
-        _groupLimit == null ? column : _resultColumnName(column);
+    final orders =
+        _groupLimit == null && _orders.isNotEmpty
+            ? _orders.map((order) => Map<String, dynamic>.of(order)).toList()
+            : <Map<String, dynamic>>[
+              {'column': column, 'direction': 'asc'},
+            ];
+    for (final order in orders) {
+      if (order['type'] == 'raw') {
+        throw LaconicException(
+          'cursorPaginate requires named ordering columns; select and order by an alias for expressions',
+        );
+      }
+      final direction = (order['direction'] as String).toLowerCase();
+      if (direction != 'asc' && direction != 'desc') {
+        throw LaconicException('Invalid cursor ordering direction: $direction');
+      }
+      order['direction'] = direction;
+    }
+    final columns = [for (final order in orders) order['column'] as String];
+    if (columns.toSet().length != columns.length) {
+      throw LaconicException('Cursor ordering columns must be distinct');
+    }
+    final LaconicCursor? boundary;
+    if (cursor == null || cursor is LaconicCursor) {
+      boundary = cursor as LaconicCursor?;
+    } else if (columns.length == 1) {
+      boundary = LaconicCursor({columns.single: cursor});
+    } else {
+      throw LaconicException('Composite ordering requires a LaconicCursor');
+    }
+    if (boundary != null) {
+      final parameters = boundary.parameters;
+      if (parameters.length != columns.length ||
+          columns.any((name) => parameters[name] == null)) {
+        throw LaconicException(
+          'Cursor values must match all ordering columns and be non-null',
+        );
+      }
+    }
+    final backwards = boundary != null && !boundary.pointsToNextItems;
+    final resultColumns = [
+      for (final name in columns) _cursorResultColumn(name),
+    ];
+    var q = _paginationQuery();
+    var outer = _groupLimit != null || _unions.isNotEmpty;
+    if (!outer &&
+        (_groups.isNotEmpty ||
+            _havings.isNotEmpty ||
+            _distinct ||
+            _columns.any(
+              (selected) =>
+                  selected is Expression ||
+                  (selected is String &&
+                      _grammar.wrap(selected).contains(' as ')),
+            ))) {
+      q.reorder();
+      q._limit = null;
+      q._offset = null;
+      q = QueryBuilder(
+        laconic: _laconic,
+        table: _table,
+      ).fromSub(q, 'laconic_cursor');
+      outer = true;
+    }
+    q.reorder();
     q._offset = null;
-    if (cursor != null && q._unions.isEmpty) {
+    q._limit = perPage + 1;
+    final predicateColumns = <String>[];
+    for (var i = 0; i < orders.length; i++) {
+      final name =
+          outer ? _grammar.quoteSchemaIdentifier(resultColumns[i]) : columns[i];
+      predicateColumns.add(name);
+      final direction = orders[i]['direction'] as String;
+      q.orderBy(
+        name,
+        direction:
+            backwards ? (direction == 'asc' ? 'desc' : 'asc') : direction,
+      );
+    }
+    final cursorWheres =
+        boundary == null
+            ? <Map<String, dynamic>>[]
+            : _cursorWheres(orders, predicateColumns, boundary);
+    if (cursorWheres.isNotEmpty && q._unions.isEmpty) {
       final conditions = List<Map<String, dynamic>>.of(q._wheres);
       q._wheres.clear();
       if (conditions.isNotEmpty) {
@@ -1027,45 +1130,89 @@ class QueryBuilder {
           'boolean': 'and',
         });
       }
-      q.where(cursorColumn, cursor, comparator: '>');
+      q._wheres.addAll(cursorWheres);
     }
-    q.orderBy(cursorColumn).limit(perPage + 1);
     final compiled = q._compileSelect(
-      unionWheres: [
-        if (cursor != null && q._unions.isNotEmpty)
-          {
-            'type': 'basic',
-            'column': column,
-            'comparator': '>',
-            'value': cursor,
-            'boolean': 'and',
-          },
-      ],
+      unionWheres: q._unions.isEmpty ? const [] : cursorWheres,
     );
     final rows = await _laconic.select(compiled.sql, compiled.bindings);
-    final hasMorePages = rows.length > perPage;
-    final data = hasMorePages ? rows.sublist(0, perPage) : rows;
+    final hasExtra = rows.length > perPage;
+    var data = hasExtra ? rows.sublist(0, perPage) : rows;
+    if (backwards) data = data.reversed.toList();
 
-    Object? nextCursor;
-    if (hasMorePages && data.isNotEmpty) {
-      try {
-        nextCursor = data.last[_resultColumnName(column)];
-      } on ArgumentError {
-        throw LaconicException(
-          'cursorPaginate requires selecting the cursor column "$column"',
-        );
+    Map<String, Object?> values(LaconicResult row) {
+      final parameters = <String, Object?>{};
+      for (var i = 0; i < columns.length; i++) {
+        Object? value;
+        try {
+          value = row[resultColumns[i]];
+        } on ArgumentError {
+          throw LaconicException(
+            'cursorPaginate requires selecting the ordering column "${columns[i]}"',
+          );
+        }
+        if (value == null) {
+          throw LaconicException('Cursor ordering values must be non-null');
+        }
+        parameters[columns[i]] = value;
       }
-      if (nextCursor == null) {
-        throw LaconicException('Cursor column must be non-null and advance');
-      }
+      return parameters;
     }
 
+    final parameters = [for (final row in data) values(row)];
+    final hasNext = data.isNotEmpty && (backwards || hasExtra);
+    final hasPrevious =
+        data.isNotEmpty && (backwards ? hasExtra : boundary != null);
     return LaconicCursorPage(
       data: data,
       perPage: perPage,
-      nextCursor: nextCursor,
-      hasMorePages: hasMorePages,
+      nextCursor: hasNext ? LaconicCursor(parameters.last) : null,
+      previousCursor:
+          hasPrevious
+              ? LaconicCursor(parameters.first, pointsToNextItems: false)
+              : null,
+      hasMorePages: hasNext,
     );
+  }
+
+  String _cursorResultColumn(String column) {
+    final source = _grammar.wrap(column);
+    for (final selected in _columns.whereType<String>()) {
+      if (_grammar.wrap(selected).startsWith('$source as ')) {
+        return _resultColumnName(selected);
+      }
+    }
+    return _resultColumnName(column);
+  }
+
+  List<Map<String, dynamic>> _cursorWheres(
+    List<Map<String, dynamic>> orders,
+    List<String> columns,
+    LaconicCursor cursor,
+  ) {
+    final alternatives = <Map<String, dynamic>>[];
+    for (var i = 0; i < orders.length; i++) {
+      final conditions = <Map<String, dynamic>>[];
+      for (var j = 0; j <= i; j++) {
+        final ascending = orders[j]['direction'] == 'asc';
+        conditions.add({
+          'type': 'basic',
+          'column': columns[j],
+          'comparator':
+              j < i ? '=' : (ascending == cursor.pointsToNextItems ? '>' : '<'),
+          'value': cursor.parameters[orders[j]['column']],
+          'boolean': 'and',
+        });
+      }
+      alternatives.add({
+        'type': 'nested',
+        'conditions': conditions,
+        'boolean': 'or',
+      });
+    }
+    return [
+      {'type': 'nested', 'conditions': alternatives, 'boolean': 'and'},
+    ];
   }
 
   /// Number of rows used by pagination.
@@ -3280,7 +3427,7 @@ class QueryBuilder {
   /// ```
   Future<double?> avg(String column) async {
     final value = await _aggregate('AVG', column);
-    return value?.toDouble();
+    return _numericAggregateValue(value)?.toDouble();
   }
 
   /// Returns the sum of a column's values.
@@ -3291,8 +3438,9 @@ class QueryBuilder {
   /// ```dart
   /// final totalVotes = await query.sum('votes');
   /// ```
-  Future<num?> sum(String column) async {
-    return _aggregate('SUM', column);
+  /// Returns zero when no non-null values match.
+  Future<num> sum(String column) async {
+    return _numericAggregateValue(await _aggregate('SUM', column)) ?? 0;
   }
 
   /// Returns the maximum value of a column.
@@ -3303,7 +3451,9 @@ class QueryBuilder {
   /// ```dart
   /// final maxPrice = await query.max('price');
   /// ```
-  Future<num?> max(String column) async {
+  /// Preserves the driver's value type, including strings and dates.
+  /// Returns `null` when no non-null values match.
+  Future<Object?> max(String column) async {
     return _aggregate('MAX', column);
   }
 
@@ -3315,7 +3465,9 @@ class QueryBuilder {
   /// ```dart
   /// final minPrice = await query.min('price');
   /// ```
-  Future<num?> min(String column) async {
+  /// Preserves the driver's value type, including strings and dates.
+  /// Returns `null` when no non-null values match.
+  Future<Object?> min(String column) async {
     return _aggregate('MIN', column);
   }
 
@@ -3324,7 +3476,7 @@ class QueryBuilder {
   /// Preserves all query clauses. When GROUP BY is present, returns the
   /// aggregate value from the first group only. For grouped aggregates
   /// that require all group values, use [get] with [selectRaw] instead.
-  Future<num?> _aggregate(String function, String column) async {
+  Future<Object?> _aggregate(String function, String column) async {
     if (_unions.isNotEmpty) {
       final query = clone()..reorder();
       query._limit = null;
@@ -3335,8 +3487,7 @@ class QueryBuilder {
         'select ${_grammar.compileAggregateExpression(function, column)} as aggregate from (${inner.sql}) as laconic_aggregate',
         inner.bindings,
       );
-      final value = results.first['aggregate'];
-      return value is num ? value : num.tryParse('$value');
+      return results.isEmpty ? null : results.first['aggregate'];
     }
 
     final compiled = _grammar.compileSelect(
@@ -3363,25 +3514,15 @@ class QueryBuilder {
 
     final results = await _laconic.select(compiled.sql, compiled.bindings);
 
-    if (results.isEmpty) {
-      return null;
-    }
-
-    final value = results.first['aggregate'];
-    if (value == null) {
-      return null;
-    }
-
-    // Preserve the database's numeric type: SUM/MAX/MIN over integer columns
-    // should stay integers rather than being widened to double.
-    if (value is num) {
-      return value;
-    } else if (value is String) {
-      return num.tryParse(value);
-    }
-
-    return null;
+    return results.isEmpty ? null : results.first['aggregate'];
   }
+
+  num? _numericAggregateValue(Object? value) =>
+      value is num
+          ? value
+          : value is String
+          ? num.tryParse(value)
+          : null;
 
   /// Checks if any records exist for the current query.
   ///
@@ -3409,14 +3550,14 @@ class QueryBuilder {
     return !(await exists());
   }
 
-  /// Returns `true` when rows exist, otherwise [fallback].
-  Future<bool> existsOr(bool fallback) async {
-    return (await exists()) || fallback;
+  /// Returns `true` when rows exist, otherwise executes [callback].
+  Future<Object?> existsOr(FutureOr<Object?> Function() callback) async {
+    return await exists() ? true : await callback();
   }
 
-  /// Returns `true` when no rows exist, otherwise [fallback].
-  Future<bool> doesntExistOr(bool fallback) async {
-    return (await doesntExist()) || fallback;
+  /// Returns `true` when no rows exist, otherwise executes [callback].
+  Future<Object?> doesntExistOr(FutureOr<Object?> Function() callback) async {
+    return await doesntExist() ? true : await callback();
   }
 
   /// Retrieves a single column's values from the query results.

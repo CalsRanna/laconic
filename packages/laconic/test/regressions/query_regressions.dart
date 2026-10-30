@@ -1,6 +1,8 @@
 import 'package:laconic/laconic.dart';
 import 'package:test/test.dart';
 import 'query_semantics_regressions.dart';
+import 'query_result_regressions.dart';
+import 'query_pagination_regressions.dart';
 
 // The same behavior checks run against each real database driver.
 
@@ -11,7 +13,14 @@ abstract final class QueryRegressions {
     bool supportsOrderedWrites = true,
     bool supportsWriteOffset = false,
     bool supportsLimitedJoinWrites = true,
+    int upsertUpdateCount = 1,
   }) {
+    QueryResultRegressions.register(
+      createDatabase,
+      supportsInsertOrIgnore: supportsInsertOrIgnore,
+      upsertUpdateCount: upsertUpdateCount,
+    );
+    QueryPaginationRegressions.register(createDatabase);
     QuerySemanticsRegressions.register(
       createDatabase,
       supportsOrderedWrites: supportsOrderedWrites,
@@ -608,10 +617,10 @@ abstract final class QueryRegressions {
         '?|two|three|four|five',
       );
 
-      expect(await query().where('id', 1).existsOr(false), isTrue);
-      expect(await query().where('id', 999).existsOr(false), isFalse);
-      expect(await query().where('id', 999).doesntExistOr(false), isTrue);
-      expect(await query().where('id', 1).doesntExistOr(false), isFalse);
+      expect(await query().where('id', 1).existsOr(() => false), isTrue);
+      expect(await query().where('id', 999).existsOr(() => false), isFalse);
+      expect(await query().where('id', 999).doesntExistOr(() => false), isTrue);
+      expect(await query().where('id', 1).doesntExistOr(() => false), isFalse);
 
       final paginated = query().limit(2).offset(1);
       expect(paginated.getLimit(), 2);
@@ -726,7 +735,7 @@ abstract final class QueryRegressions {
       expect(await q.avg('active'), 0.5);
       expect(await q.min('active'), 0);
       expect(await q.max('active'), 1);
-      expect(await q.clone().where('id', 0).sum('active'), isNull);
+      expect(await q.clone().where('id', 0).sum('active'), 0);
       expect(await query().sum('active'), 3);
       expect(await query().avg('active'), closeTo(0.6, 0.000001));
     });
@@ -752,7 +761,7 @@ abstract final class QueryRegressions {
         expect(await q.clone().where('t.id', 1).soleValue('t.label'), '?');
         final page = await q.cursorPaginate(2, column: 't.id');
         expect(ids(page.data), [1, 2]);
-        expect(page.nextCursor, 2);
+        expect(page.nextCursor?.parameters.values, [2]);
       },
     );
 
@@ -942,7 +951,7 @@ abstract final class QueryRegressions {
           'id',
           'label',
         ], query().select(['id', 'label']).where('id', 1));
-        expect(inserted, isTrue);
+        expect(inserted, 1);
         expect(await db.table(probe).count(), 1);
         expect(await db.table(probe).value('label'), '?');
       } finally {
@@ -981,12 +990,12 @@ abstract final class QueryRegressions {
     test('cursorPaginate returns a next cursor', () async {
       final first = await query().cursorPaginate(2);
       expect(ids(first.data), [1, 2]);
-      expect(first.nextCursor, 2);
+      expect(first.nextCursor?.parameters.values, [2]);
       expect(first.hasMorePages, isTrue);
 
       final second = await query().cursorPaginate(2, cursor: first.nextCursor);
       expect(ids(second.data), [3, 4]);
-      expect(second.nextCursor, 4);
+      expect(second.nextCursor?.parameters.values, [4]);
       expect(second.hasMorePages, isTrue);
 
       final third = await query().cursorPaginate(2, cursor: second.nextCursor);
@@ -1004,7 +1013,7 @@ abstract final class QueryRegressions {
 
         final first = await q.cursorPaginate(2);
         expect(ids(first.data), [1, 2]);
-        expect(first.nextCursor, 2);
+        expect(first.nextCursor?.parameters.values, [2]);
         expect(first.hasMorePages, isTrue);
 
         final second = await q.cursorPaginate(2, cursor: first.nextCursor);
@@ -1027,12 +1036,12 @@ abstract final class QueryRegressions {
 
         final first = await q.cursorPaginate(2);
         expect(ids(first.data), [1, 2]);
-        expect(first.nextCursor, 2);
+        expect(first.nextCursor?.parameters.values, [2]);
         expect(first.hasMorePages, isTrue);
 
         final second = await q.cursorPaginate(2, cursor: first.nextCursor);
         expect(ids(second.data), [3, 4]);
-        expect(second.nextCursor, 4);
+        expect(second.nextCursor?.parameters.values, [4]);
         expect(second.hasMorePages, isTrue);
 
         final third = await q.cursorPaginate(2, cursor: second.nextCursor);
@@ -1459,11 +1468,11 @@ abstract final class QueryRegressions {
         final queryOne = query().select(['id', 'label']).where('id', 1);
         expect(
           await db.table(probe).insertOrIgnoreUsing(['id', 'label'], queryOne),
-          isTrue,
+          1,
         );
         expect(
           await db.table(probe).insertOrIgnoreUsing(['id', 'label'], queryOne),
-          isTrue,
+          0,
         );
         expect(await db.table(probe).count(), 1);
       } finally {

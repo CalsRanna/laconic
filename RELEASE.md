@@ -5,6 +5,8 @@
 
 ## 1. 发布前条件
 
+- [ ] 记录查询返回值与游标输出的 breaking changes：min/max 为 Object?、sum 空结果为 0、批量/子查询写入返回行数、existsOr 回调化，以及 LaconicCursor 双向复合分页；发布前同步驱动最低核心版本与调用迁移说明
+
 - [ ] 移除 `raw()` 属于 breaking change：确定核心下一主版本，并协调驱动最低核心版本；升级调用为 `Expression()`，CLI 调用和配置按 MIGRATIONS.md 迁移
 
 - [ ] 为 Schema Builder、Migration 和 CLI 确定核心发布版本，并同步所有驱动的最低核心依赖版本；已发布的 6.0.0 不包含这些 API

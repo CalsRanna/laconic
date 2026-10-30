@@ -52,11 +52,32 @@ class LaconicSimplePage {
   int get to => data.isEmpty ? 0 : from + data.length - 1;
 }
 
-/// A keyset-paginated page.
+/// A keyset boundary and the direction in which to fetch the next page.
+///
+/// [parameters] maps each ORDER BY column to its non-null boundary value.
+/// Reuse the same query ordering when passing this cursor to another request.
+class LaconicCursor {
+  /// The values of all ordering columns at the page boundary.
+  final Map<String, Object?> parameters;
+
+  /// Whether to fetch items after the boundary in the query's ordering.
+  final bool pointsToNextItems;
+
+  /// Creates a cursor with an immutable snapshot of [parameters].
+  LaconicCursor(
+    Map<String, Object?> parameters, {
+    this.pointsToNextItems = true,
+  }) : parameters = Map.unmodifiable(parameters);
+}
+
+/// A keyset-paginated page in the query's original ordering.
 class LaconicCursorPage {
   final List<LaconicResult> data;
   final int perPage;
-  final Object? nextCursor;
+  final LaconicCursor? nextCursor;
+  final LaconicCursor? previousCursor;
+
+  /// Whether another page follows this page in the query's ordering.
   final bool hasMorePages;
 
   const LaconicCursorPage({
@@ -64,7 +85,11 @@ class LaconicCursorPage {
     required this.perPage,
     required this.nextCursor,
     required this.hasMorePages,
+    this.previousCursor,
   });
+
+  /// Whether another page precedes this page in the query's ordering.
+  bool get hasPreviousPages => previousCursor != null;
 
   bool get isEmpty => data.isEmpty;
 

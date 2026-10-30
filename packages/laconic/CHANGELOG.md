@@ -1,5 +1,31 @@
 ## Unreleased
 
+- **Breaking query return contracts:** `min`/`max` return `Future<Object?>`,
+  preserving text, numeric text, date and numeric driver values; `sum` returns
+  `Future<num>` with zero for empty/all-null results. `avg` stays nullable.
+  `insertUsing`, `insertOrIgnoreUsing`, `insertOrIgnore` and `upsert` return
+  affected row counts (`Future<int>`) using native database counting rules.
+- **Breaking callbacks:** change `existsOr(false)` to `existsOr(() => false)`
+  (likewise `doesntExistOr`). Callbacks are lazy, may be async, and their results
+  are preserved. `updateOrInsert` accepts a map or an existence-aware values
+  callback and returns the actual write outcome; an empty update map succeeds.
+- **Breaking cursor output:** `LaconicCursorPage.nextCursor` is now a
+  `LaconicCursor?`, with immutable ordering `parameters` and `pointsToNextItems`.
+  Pass it back unchanged; replace scalar inspection with `parameters[column]`.
+  Add `previousCursor` and `hasPreviousPages` for backward navigation. Existing
+  single-column scalar inputs remain accepted for forward navigation.
+- Cursor pagination preserves complete mixed-direction ordering and compares
+  composite boundaries lexicographically. It handles projection aliases,
+  selected expressions, grouping, distinct and UNION results without mutating
+  the builder. Ordering values must be selected, non-null and unique as a tuple.
+  Replace raw ordering with an aliased selected expression plus `orderBy(alias)`.
+  `groupLimit` retains its partition selection and uses `column:` for outer
+  pagination; wrap it with `fromSub` for composite outer ordering.
+- Preserve the declared throwing `first`/`find`, empty write input rejection,
+  grouped-count, signed ID and write-scope safety conventions. Driver interfaces
+  and versions are unchanged; coordinate the next core release and matching
+  driver dependencies before publishing these breaking APIs.
+
 - Add Blueprint foreignId/foreignUuid/foreignUlid with explicit-table constrained(),
   fluent foreign-key actions, soft-delete/remember-token/timestamp/morph helpers,
   and matching drop shortcuts. IDs and numeric foreign/morph columns retain

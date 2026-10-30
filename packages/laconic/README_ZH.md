@@ -166,6 +166,17 @@ final results = await laconic.table('users')
     .get();
 ```
 
+`sum()` 返回 `num`，空结果或全 NULL 时返回 `0`；`avg()` 返回 `double?`；
+`min()` / `max()` 返回 `Object?`，保留驱动返回的数字、字符串或日期类型。
+后三者在没有非 NULL 值时返回 `null`。`first()` / `find()` 的无结果抛异常约定不变。
+
+`insertUsing()`、`insertOrIgnoreUsing()`、`insertOrIgnore()` 和 `upsert()`
+返回数据库报告的受影响行数（`Future<int>`）；MySQL/MariaDB 的 upsert 更新可能计为两行。
+`insert()` 仍返回 `Future<bool>`，空插入/upsert 输入仍被拒绝。`updateOrInsert()`
+支持值 Map 或接收 `bool exists` 的同步/异步回调，返回是否有行被写入；空更新 Map
+直接返回成功。`existsOr()` / `doesntExistOr()` 改为接收惰性回调，返回 `true`
+或回调的结果，也支持异步回调。
+
 ### 聚合函数
 
 `exists()` 和 `doesntExist()` 保留 GROUP BY 和 HAVING 条件。分组查询的 `count()`
@@ -271,12 +282,35 @@ await laconic.table('users_archive')
 
 ### 分页与流式
 
+游标分页保留完整的 `orderBy` 顺序，支持混合升降序。排序列组合必须唯一，且每个
+排序值都必须被 SELECT 选出并非 NULL；可追加 `id` 作为唯一的排序依据。
+`nextCursor` / `previousCursor` 现在为 `LaconicCursor?`，包含 `parameters` 和
+`pointsToNextItems`。把任一游标传回同一排序查询即可前后翻页，返回数据始终保持原排序。
+只有对应游标非空时才应翻页，传入 null 会回到第一页；空页不返回导航游标。
+`hasMorePages` 表示后方还有页面，`hasPreviousPages` 表示前方还有页面。
+
+单列查询仍接受旧的标量游标。未显式排序时，使用 `column:`（默认 `id`）升序。
+`groupLimit` 的已有排序负责组内选行，`column:` 负责外层分页；需要复合外层排序时，
+先用 `fromSub()` 包裹 groupLimit 查询。原始 ORDER BY 片段会被拒绝；表达式应先
+SELECT 为别名，再 `orderBy(别名)`。别名、分组结果和 UNION 在外层过滤，保留结果集与绑定。
+
 ```dart
 final page = await laconic.table('users').orderBy('id').paginate(2, perPage: 20);
 page.data;
 page.total;
 page.lastPage;
 page.hasMorePages;
+
+final ordered = laconic.table('users').orderByDesc('created_at').orderBy('id');
+final firstPage = await ordered.cursorPaginate(20);
+if (firstPage.nextCursor != null) {
+  final nextPage = await ordered.cursorPaginate(20, cursor: firstPage.nextCursor);
+  if (nextPage.previousCursor != null) {
+    final previousPage = await ordered.cursorPaginate(
+      20, cursor: nextPage.previousCursor,
+    );
+  }
+}
 
 await for (final row in laconic.table('users').orderBy('id').cursor()) {
   print(row['name']);
@@ -427,7 +461,7 @@ class MyDriver implements DatabaseDriver {
 ## 升级到 6.0
 
 - 安装本页所列的新版本核心包与驱动。SQLite/PostgreSQL 驱动使用 4.0 系列，MySQL 驱动使用 5.0 系列。
-- `sum()`、`max()`、`min()` 返回 `num?`；`avg()` 仍为 `double?`。
+- 已发布的 6.0 使用 `num?` 聚合返回值；当前未发布版本的返回值变化见上文。
 - `insert()` 返回 `Future<bool>`。
 - `where('column', null)` 编译为 `IS NULL`。
 - `SqlGrammar.compileSelect` 新增可选参数，自定义覆盖必须补上。

@@ -4,4 +4,5 @@ import 'test_helper.dart';
 void main() => QueryRegressions.register(
   MariadbTestDatabase.createDatabase,
   supportsLimitedJoinWrites: false,
+  upsertUpdateCount: 2,
 );
