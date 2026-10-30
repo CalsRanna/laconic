@@ -72,6 +72,47 @@ final names = await laconic.table('users').select(['name', 'age']).get();
 final roles = await laconic.table('users').distinct().select(['role']).get();
 ```
 
+### 查询便捷 API（未发布）
+
+相对日期条件接受单个列名或列名列表：
+
+```dart
+final overdue = await laconic.table('invoices').wherePast('due_at').get();
+final today = await laconic.table('invoices').whereToday('due_at').get();
+final cutoff = DateTime.utc(2026, 10, 30, 12);
+final due = await laconic.table('invoices')
+    .whereNowOrPast(['due_at', 'review_at'], now: cutoff).get();
+```
+
+支持 `wherePast/whereFuture`、`whereNowOrPast/whereNowOrFuture`、
+`whereBeforeToday/whereAfterToday`、`whereTodayOrBefore/whereTodayOrAfter` 和
+`whereToday`，以及每个方法的 `orWhere...` 变体。严格比较不包含边界，
+`NowOr...`、`TodayOr...` 包含边界；SQL NULL 不匹配。
+每次调用捕获一次应用时间，或通过 `now:` 指定，执行时不会重新取时间。
+时间条件绑定秒精度的 `yyyy-MM-dd HH:mm:ss`，今天条件绑定 `yyyy-MM-dd` 并比较日期部分。
+不自动转换时区，请选择与存储值一致的时钟；SQLite 的时间文本应采用相同的 SQL 格式。
+多列分别添加 AND 条件，OR 变体分别添加 OR 条件；需要括号时使用 `whereNested`。
+空列表不添加条件，也不会绕过无 WHERE 删除或自增操作的保护。
+
+```dart
+final base = laconic.table('users');
+final active = base.clone().tap((q) => q.where('active', 1));
+final total = await active.pipe((q) => q.count());
+final adjusted = await active.where('id', 1).rawValue('votes + ?', [5]);
+final posts = laconic.table('posts p').whereColumn('p.user_id', 'u.id');
+final authors = await laconic.table('users u').whereExists(posts).get();
+```
+
+`tap` 执行同步查询组件并返回同一个构造器，忽略回调返回值。`pipe` 返回回调结果；
+同步的 null/void 结果返回构造器，Future 则原样返回（包括最终结果为 null 的 Future）。
+保留原查询模板时先调用 `clone()`。WHERE 和 JOIN 中的四种 EXISTS 方法均支持已有
+QueryBuilder；添加时捕获 SQL 与绑定，不修改来源，来源之后的变化不影响已组合的查询。
+
+`rawValue(expression, bindings)` 读取第一条结果的表达式值，保留驱动原生类型，
+无记录或 SQL NULL 时返回 null。仅本次读取替换投影，不修改原构造器。
+UNION/groupLimit 的表达式使用完整结果暴露的列名。表达式本身应为可信 SQL，
+用户值通过 `?` 绑定。
+
 ### WHERE 子句
 
 空的 `whereIn` 编译为恒假条件，`whereNotIn` 编译为恒真条件，仍参与完整的布尔运算。
@@ -122,7 +163,7 @@ final users = await laconic.table('users')
     .get();
 
 // 日期 WHERE
-final todayUsers = await laconic.table('users').whereDate('created_at', DateTime.now()).get();
+final todayUsers = await laconic.table('users').whereToday('created_at').get();
 final janUsers = await laconic.table('users').whereMonth('created_at', 1).get();
 
 // WHERE EXISTS 子查询
@@ -365,6 +406,26 @@ MySQL/MariaDB 拒绝非零写入 OFFSET，以及 JOIN 与排序/LIMIT 的组合�
 用于写入时会报错，不再被忽略。`updateOrInsert` 最多更新一条匹配记录。
 
 ### 大数据集分块处理
+
+`chunkByIdDesc`、`lazyByIdDesc` 使用相同游标规则降序遍历；
+`orderedChunkById(count, callback, descending: true)` 可以显式选择方向。
+这些方法替换旧排序，保留总 LIMIT 与首次 OFFSET，并对完整的 UNION/groupLimit 结果翻页。
+游标列必须被选出、非空且唯一；缺少游标列时抛出 `LaconicException`。
+异步回调返回 false 会停止遍历，取消惰性流后不再请求后续分块，原查询保持不变。
+
+```dart
+await laconic.table('users').chunkByIdDesc(100, (users, page) async {
+  await processBatch(users);
+});
+await for (final user in laconic.table('users').lazyByIdDesc(100)) {
+  await processUser(user);
+}
+final List<String> emails = await laconic.table('users').orderBy('id')
+    .chunkMap<String>((row) async => row['email'] as String, count: 100);
+```
+
+`chunkMap<T>` 要求排序，按顺序等待每个映射回调并收集 `List<T>`。
+null/false 映射结果会保留，不表示停止。原始记录按块读取，但返回列表仍占用全部映射结果的内存。
 
 `chunkById` 按唯一、非 null 的游标列升序读取，默认列为 `id`。它会替换已有排序，
 初始 offset 只作用于第一批，且查询结果必须包含游标列。

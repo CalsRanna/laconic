@@ -1,5 +1,24 @@
 ## Unreleased
 
+- Add relative date conditions: past/future, inclusive now variants, today and
+  inclusive/exclusive day boundaries, with all OR variants and column lists.
+  Capture the application clock once, with an optional `now:` reference; bind
+  SQL-formatted timestamps at second precision without timezone conversion.
+- Add `chunkByIdDesc`, `lazyByIdDesc`, `orderedChunkById`, and async-aware
+  `chunkMap<T>`. Keep existing key-order replacement, total-limit/initial-offset
+  semantics, complete UNION/groupLimit results, and immutable query templates.
+  Missing keyset cursor columns now report `LaconicException` instead of leaking
+  a result lookup `ArgumentError`.
+- Add `tap`/`pipe` query composition and bound `rawValue` reads. `pipe` follows
+  Laravel's synchronous null/void builder fallback and preserves futures.
+  `rawValue` preserves native scalar types and reads the complete UNION/groupLimit
+  projection without modifying the original query.
+- Allow existing `QueryBuilder` instances in all WHERE/JOIN EXISTS variants,
+  capturing their SQL/bindings at composition time. Existing callbacks work.
+- Add shared regressions across SQLite, MySQL, MariaDB, PostgreSQL and SQL Server.
+  No driver contract changes; these APIs require the matching unreleased core.
+  Published core 6.0 does not contain them; coordinate releases via RELEASE.md.
+
 - Add conditional migrations (`shouldRun`), cached named connection resolution,
   and CLI `--database`, retaining default-connection history. Cross-connection
   DDL/history are explicitly non-atomic; CLI closes every resolved connection.

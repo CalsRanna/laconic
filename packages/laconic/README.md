@@ -70,6 +70,54 @@ final names = await laconic.table('users').select(['name', 'age']).get();
 final roles = await laconic.table('users').distinct().select(['role']).get();
 ```
 
+### Query convenience APIs (unreleased)
+
+Relative date predicates accept one column or a list of column names:
+
+```dart
+final overdue = await laconic.table('invoices').wherePast('due_at').get();
+final today = await laconic.table('invoices').whereToday('due_at').get();
+final cutoff = DateTime.utc(2026, 10, 30, 12);
+final due = await laconic.table('invoices')
+    .whereNowOrPast(['due_at', 'review_at'], now: cutoff).get();
+```
+
+Available pairs are `wherePast/whereFuture`, `whereNowOrPast/whereNowOrFuture`,
+`whereBeforeToday/whereAfterToday`, `whereTodayOrBefore/whereTodayOrAfter`, and
+`whereToday`, each with its `orWhere...` variant. Strict comparisons exclude the
+boundary; `NowOr...` and `TodayOr...` include it. SQL NULL does not match.
+The application clock is captured once per method call (not at execution), or
+supplied through `now:`. Timestamp predicates bind `yyyy-MM-dd HH:mm:ss` at second
+precision; today predicates bind `yyyy-MM-dd` and compare date parts. Calendar
+fields are used without timezone conversion: choose a clock matching your stored
+values. SQLite timestamp TEXT should use the same SQL format for comparisons.
+Multiple columns add individual AND predicates, or individual OR predicates for
+OR variants. Use `whereNested` when a group is needed. An empty list is a no-op
+and does not bypass the existing guard against unfiltered deletes/increments.
+
+```dart
+final base = laconic.table('users');
+final active = base.clone().tap((q) => q.where('active', 1));
+final total = await active.pipe((q) => q.count());
+final adjusted = await active.where('id', 1).rawValue('votes + ?', [5]);
+final posts = laconic.table('posts p').whereColumn('p.user_id', 'u.id');
+final authors = await laconic.table('users u').whereExists(posts).get();
+```
+
+`tap` calls a synchronous query component and returns the same builder, ignoring
+its result. `pipe` returns the callback result; synchronous null/void returns the
+builder, while futures are passed through unchanged (including a future resolving
+to null). Call `clone()` first to preserve reusable templates. All four EXISTS
+variants accept an existing builder in WHERE and JOIN clauses, capturing its SQL
+and bindings without modifying it; later changes to that builder do not change
+the already-composed query.
+
+`rawValue(expression, bindings)` reads one expression from the first matching
+row, preserving its native driver type and returning null for no row or SQL NULL.
+It replaces projections only for that read and keeps the original builder intact.
+For UNION/groupLimit, reference columns exposed by the complete result. SQL
+expressions are trusted code; bind user values with `?`.
+
 ### WHERE Clauses
 
 An empty `whereIn` compiles to false and an empty `whereNotIn` to true, while
@@ -122,7 +170,7 @@ final users = await laconic.table('users')
 // SQL: WHERE status = ? AND (age = ? OR role = ?)
 
 // Date WHERE clauses
-final todayUsers = await laconic.table('users').whereDate('created_at', DateTime.now()).get();
+final todayUsers = await laconic.table('users').whereToday('created_at').get();
 final janUsers = await laconic.table('users').whereMonth('created_at', 1).get();
 
 // WHERE EXISTS subquery
@@ -471,6 +519,29 @@ rowid table. Grouping, HAVING, UNION, DISTINCT, derived/raw FROM sources,
 `updateOrInsert` updates at most one matching row.
 
 ### Chunking Large Results
+
+`chunkByIdDesc` and `lazyByIdDesc` use the same cursor rules in descending order.
+`orderedChunkById(count, callback, descending: true)` selects the direction
+explicitly. These methods replace old ordering, preserve the total limit and
+initial offset, and page the full UNION/groupLimit result. The cursor must be
+selected, non-null and unique; missing cursor columns throw `LaconicException`.
+Callbacks can be async and stop with `false`; cancelling a lazy stream prevents
+subsequent chunk queries. Source queries remain unchanged.
+
+```dart
+await laconic.table('users').chunkByIdDesc(100, (users, page) async {
+  await processBatch(users);
+});
+await for (final user in laconic.table('users').lazyByIdDesc(100)) {
+  await processUser(user);
+}
+final List<String> emails = await laconic.table('users').orderBy('id')
+    .chunkMap<String>((row) async => row['email'] as String, count: 100);
+```
+
+`chunkMap<T>` requires ordering, awaits each mapping sequentially and collects a
+`List<T>`. Null/false mapping results are values, not stop signals. Source rows
+are fetched in chunks, but the returned list retains all mapped results in memory.
 
 `chunkById` reads in ascending order of a unique, non-null cursor column
 (default `id`). It replaces existing ordering, applies an initial offset only

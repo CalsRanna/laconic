@@ -3,6 +3,7 @@ import 'package:test/test.dart';
 import 'query_semantics_regressions.dart';
 import 'query_result_regressions.dart';
 import 'query_pagination_regressions.dart';
+import 'query_convenience_regressions.dart';
 
 // The same behavior checks run against each real database driver.
 
@@ -21,6 +22,7 @@ abstract final class QueryRegressions {
       upsertUpdateCount: upsertUpdateCount,
     );
     QueryPaginationRegressions.register(createDatabase);
+    QueryConvenienceRegressions.register(createDatabase);
     QuerySemanticsRegressions.register(
       createDatabase,
       supportsOrderedWrites: supportsOrderedWrites,

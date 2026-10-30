@@ -24,6 +24,8 @@
 
 - [ ] 第三阶段迁移能力需匹配核心与全部五个驱动：新增可选 `MigrationLockDriver` / `SchemaStateDriver`；原生 dump 客户端必须与服务器版本兼容，SQL Server 不提供 dump/load。验证 `--prune` 的文件删除和基线回滚限制，保留现有跨库差异约定。
 
+- [ ] 第四阶段查询便捷 API 位于未发布核心：相对日期条件、降序分块、`chunkMap`、`tap/pipe`、`rawValue` 及 QueryBuilder EXISTS。无需新增驱动协议，但需五库共享回归；核对日期时钟/秒精度约定与游标缺列异常改为 `LaconicException`。
+
 ## 2. 完整校验
 
 从 workspace 根目录执行：

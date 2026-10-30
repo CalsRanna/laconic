@@ -1414,40 +1414,44 @@ class QueryBuilder {
 
   /// Adds a WHERE EXISTS clause with a subquery.
   ///
-  /// The [callback] receives a fresh [QueryBuilder] for building the
-  /// subquery. Use [from] to set the table.
+  /// [query] accepts an existing [QueryBuilder] or a callback receiving a fresh
+  /// builder. Use [from] to set the callback's table. SQL and bindings are
+  /// captured now without modifying a supplied builder.
   ///
   /// Example:
   /// ```dart
   /// query.whereExists((q) =>
   ///   q.from('orders').whereColumn('orders.user_id', 'users.id'));
   /// ```
-  QueryBuilder whereExists(void Function(QueryBuilder) callback) {
-    return _addExists(callback, 'and', false);
+  QueryBuilder whereExists(Object query) {
+    return _addExists(query, 'and', false);
   }
 
   /// Adds an OR WHERE EXISTS clause.
-  QueryBuilder orWhereExists(void Function(QueryBuilder) callback) {
-    return _addExists(callback, 'or', false);
+  QueryBuilder orWhereExists(Object query) {
+    return _addExists(query, 'or', false);
   }
 
   /// Adds a WHERE NOT EXISTS clause.
-  QueryBuilder whereNotExists(void Function(QueryBuilder) callback) {
-    return _addExists(callback, 'and', true);
+  QueryBuilder whereNotExists(Object query) {
+    return _addExists(query, 'and', true);
   }
 
   /// Adds an OR WHERE NOT EXISTS clause.
-  QueryBuilder orWhereNotExists(void Function(QueryBuilder) callback) {
-    return _addExists(callback, 'or', true);
+  QueryBuilder orWhereNotExists(Object query) {
+    return _addExists(query, 'or', true);
   }
 
-  QueryBuilder _addExists(
-    void Function(QueryBuilder) callback,
-    String boolean,
-    bool not,
-  ) {
-    final subQuery = QueryBuilder(laconic: _laconic, table: '');
-    callback(subQuery);
+  QueryBuilder _addExists(Object query, String boolean, bool not) {
+    final QueryBuilder subQuery;
+    if (query is QueryBuilder) {
+      subQuery = query;
+    } else if (query is void Function(QueryBuilder)) {
+      subQuery = QueryBuilder(laconic: _laconic, table: '');
+      query(subQuery);
+    } else {
+      throw LaconicException('Expected a callback or QueryBuilder');
+    }
     final compiled = subQuery.compileAsSubquery();
     _wheres.add({
       'type': 'exists',
@@ -1510,6 +1514,25 @@ class QueryBuilder {
     return true;
   }
 
+  /// Collects mapped values while reading ordered query results in chunks.
+  ///
+  /// [callback] is awaited for each row in order. Null and false are collected
+  /// as values; they do not stop iteration. The result list holds every mapped
+  /// value, while source rows are fetched in batches of [count]. This builder's
+  /// ordering, offset, limit and bindings are preserved.
+  Future<List<T>> chunkMap<T>(
+    FutureOr<T> Function(LaconicResult row) callback, {
+    int count = 1000,
+  }) async {
+    final values = <T>[];
+    await for (final rows in _chunkStream(count)) {
+      for (final row in rows) {
+        values.add(await callback(row));
+      }
+    }
+    return values;
+  }
+
   Future<bool> _callChunk(
     Function callback,
     List<LaconicResult> rows,
@@ -1543,6 +1566,7 @@ class QueryBuilder {
     int count, {
     String column = 'id',
     String? alias,
+    bool descending = false,
   }) async* {
     if (count <= 0) throw LaconicException('Chunk size must be positive');
     final resultColumn = alias ?? _resultColumnName(column);
@@ -1562,17 +1586,22 @@ class QueryBuilder {
             'boolean': 'and',
           });
         }
-        q.where(col, lastId, comparator: '>');
+        q.where(col, lastId, comparator: descending ? '<' : '>');
       }
       if (lastId != null) q._offset = null;
-      q.orderBy(_unions.isEmpty ? col : resultColumn).limit(size);
+      q
+          .orderBy(
+            _unions.isEmpty ? col : resultColumn,
+            direction: descending ? 'desc' : 'asc',
+          )
+          .limit(size);
       final compiled = q._compileSelect(
         unionWheres: [
           if (lastId != null && _unions.isNotEmpty)
             {
               'type': 'basic',
               'column': resultColumn,
-              'comparator': '>',
+              'comparator': descending ? '<' : '>',
               'value': lastId,
               'boolean': 'and',
             },
@@ -1580,6 +1609,11 @@ class QueryBuilder {
       );
       final results = await _laconic.select(compiled.sql, compiled.bindings);
       if (results.isEmpty) break;
+      if (!results.last.columns.contains(resultColumn)) {
+        throw LaconicException(
+          'Chunk cursor column is missing from the result: $resultColumn',
+        );
+      }
       final nextId = results.last[resultColumn];
       if (nextId == null || nextId == lastId) {
         throw LaconicException('Chunk cursor must be non-null and advance');
@@ -1601,12 +1635,46 @@ class QueryBuilder {
     Function callback, {
     String column = 'id',
     String? alias,
+  }) => orderedChunkById(count, callback, column: column, alias: alias);
+
+  /// Processes rows in descending key order, preserving LIMIT and initial OFFSET.
+  ///
+  /// [column] must be a unique, non-null key selected under [alias] when renamed.
+  /// The callback receives `(rows)` or `(rows, page)` and may return `false`.
+  /// Existing ordering is replaced without mutating this builder.
+  Future<bool> chunkByIdDesc(
+    int count,
+    Function callback, {
+    String column = 'id',
+    String? alias,
+  }) => orderedChunkById(
+    count,
+    callback,
+    column: column,
+    alias: alias,
+    descending: true,
+  );
+
+  /// Processes rows in key order, optionally descending, without changing this query.
+  ///
+  /// [column] must be selected, unique and non-null; [alias] names it in results.
+  /// Existing ordering is replaced, LIMIT is preserved and OFFSET applies only
+  /// to the first chunk. With UNION or groupLimit, pages cover the complete result.
+  /// [callback] accepts `(rows)` or `(rows, page)` with one-based pages, may be
+  /// async, and stops iteration only when it returns `false`.
+  Future<bool> orderedChunkById(
+    int count,
+    Function callback, {
+    String column = 'id',
+    String? alias,
+    bool descending = false,
   }) async {
     var page = 1;
     await for (final rows in _chunkByIdStream(
       count,
       column: column,
       alias: alias,
+      descending: descending,
     )) {
       if (!await _callChunk(callback, rows, page++)) return false;
     }
@@ -1623,6 +1691,25 @@ class QueryBuilder {
       count,
       column: column,
       alias: alias,
+    )) {
+      yield* Stream.fromIterable(rows);
+    }
+  }
+
+  /// Streams rows in descending key order without changing this query.
+  ///
+  /// Uses the same unique-key, alias, LIMIT and initial OFFSET rules as
+  /// [chunkByIdDesc]. Cancelling consumption stops further chunk queries.
+  Stream<LaconicResult> lazyByIdDesc([
+    int count = 1000,
+    String column = 'id',
+    String? alias,
+  ]) async* {
+    await for (final rows in _chunkByIdStream(
+      count,
+      column: column,
+      alias: alias,
+      descending: true,
     )) {
       yield* Stream.fromIterable(rows);
     }
@@ -1782,6 +1869,23 @@ class QueryBuilder {
     _selectBindings.addAll(compiled.bindings);
     return this;
   }
+
+  /// Passes this query to a synchronous callback and returns this builder.
+  ///
+  /// Changes made by [callback] remain on this query; its return value is ignored.
+  /// Use [clone] first when the original query must remain unchanged.
+  QueryBuilder tap(dynamic Function(QueryBuilder query) callback) {
+    callback(this);
+    return this;
+  }
+
+  /// Passes this query to a callback and returns its result.
+  ///
+  /// A synchronous null or void result returns this builder, matching Laravel.
+  /// Other results, including futures, are returned unchanged. Use [tap] when
+  /// composing synchronous query constraints without changing the return type.
+  dynamic pipe(dynamic Function(QueryBuilder query) callback) =>
+      callback(this) ?? this;
 
   /// Conditionally applies query constraints.
   ///
@@ -2841,6 +2945,167 @@ class QueryBuilder {
     return this;
   }
 
+  /// Adds AND conditions for dates before now.
+  ///
+  /// [columns] is a column name or a list of names. Each condition uses AND;
+  /// the OR variants use OR per column. Use [whereNested] for explicit grouping.
+  /// [now] defaults to the application clock, captured once when called. Its
+  /// calendar fields are bound as `yyyy-MM-dd HH:mm:ss` at second precision,
+  /// without timezone conversion; use a clock matching the stored values.
+  /// Null database values do not match. This is not the database server's clock.
+  QueryBuilder wherePast(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '<', 'and', dateOnly: false, now: now);
+
+  /// Adds OR conditions for dates before now.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  QueryBuilder orWherePast(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '<', 'or', dateOnly: false, now: now);
+
+  /// Adds AND conditions for dates at or before now.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  QueryBuilder whereNowOrPast(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '<=', 'and', dateOnly: false, now: now);
+
+  /// Adds OR conditions for dates at or before now.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  QueryBuilder orWhereNowOrPast(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '<=', 'or', dateOnly: false, now: now);
+
+  /// Adds AND conditions for dates after now.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  QueryBuilder whereFuture(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '>', 'and', dateOnly: false, now: now);
+
+  /// Adds OR conditions for dates after now.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  QueryBuilder orWhereFuture(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '>', 'or', dateOnly: false, now: now);
+
+  /// Adds AND conditions for dates at or after now.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  QueryBuilder whereNowOrFuture(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '>=', 'and', dateOnly: false, now: now);
+
+  /// Adds OR conditions for dates at or after now.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  QueryBuilder orWhereNowOrFuture(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '>=', 'or', dateOnly: false, now: now);
+
+  /// Adds AND conditions for dates today.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  /// Compares date parts with the calendar date of [now], ignoring the time.
+  QueryBuilder whereToday(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '=', 'and', dateOnly: true, now: now);
+
+  /// Adds OR conditions for dates today.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  /// Compares date parts with the calendar date of [now], ignoring the time.
+  QueryBuilder orWhereToday(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '=', 'or', dateOnly: true, now: now);
+
+  /// Adds AND conditions for dates before today.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  /// Compares date parts with the calendar date of [now], ignoring the time.
+  QueryBuilder whereBeforeToday(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '<', 'and', dateOnly: true, now: now);
+
+  /// Adds OR conditions for dates before today.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  /// Compares date parts with the calendar date of [now], ignoring the time.
+  QueryBuilder orWhereBeforeToday(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '<', 'or', dateOnly: true, now: now);
+
+  /// Adds AND conditions for dates today or earlier.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  /// Compares date parts with the calendar date of [now], ignoring the time.
+  QueryBuilder whereTodayOrBefore(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '<=', 'and', dateOnly: true, now: now);
+
+  /// Adds OR conditions for dates today or earlier.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  /// Compares date parts with the calendar date of [now], ignoring the time.
+  QueryBuilder orWhereTodayOrBefore(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '<=', 'or', dateOnly: true, now: now);
+
+  /// Adds AND conditions for dates after today.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  /// Compares date parts with the calendar date of [now], ignoring the time.
+  QueryBuilder whereAfterToday(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '>', 'and', dateOnly: true, now: now);
+
+  /// Adds OR conditions for dates after today.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  /// Compares date parts with the calendar date of [now], ignoring the time.
+  QueryBuilder orWhereAfterToday(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '>', 'or', dateOnly: true, now: now);
+
+  /// Adds AND conditions for dates today or later.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  /// Compares date parts with the calendar date of [now], ignoring the time.
+  QueryBuilder whereTodayOrAfter(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '>=', 'and', dateOnly: true, now: now);
+
+  /// Adds OR conditions for dates today or later.
+  ///
+  /// Accepts one column or a list; see [wherePast] for clock and grouping rules.
+  /// Compares date parts with the calendar date of [now], ignoring the time.
+  QueryBuilder orWhereTodayOrAfter(Object columns, {DateTime? now}) =>
+      _whereRelativeDate(columns, '>=', 'or', dateOnly: true, now: now);
+
+  QueryBuilder _whereRelativeDate(
+    Object columns,
+    String comparator,
+    String boolean, {
+    required bool dateOnly,
+    DateTime? now,
+  }) {
+    final List<String> names;
+    if (columns is String) {
+      names = [columns];
+    } else if (columns is List && columns.every((column) => column is String)) {
+      names = columns.cast<String>();
+    } else {
+      throw LaconicException(
+        'Expected a column name or a list of column names',
+      );
+    }
+    final reference = now ?? DateTime.now();
+    String pad(int value, [int width = 2]) => '$value'.padLeft(width, '0');
+    final date =
+        '${pad(reference.year, 4)}-${pad(reference.month)}-${pad(reference.day)}';
+    final value =
+        dateOnly
+            ? date
+            : '$date ${pad(reference.hour)}:${pad(reference.minute)}:${pad(reference.second)}';
+    for (final column in names) {
+      _wheres.add({
+        'type': dateOnly ? 'date' : 'basic',
+        if (dateOnly) 'dateType': 'date',
+        'column': column,
+        'comparator': comparator,
+        'value': value,
+        'boolean': boolean,
+      });
+    }
+    return this;
+  }
+
   /// Adds a WHERE DATE(col) comparison (defaults to `=`).
   QueryBuilder whereDate(
     String column,
@@ -3616,6 +3881,40 @@ class QueryBuilder {
     }
 
     return results.first.values.first;
+  }
+
+  /// Retrieves the first value of a bound SQL expression without changing this query.
+  ///
+  /// Replaces the selected columns for this read and returns null for no rows or
+  /// SQL NULL. [expression] is trusted SQL; pass values through [bindings]. For
+  /// UNION and groupLimit, the expression references columns exposed by the
+  /// complete result. Existing ordering and offset still select the first row.
+  Future<Object?> rawValue(
+    String expression, [
+    List<Object?> bindings = const [],
+  ]) async {
+    final QueryBuilder query;
+    if (_unions.isNotEmpty) {
+      final source =
+          clone()
+            ..reorder()
+            .._limit = null
+            .._offset = null
+            .._locks.clear();
+      query =
+          QueryBuilder(
+              laconic: _laconic,
+              table: _table,
+            ).fromSub(source, 'laconic_value')
+            .._orders.addAll(_orders)
+            .._offset = _offset
+            .._locks.addAll(_locks);
+    } else {
+      query = _paginationQuery();
+    }
+    final row =
+        await query.select([]).selectRaw(expression, bindings).firstOrNull();
+    return row?.values.first;
   }
 
   String _resultColumnName(String column) => _grammar.resultColumnName(column);

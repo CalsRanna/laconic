@@ -208,32 +208,38 @@ class JoinClause {
   }
 
   /// Adds a WHERE EXISTS condition within the JOIN clause.
-  JoinClause whereExists(void Function(QueryBuilder) callback) {
-    return _addJoinExists(callback, 'and', false);
+  ///
+  /// [query] accepts a callback or a [QueryBuilder]. SQL and bindings are
+  /// captured without modifying the supplied builder.
+  JoinClause whereExists(Object query) {
+    return _addJoinExists(query, 'and', false);
   }
 
   /// Adds an OR WHERE EXISTS condition within the JOIN clause.
-  JoinClause orWhereExists(void Function(QueryBuilder) callback) {
-    return _addJoinExists(callback, 'or', false);
+  JoinClause orWhereExists(Object query) {
+    return _addJoinExists(query, 'or', false);
   }
 
   /// Adds a WHERE NOT EXISTS condition within the JOIN clause.
-  JoinClause whereNotExists(void Function(QueryBuilder) callback) {
-    return _addJoinExists(callback, 'and', true);
+  JoinClause whereNotExists(Object query) {
+    return _addJoinExists(query, 'and', true);
   }
 
   /// Adds an OR WHERE NOT EXISTS condition within the JOIN clause.
-  JoinClause orWhereNotExists(void Function(QueryBuilder) callback) {
-    return _addJoinExists(callback, 'or', true);
+  JoinClause orWhereNotExists(Object query) {
+    return _addJoinExists(query, 'or', true);
   }
 
-  JoinClause _addJoinExists(
-    void Function(QueryBuilder) callback,
-    String boolean,
-    bool not,
-  ) {
-    final subQuery = QueryBuilder(laconic: _laconic, table: '');
-    callback(subQuery);
+  JoinClause _addJoinExists(Object query, String boolean, bool not) {
+    final QueryBuilder subQuery;
+    if (query is QueryBuilder) {
+      subQuery = query;
+    } else if (query is void Function(QueryBuilder)) {
+      subQuery = QueryBuilder(laconic: _laconic, table: '');
+      query(subQuery);
+    } else {
+      throw LaconicException('Expected a callback or QueryBuilder');
+    }
     final compiled = subQuery.compileAsSubquery();
     _conditions.add({
       'type': 'exists',
