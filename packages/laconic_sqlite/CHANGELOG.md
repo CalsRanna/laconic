@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Add migration isolation using a stable SQLite sidecar lock shared across
+  connections, isolates and processes. Add native file schema dump/load through
+  `sqlite3`; memory and attached-schema dumps explicitly fail. Native baseline
+  tests cover structure, history, generated columns and data exclusion.
+
 - Add atomic explicit-index renaming preserving expressions, collation, direction
   and filters, plus named primary-key deletion through table rebuilds.
 - Add collations, current-time defaults and virtual/stored generated columns.

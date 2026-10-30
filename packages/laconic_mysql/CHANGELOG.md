@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Add session-pinned migration isolation with GET_LOCK and native schema
+  dump/load through mysqldump/mysql. Include schema objects and exclude business
+  rows; native client credentials use environment variables. Requires matching
+  unreleased core migration APIs and compatible native clients.
+
 - Add native full-text indexes, index renaming and typed drops, column comments,
   character sets/collations, placement, automatic timestamps, and virtual/stored
   generated columns. Preserve signed identity conventions and existing defaults.

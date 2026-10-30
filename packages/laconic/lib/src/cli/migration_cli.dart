@@ -3,6 +3,7 @@ import 'dart:io';
 
 import '../laconic.dart';
 import '../migration/migration.dart';
+import '../migration/schema_state.dart';
 import 'command_runner.dart';
 import 'make_command.dart';
 import 'migration_executor.dart';
@@ -38,6 +39,7 @@ abstract final class MigrationCli {
             command.argResults!.option('table') ??
             command.globalResults!.option('table')!,
         arguments: request.arguments,
+        database: request.database,
         output: out,
         errorOutput: err,
       ),
@@ -72,7 +74,10 @@ abstract final class MigrationCli {
   ///
   /// Suitable for generated entrypoints or an application's own compiled CLI.
   /// The factories are called only after command validation, never for help.
-  /// Owns and closes the connection returned by [createDatabase].
+  /// Owns and closes all connections returned by [createDatabase] and
+  /// [resolveConnection]. Named connections are resolved once per command.
+  /// [schemaPath] selects an optional baseline. [migrationFiles] maps names to
+  /// source paths and is required for `schema:dump --prune`.
   /// [environment] defaults to `APP_ENV`. Mutating commands require `--force`
   /// in production; status and SQL previews do not. No interactive prompt is used.
   static Future<int> runCommand(
@@ -80,6 +85,10 @@ abstract final class MigrationCli {
     required FutureOr<Laconic> Function() createDatabase,
     required Iterable<Migration> Function() migrations,
     String table = 'migrations',
+    FutureOr<Laconic> Function(String name)? resolveConnection,
+    String? schemaPath,
+    SchemaProcessRunner? schemaProcessRunner,
+    Map<String, String>? migrationFiles,
     StringSink? output,
     StringSink? errorOutput,
     String? environment,
@@ -90,6 +99,10 @@ abstract final class MigrationCli {
       return MigrationExecutor.execute(
         request,
         createDatabase: createDatabase,
+        resolveConnection: resolveConnection,
+        schemaPath: schemaPath,
+        schemaProcessRunner: schemaProcessRunner,
+        migrationFiles: migrationFiles,
         migrations: migrations,
         table: table,
         output: out,

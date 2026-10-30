@@ -68,5 +68,7 @@ export 'src/schema/schema_metadata.dart';
 export 'src/migration/migration.dart';
 export 'src/migration/migration_status.dart';
 export 'src/migration/migrator.dart';
+export 'src/migration/migration_lock.dart';
+export 'src/migration/schema_state.dart';
 
 export 'src/cli/migration_cli.dart';

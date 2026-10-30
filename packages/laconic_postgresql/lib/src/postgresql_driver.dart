@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:io';
 
 import 'package:laconic/laconic.dart';
 import 'package:laconic_postgresql/src/postgresql_config.dart';
@@ -20,7 +21,8 @@ import 'postgresql_placeholders.dart';
 /// ));
 /// final laconic = Laconic(driver);
 /// ```
-class PostgresqlDriver implements DatabaseDriver {
+class PostgresqlDriver
+    implements DatabaseDriver, MigrationLockDriver, SchemaStateDriver {
   final PostgresqlConfig config;
   Pool? _pool;
   static final _grammar = PostgresqlGrammar();
@@ -73,9 +75,89 @@ class PostgresqlDriver implements DatabaseDriver {
   _PgTransaction? get _transactionContext =>
       Zone.current[_txSessionKey] as _PgTransaction?;
 
+  @override
+  String get schemaDialect => 'postgresql';
+
+  List<String> get _schemaArguments => [
+    '--host=${config.host}',
+    '--port=${config.port}',
+    '--username=${config.username}',
+    '--dbname=${config.database}',
+  ];
+  Map<String, String> get _schemaEnvironment => {
+    'PGPASSWORD': config.password,
+    'PGSSLMODE': config.useSsl ? 'require' : 'disable',
+  };
+
+  @override
+  Future<void> dumpSchema(
+    String path, {
+    String? schema,
+    SchemaProcessRunner? runner,
+  }) async {
+    try {
+      final selected =
+          schema ??
+          (await select('select current_schema() as name')).single['name']
+              as String;
+      await (runner ?? const SchemaProcessRunner()).run(
+        'pg_dump',
+        [
+          ..._schemaArguments,
+          '--schema-only',
+          '--no-owner',
+          '--no-privileges',
+          '--schema=${grammar.quoteSchemaIdentifier(selected)}',
+        ],
+        environment: _schemaEnvironment,
+        outputPath: path,
+      );
+      // pg_dump includes CREATE SCHEMA even for an existing empty public schema.
+      final nativeName =
+          (await select('select quote_ident(?) as name', [
+                selected,
+              ])).single['name']
+              as String;
+      final file = File(path);
+      final sql = await file.readAsString();
+      await file.writeAsString(
+        '${sql.replaceFirst('CREATE SCHEMA $nativeName;', 'CREATE SCHEMA IF NOT EXISTS $nativeName;')}\nSET search_path TO ${grammar.quoteSchemaIdentifier(selected)};\n',
+      );
+    } catch (e) {
+      throw _asLaconic(e);
+    }
+  }
+
+  @override
+  Future<void> loadSchema(
+    String path, {
+    String? schema,
+    SchemaProcessRunner? runner,
+  }) async {
+    try {
+      await (runner ?? const SchemaProcessRunner()).run(
+        'psql',
+        [
+          ..._schemaArguments,
+          '--no-psqlrc',
+          '--set=ON_ERROR_STOP=1',
+          '--single-transaction',
+        ],
+        environment: _schemaEnvironment,
+        inputPath: path,
+      );
+    } catch (e) {
+      throw _asLaconic(e);
+    }
+  }
+
+  final _migrationSessionKey = Object();
+  _PgTransaction? get _migrationContext =>
+      Zone.current[_migrationSessionKey] as _PgTransaction?;
+
   Future<Result> _executeQuery(String sql, List<Object?> params) async {
     final convertedSql = PostgresqlPlaceholders.compile(sql, params).sql;
-    final transaction = _transactionContext;
+    final transaction = _transactionContext ?? _migrationContext;
     if (transaction != null) {
       if (!transaction.active) {
         throw LaconicException('Transaction has already finished');
@@ -209,7 +291,7 @@ class PostgresqlDriver implements DatabaseDriver {
       }
     }
 
-    final transaction = _transactionContext;
+    final transaction = _transactionContext ?? _migrationContext;
     if (transaction != null) {
       if (!transaction.active) {
         return Stream.error(
@@ -310,7 +392,7 @@ class PostgresqlDriver implements DatabaseDriver {
       if (_transactionContext != null) {
         throw LaconicException('Nested transactions are not supported');
       }
-      return await _connectionPool.withConnection((conn) async {
+      Future<T> run(Connection conn) async {
         return await conn.runTx((session) async {
           final transaction = _PgTransaction(_PgStatementCache(session));
           try {
@@ -323,7 +405,16 @@ class PostgresqlDriver implements DatabaseDriver {
             await transaction.cache.dispose();
           }
         });
-      });
+      }
+
+      final locked = _migrationContext;
+      if (locked == null) return await _connectionPool.withConnection(run);
+      if (!locked.active) {
+        throw LaconicException('Migration lock has already finished');
+      }
+      return await locked.cache._serialized(
+        () => run(locked.cache.session as Connection),
+      );
     } catch (e) {
       if (e is LaconicException) rethrow;
       throw LaconicException(
@@ -331,6 +422,43 @@ class PostgresqlDriver implements DatabaseDriver {
         driver: driverName,
         code: _errorCode(e),
       );
+    }
+  }
+
+  @override
+  Future<T> withMigrationLock<T>(Future<T> Function() action) async {
+    try {
+      if (_transactionContext != null || _migrationContext != null) {
+        throw LaconicException(
+          'Migration isolation must start outside a transaction or another migration lock',
+        );
+      }
+      return await _connectionPool.withConnection((conn) async {
+        if ((await conn.execute(
+              'select pg_try_advisory_lock(1836016473, 1668441452)',
+            )).single.single !=
+            true) {
+          throw MigrationLockException();
+        }
+        final locked = _PgTransaction(_PgStatementCache(conn));
+        try {
+          return await runZoned(
+            action,
+            zoneValues: {_migrationSessionKey: locked},
+          );
+        } finally {
+          locked.active = false;
+          try {
+            await locked.cache.dispose();
+          } finally {
+            await conn.execute(
+              'select pg_advisory_unlock(1836016473, 1668441452)',
+            );
+          }
+        }
+      });
+    } catch (e) {
+      throw _asLaconic(e);
     }
   }
 

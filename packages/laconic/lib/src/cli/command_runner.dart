@@ -44,6 +44,7 @@ class MigrationCommandRunner extends CommandRunner<int> {
       'refresh',
       'fresh',
       'status',
+      'schema:dump',
     ]) {
       addCommand(DatabaseMigrationCommand(name, output, execute));
     }
@@ -61,6 +62,10 @@ class MigrationCommandRequest {
   final bool json;
   final bool pretend;
   final bool force;
+  final bool isolated;
+  final bool prune;
+  final String? database;
+  final String? schemaPath;
 
   MigrationCommandRequest(
     this.name, {
@@ -70,6 +75,10 @@ class MigrationCommandRequest {
     this.json = false,
     this.pretend = false,
     this.force = false,
+    this.isolated = false,
+    this.prune = false,
+    this.database,
+    this.schemaPath,
   });
 
   List<String> get arguments => [
@@ -80,6 +89,10 @@ class MigrationCommandRequest {
     if (json) '--json',
     if (pretend) '--pretend',
     if (force) '--force',
+    if (isolated) '--isolated',
+    if (prune) '--prune',
+    if (database != null) '--database=$database',
+    if (schemaPath != null) '--schema-path=$schemaPath',
   ];
 }
 
@@ -126,7 +139,24 @@ class DatabaseMigrationCommand extends Command<int> {
         help: 'Print migration SQL without executing it or changing history.',
       );
     }
+    argParser.addOption('database', help: 'Use a named database connection.');
+    argParser.addOption(
+      'schema-path',
+      help: 'Path to a native SQL schema baseline.',
+    );
+    if (name == 'schema:dump') {
+      argParser.addFlag(
+        'prune',
+        negatable: false,
+        help: 'Delete applied migration source files after saving the dump.',
+      );
+    }
     if (name != 'status') {
+      argParser.addFlag(
+        'isolated',
+        negatable: false,
+        help: 'Skip if another cooperating migration process holds the lock.',
+      );
       argParser.addFlag(
         'force',
         negatable: false,
@@ -142,11 +172,14 @@ class DatabaseMigrationCommand extends Command<int> {
     'reset' => 'Roll back all recorded migrations.',
     'refresh' => 'Roll back migrations, then execute pending migrations.',
     'fresh' => 'Drop every table in the history schema, then migrate.',
+    'schema:dump' =>
+      'Save native schema and migration history to a SQL baseline.',
     _ => 'Show pending, applied, and missing migrations.',
   };
 
   @override
-  List<String> get aliases => name == 'migrate' ? [] : ['migrate:$name'];
+  List<String> get aliases =>
+      name == 'migrate' || name == 'schema:dump' ? [] : ['migrate:$name'];
 
   @override
   void printUsage() => output.writeln(usage);
@@ -172,6 +205,16 @@ class DatabaseMigrationCommand extends Command<int> {
     if (steps != null && batch != null) {
       usageException('--step and --batch cannot be combined.');
     }
+    final database = argResults!.option('database');
+    if (database != null && !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(database)) {
+      usageException(
+        '--database must be a nonempty connection name (letters, digits, _ or -).',
+      );
+    }
+    final schemaPath = argResults!.option('schema-path');
+    if (schemaPath != null && schemaPath.trim().isEmpty) {
+      usageException('--schema-path cannot be empty.');
+    }
     return execute(
       MigrationCommandRequest(
         name,
@@ -184,6 +227,10 @@ class DatabaseMigrationCommand extends Command<int> {
             const ['migrate', 'rollback', 'reset'].contains(name) &&
             argResults!.flag('pretend'),
         force: name != 'status' && argResults!.flag('force'),
+        isolated: name != 'status' && argResults!.flag('isolated'),
+        prune: name == 'schema:dump' && argResults!.flag('prune'),
+        database: database,
+        schemaPath: schemaPath,
       ),
       this,
     );

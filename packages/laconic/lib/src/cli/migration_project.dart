@@ -18,6 +18,7 @@ abstract final class MigrationProject {
     required List<String> arguments,
     required StringSink output,
     required StringSink errorOutput,
+    String? database,
   }) async {
     final config = File(p.normalize(p.join(project.path, configPath)));
     final directory = Directory(
@@ -70,16 +71,21 @@ abstract final class MigrationProject {
     try {
       final imports = StringBuffer();
       final migrations = StringBuffer();
+      final sourceFiles = StringBuffer();
       for (var i = 0; i < files.length; i++) {
         imports.writeln(
           'import ${DartSource.stringLiteral(files[i].uri.toString())} as m$i;',
+        );
+        sourceFiles.writeln(
+          '${DartSource.stringLiteral(p.basenameWithoutExtension(files[i].path))}: ${DartSource.stringLiteral(files[i].path)},',
         );
         migrations.writeln(
           '      checked(${DartSource.stringLiteral(p.basenameWithoutExtension(files[i].path))}, m$i.DatabaseMigration()),',
         );
       }
       final entrypoint = File(p.join(temporary.path, 'main.dart'));
-      await entrypoint.writeAsString('''import 'dart:io';
+      await entrypoint.writeAsString('''import 'dart:async';
+import 'dart:io';
 import 'package:laconic/laconic.dart';
 import ${DartSource.stringLiteral(config.absolute.uri.toString())} as configuration;
 $imports
@@ -90,9 +96,17 @@ Future<void> main(List<String> arguments) async {
     }
     return migration;
   }
+  final Function factory = configuration.DatabaseConfiguration.createDatabase;
   exitCode = await MigrationCli.runCommand(
     arguments,
     createDatabase: configuration.DatabaseConfiguration.createDatabase,
+    resolveConnection: (name) {
+      if (factory is FutureOr<Laconic> Function(String)) return factory(name);
+      throw LaconicException('Named connections require createDatabase([String? name]) in the configuration.');
+    },
+    schemaPath: ${DartSource.stringLiteral(p.join(project.path, 'database', 'schema', '${database ?? 'default'}-schema.sql'))},
+    migrationFiles: <String, String>{
+$sourceFiles    },
     migrations: () => <Migration>[
 $migrations    ],
     table: ${DartSource.stringLiteral(table)},

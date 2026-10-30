@@ -79,10 +79,136 @@ history record. On non-transactional engines, changes already made may remain;
 inspect and repair them before retrying. A later migration's failure does not
 undo earlier successful migrations. Reversing DDL does not restore deleted data.
 
-Run exactly one migrator per database at a time, using your deployment system to
-serialize runs. The instance rejects overlapping mutations but does not provide
-a cross-process/distributed lock. Take a database backup before destructive
-operations. Migration methods execute application code; run trusted sources.
+Use `isolated: true` (CLI `--isolated`) to serialize cooperating deployments.
+The instance also rejects overlapping mutations. Take a database backup before
+destructive operations. Migration methods execute application code; run trusted sources.
+
+## Conditions and named connections
+
+Override `FutureOr<bool> shouldRun(Laconic database)` to decide whether a pending
+migration should run. The argument is its resolved target connection. Returning
+false leaves the migration pending and does not consume a step batch; `onSkipped`
+reports it. A later run evaluates the condition again. Rollback always calls
+`down()` for applied migrations, regardless of the condition. Previews skip the
+condition and capture `up()` SQL, as in Laravel.
+
+Override `String? get connection => 'reporting'` on a migration and supply
+`Migrator(..., resolveConnection: (name) => connections[name]!)`. The resolver is
+cached per name; the caller owns these connections and must close them. History
+stays on the migrator's default connection. Same-connection transactional DDL and
+history remain atomic. For a different connection, the target transaction commits
+before default-connection history is updated; these cannot be one atomic
+transaction. If history recording fails, inspect the target before retrying.
+Rollback resolves every selected connection before executing the first `down()`.
+
+CLI configurations can add an optional positional name:
+
+```dart
+static Future<Laconic> createDatabase([String? name]) async {
+  // Resolve name, or return your default connection when null.
+  return openApplicationDatabase(name);
+}
+```
+
+Existing no-argument configurations remain valid. Use
+`dart run laconic migrate --database=reporting` to select the default/history
+connection for that run. The CLI caches each named connection and closes every
+opened connection on success or failure. `MigrationCli.runCommand` accepts an
+explicit `resolveConnection:` callback for statically registered applications.
+
+## Migration isolation
+
+All mutating `Migrator` methods accept `isolated: true`. The lock is nonblocking
+and spans the entire operation, including refresh/fresh phases. `dumpSchema`
+locks by default and holds the lock through its `onDumped` callback. Lock
+contention throws `MigrationLockException` in the API; the CLI reports a skipped
+operation and exits 0. Other connection, permission and migration errors still
+fail. Every competing deployment must opt in; ordinary queries and unisolated
+migrations do not honor this lock.
+
+MySQL/MariaDB use `GET_LOCK`, PostgreSQL uses an advisory lock, and SQL Server
+uses a session application lock. Scope is the default/history database, across
+all history tables. Work on that connection stays pinned to the lock-owning
+session, including each migration transaction. Named target databases are not
+separately locked: deployments sharing targets must share a history database.
+Locks release when the callback finishes or fails, or the server session ends.
+Ordinary nested transactions remain unsupported; acquire isolation outside a
+transaction.
+
+SQLite uses a persistent `<canonical-db-path>.laconic-migrations.lock` SQLite
+sidecar with an exclusive SQLite transaction. This coordinates connections,
+isolates and processes using the same physical file and a filesystem supporting
+SQLite locks. Do not delete the sidecar while deployments may run. In-memory
+SQLite isolation only applies to that driver instance. All server deployments
+must connect to the same server/database for the lock to coordinate them.
+
+## Schema baselines
+
+```sh
+# Save schema plus applied migration names/batches, excluding business rows.
+dart run laconic schema:dump
+# Also remove only applied migration source files after the dump is saved.
+dart run laconic schema:dump --prune
+# A connection-specific baseline, or an explicit SQL path.
+dart run laconic schema:dump --database=reporting
+dart run laconic migrate --schema-path=database/schema/custom.sql --isolated
+```
+
+The project CLI defaults to `database/schema/default-schema.sql`, or
+`database/schema/<connection>-schema.sql` with `--database`. `--schema-path`
+overrides that path. The core API is explicit: configure
+`Migrator(db, migrations: [...], schemaPath: path)` and call
+`await migrator.dumpSchema(path)`. A custom `MigrationCli.runCommand` must also
+provide `schemaPath:` or `--schema-path` for dumping; pruning additionally
+requires a name-to-source-path `migrationFiles:` map.
+
+When no migrations are recorded and the configured SQL file exists, `migrate`
+loads the baseline, restores its history, then runs only remaining migrations.
+It verifies the format's dialect/history-table metadata before import. Existing
+business tables or views block loading; an empty history table may be replaced.
+`fresh` can load a baseline after its explicit table wipe, but its existing
+schema-scoped behavior is unchanged: views/external dependencies remain and must
+be handled explicitly. `onSchemaLoaded` reports the successful import.
+`--pretend` emits baseline SQL and pending migration SQL without importing it;
+subsequent inspection still sees the real database, not the previewed baseline.
+
+| Driver | Required native clients | Scope |
+|---|---|---|
+| MySQL | `mysqldump`, `mysql` | Configured database |
+| MariaDB | `mariadb-dump`, `mariadb` | Configured database |
+| PostgreSQL | `pg_dump`, `psql` | History table's schema, or current schema |
+| SQLite | `sqlite3` (3.37+) | Ordinary file's `main` database |
+| SQL Server | Unsupported | Explicit `LaconicException` |
+
+Install clients compatible with the server and schema features. In particular,
+`pg_dump` must not be older than the server, and `psql` must understand the dump's
+commands. SQLite's native CLI must support the features in the linked SQLite
+library; memory databases and attached-schema exports are unsupported. Native
+clients run without a shell; passwords are passed through environment variables.
+A `SchemaProcessRunner` override can select containerized clients or executable
+paths. MySQL/MariaDB native clients cannot reuse a Dart `SecurityContext` or an in-memory pinned RSA key; these
+configurations fail explicitly instead of silently dropping their trust settings.
+Dump files are trusted executable SQL, including native views, triggers and other
+schema objects. They contain schema only plus migration history, never business
+rows. Cross-connection migration histories cannot be represented by one baseline
+and are rejected while their definitions are available. PostgreSQL extensions and
+objects in other schemas must already be available if referenced. Native
+schema-qualified names are preserved, not renamed to a different target schema.
+
+Dump output is written to a sibling temporary directory and replaces the prior
+file only after successful export. `--prune` then deletes applied sources while
+the same lock remains held; pending/conditionally skipped files remain. A failed
+export preserves both the old dump and source files. If source deletion fails,
+the saved baseline remains usable. Pruned entries appear as `BASELINE` in status;
+JSON adds `baseline: true` only for those entries. Missing definitions absent from
+the baseline remain `MISSING`. Pruning intentionally removes the ability to
+reverse those old migrations: rollback/reset/refresh fail before any selected
+`down()` when required definitions are absent. Keep the baseline in source control.
+
+Native import on MySQL/MariaDB can leave partial DDL on failure. SQLite import is
+transactional and PostgreSQL uses `psql --single-transaction`; an existing empty
+history table is removed before invoking the native client. Baseline loading does
+not reconstruct business rows or simulate data migrations that were pruned.
 
 ## CLI
 
@@ -108,7 +234,7 @@ abstract final class DatabaseConfiguration {
 The configuration belongs to the application. Use any Laconic driver and read
 connection credentials from your application's environment or configuration.
 The CLI creates the connection only for execution/status commands and always
-closes it afterward; generation and help do not load database configuration.
+closes all opened connections afterward; generation and help do not load database configuration.
 
 ```sh
 # Generate a create-table migration with a matching drop-table rollback.
@@ -208,7 +334,7 @@ propagate the SDK's nonzero exit code.
 ### Production and destructive operations
 
 Commands have no interactive confirmation. When `APP_ENV=production`, `migrate`,
-`rollback`, `reset`, `refresh`, and `fresh` require `--force`; refusal returns 78
+`rollback`, `reset`, `refresh`, `fresh`, and `schema:dump --prune` require `--force`; refusal returns 78
 before calling the configuration factory. `status`, help, and `--pretend` do not
 require force. Applications using `runCommand` can supply `environment:` instead
 of reading `APP_ENV`. Environment detection does not inspect database credentials.
@@ -252,9 +378,9 @@ can therefore be incomplete and is not a guarantee that execution will succeed.
 Migration methods still execute Dart code; external side effects or separately
 opened connections are outside the preview. Use trusted migrations.
 
-The CLI does not add a cross-process lock: serialize execution in your deployment
-system as described above. `--isolated`, seeding, schema dump/squashing, and
-automatic schema diff are not provided. Unknown options fail with usage code 64.
+Seeding and automatic schema diff remain outside this API. Unknown options fail
+with usage code 64. Project differences such as schema-scoped wipes, explicit
+connection ownership and non-atomic cross-connection history remain intentional.
 Command semantics are based on [Laravel's migration lifecycle](https://laravel.com/framework/docs/13.x/migrations#running-migrations),
 with the schema-scoped wipe and preview limits described here.
 

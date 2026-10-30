@@ -1,5 +1,18 @@
 ## Unreleased
 
+- Add conditional migrations (`shouldRun`), cached named connection resolution,
+  and CLI `--database`, retaining default-connection history. Cross-connection
+  DDL/history are explicitly non-atomic; CLI closes every resolved connection.
+- Add opt-in migration isolation across all drivers (`isolated` / `--isolated`).
+  Busy CLI runs skip successfully; database and permission failures still fail.
+- Add native schema baselines, `schema:dump --prune`, empty-history bootstrap,
+  `--schema-path`, and baseline status. Pruning removes applied sources only,
+  after an atomic file replacement. Native clients and rollback limitations are
+  documented in MIGRATIONS.md. SQL Server dump/load is unsupported.
+- Third-party drivers may implement optional `MigrationLockDriver` and
+  `SchemaStateDriver`; existing driver interfaces stay compatible. Ship matching
+  unreleased core/driver sources and coordinate minimum versions via RELEASE.md.
+
 - Add full-text indexes with PostgreSQL language selection, index renaming,
   and explicit `dropUnique`, `dropPrimary`, and `dropFullText` operations.
   Index builders now return `IndexDefinition`; existing statement-style calls

@@ -5,6 +5,8 @@ import 'grammar/grammar.dart';
 import 'exception.dart';
 import 'query/query_builder.dart';
 import 'schema/schema_builder.dart';
+import 'migration/migration_lock.dart';
+import 'migration/schema_state.dart';
 
 /// The main entry point for building and executing database queries.
 ///
@@ -63,6 +65,24 @@ class Laconic {
   /// The SqlGrammar is responsible for compiling query components into
   /// database-specific SQL strings with parameter bindings.
   SqlGrammar get grammar => _driver.grammar;
+
+  /// The optional native schema client capability supplied by the driver.
+  SchemaStateDriver get schemaState {
+    final driver = _driver;
+    if (driver is SchemaStateDriver) return driver as SchemaStateDriver;
+    throw LaconicException('This driver does not support native schema dumps');
+  }
+
+  /// Runs migrations under the driver's database-wide lock.
+  ///
+  /// This is an opt-in deployment lock, not an ordinary data transaction.
+  Future<T> withMigrationLock<T>(Future<T> Function() action) {
+    final driver = _driver;
+    if (driver is MigrationLockDriver) {
+      return (driver as MigrationLockDriver).withMigrationLock(action);
+    }
+    throw LaconicException('This driver does not support migration isolation');
+  }
 
   /// The table structure builder using this connection and its SQL grammar.
   late final SchemaBuilder schema = SchemaBuilder(this);

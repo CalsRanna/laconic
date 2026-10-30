@@ -22,11 +22,16 @@ import 'package:laconic_mysql/src/mysql_grammar.dart';
 /// for parameterized queries. For queries without parameters (DDL like
 /// CREATE DATABASE, etc.), uses the text protocol directly since MySQL's
 /// COM_STMT_PREPARE does not support all statement types.
-class MysqlDriver implements DatabaseDriver {
+class MysqlDriver
+    implements DatabaseDriver, MigrationLockDriver, SchemaStateDriver {
   final MysqlConfig config;
   MysqlConnectionPool? _pool;
   static final _grammar = MysqlGrammar();
   final _txConnKey = Object();
+  final _migrationConnKey = Object();
+
+  _MysqlTransaction? get _migrationContext =>
+      Zone.current[_migrationConnKey] as _MysqlTransaction?;
 
   /// Per-connection LRU caches of prepared statements.
   final Map<MysqlConnection, LinkedHashMap<String, MysqlPreparedStatement>>
@@ -35,6 +40,96 @@ class MysqlDriver implements DatabaseDriver {
 
   /// Creates a new MySQL driver with the given configuration.
   MysqlDriver(this.config);
+
+  @override
+  String get schemaDialect => 'mysql';
+
+  /// Native client used to export schema definitions.
+  String get schemaDumpExecutable => 'mysqldump';
+
+  /// Native client used to load schema definitions.
+  String get schemaLoadExecutable => 'mysql';
+
+  List<String> _schemaArguments() {
+    if (config.securityContext != null || config.serverPublicKey != null) {
+      throw LaconicException(
+        'Native schema clients cannot reuse a Dart SecurityContext or in-memory pinned RSA key',
+      );
+    }
+    return [
+      '--no-defaults',
+      '--host=${config.host}',
+      '--port=${config.port}',
+      '--user=${config.username}',
+      '--protocol=TCP',
+      '--default-character-set=utf8mb4',
+      if (schemaDialect == 'mysql')
+        config.allowPublicKeyRetrieval
+            ? '--get-server-public-key'
+            : '--skip-get-server-public-key',
+      if (schemaDialect == 'mariadb') ...[
+        config.useSsl ? '--ssl' : '--skip-ssl',
+        if (config.useSsl && !config.allowBadCertificates)
+          '--ssl-verify-server-cert',
+      ] else
+        '--ssl-mode=${config.useSsl ? (config.allowBadCertificates ? 'REQUIRED' : 'VERIFY_IDENTITY') : 'DISABLED'}',
+    ];
+  }
+
+  @override
+  Future<void> dumpSchema(
+    String path, {
+    String? schema,
+    SchemaProcessRunner? runner,
+  }) async {
+    try {
+      if (schema != null && schema != config.database) {
+        throw LaconicException(
+          'Schema dump history must be in the configured database',
+        );
+      }
+      await (runner ?? const SchemaProcessRunner()).run(
+        schemaDumpExecutable,
+        [
+          ..._schemaArguments(),
+          '--no-data',
+          '--skip-comments',
+          '--skip-add-drop-table',
+          if (schemaDialect == 'mysql') '--set-gtid-purged=OFF',
+          '--routines',
+          '--events',
+          config.database,
+        ],
+        environment: {'MYSQL_PWD': config.password},
+        outputPath: path,
+      );
+    } catch (e) {
+      throw _asLaconic(e);
+    }
+  }
+
+  @override
+  Future<void> loadSchema(
+    String path, {
+    String? schema,
+    SchemaProcessRunner? runner,
+  }) async {
+    try {
+      if (schema != null && schema != config.database) {
+        throw LaconicException(
+          'Schema load history must be in the configured database',
+        );
+      }
+      await (runner ?? const SchemaProcessRunner()).run(
+        schemaLoadExecutable,
+        [..._schemaArguments(), config.database],
+        environment: {'MYSQL_PWD': config.password},
+        inputPath: path,
+      );
+    } catch (e) {
+      throw _asLaconic(e);
+    }
+  }
 
   @override
   SqlGrammar get grammar => _grammar;
@@ -81,7 +176,7 @@ class MysqlDriver implements DatabaseDriver {
 
   /// Executes a query, delegating to [_executeOnConn] for protocol selection.
   Future<MysqlResultSet> _executeQuery(String sql, List<Object?> params) async {
-    final transaction = _transactionContext;
+    final transaction = _transactionContext ?? _migrationContext;
     if (transaction != null) {
       return transaction.run(
         () => _executeOnConn(transaction.connection, sql, params),
@@ -215,7 +310,7 @@ class MysqlDriver implements DatabaseDriver {
       cancelled = true;
     };
 
-    final transaction = _transactionContext;
+    final transaction = _transactionContext ?? _migrationContext;
     if (transaction != null) {
       unawaited(
         transaction.run(() => run(transaction.connection)).catchError((
@@ -301,7 +396,7 @@ class MysqlDriver implements DatabaseDriver {
       if (_transactionContext != null) {
         throw LaconicException('Nested transactions are not supported');
       }
-      return await _connectionPool.transactional((conn) async {
+      Future<T> run(MysqlConnection conn) async {
         final transaction = _MysqlTransaction(conn);
         try {
           return await runZoned(action, zoneValues: {_txConnKey: transaction});
@@ -309,7 +404,12 @@ class MysqlDriver implements DatabaseDriver {
           transaction.active = false;
           await transaction.pending;
         }
-      });
+      }
+
+      final locked = _migrationContext;
+      return locked == null
+          ? await _connectionPool.transactional(run)
+          : await locked.run(() => locked.connection.transactional(run));
     } catch (e) {
       if (e is LaconicException) rethrow;
       throw LaconicException(
@@ -317,6 +417,41 @@ class MysqlDriver implements DatabaseDriver {
         driver: driverName,
         code: _errorCode(e),
       );
+    }
+  }
+
+  @override
+  Future<T> withMigrationLock<T>(Future<T> Function() action) async {
+    try {
+      if (_transactionContext != null || _migrationContext != null) {
+        throw LaconicException(
+          'Migration isolation must start outside a transaction or another migration lock',
+        );
+      }
+      return await _connectionPool.withConnection((conn) async {
+        const key = "sha2(concat('laconic-migrations:', database()), 256)";
+        final result =
+            _toResults(
+              await conn.execute('select get_lock($key, 0) as acquired'),
+            ).single['acquired'];
+        if (result == 0) throw MigrationLockException();
+        if (result != 1) {
+          throw LaconicException('Could not acquire MySQL migration lock');
+        }
+        final locked = _MysqlTransaction(conn);
+        try {
+          return await runZoned(
+            action,
+            zoneValues: {_migrationConnKey: locked},
+          );
+        } finally {
+          locked.active = false;
+          await locked.pending;
+          await conn.execute('select release_lock($key)');
+        }
+      });
+    } catch (e) {
+      throw _asLaconic(e);
     }
   }
 

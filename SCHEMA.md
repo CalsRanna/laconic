@@ -22,6 +22,12 @@ DDL 实现，没有新增公开的 SchemaGrammar 或 SchemaProvider。
 清理历史表所在 schema 内的全部表（包括未登记迁移的表），随后重跑迁移。
 视图及外部依赖不会自动删除；具体范围、事务与预览限制见迁移指南。
 
+第三阶段迁移能力包括 `shouldRun`、命名连接、`--isolated` 和原生 schema
+基线（`schema:dump --prune`）。互斥支持全部五种数据库；原生 dump/load 支持
+MySQL、MariaDB、PostgreSQL 和文件型 SQLite，SQL Server 明确报不支持。
+跨连接变更与默认连接历史不保证原子提交；详细使用方式、原生客户端要求及
+剪除迁移后的回滚限制见 [MIGRATIONS.md](packages/laconic/MIGRATIONS.md)。
+
 ## 创建与修改表
 
 ```dart
@@ -381,7 +387,7 @@ MySQL/MariaDB 的 InnoDB 外键不支持 `SET DEFAULT`；SQL Server 不支持 `R
 SQLite 的类型亲和性不会强制 varchar 长度或 decimal 精度。JSON/UUID 的原生校验、
 时间类型语义也随数据库不同；SQL Server 的 `timestamp()` 映射为 DATETIME2。
 
-当前不提供自动 schema diff、schema dump 或 Laravel 全部 Blueprint 方法。可以通过现有 `db.statement()` 使用
+当前不提供自动 schema diff 或 Laravel 全部 Blueprint 方法。可以通过现有 `db.statement()` 使用
 数据库专有操作。不要把迁移回滚理解为数据备份。
 
 ## 第三方数据库接入
@@ -394,7 +400,7 @@ SQLite 的类型亲和性不会强制 varchar 长度或 decimal 精度。JSON/UU
    `compileUnsigned` 默认拒绝 unsigned，`supportsNativeEnum` 默认 false，
    此时 `compileColumnDefinition` 会给枚举添加 CHECK 并拒绝直接变更枚举成员。
    `compileTemporalPrecision` 验证方言时间精度；列的 `allowed`、`fixed`、`isUnsigned`
-   参数应参与编译。不增加新的 grammar 或驱动接口。
+   参数应参与编译；DDL 继续使用现有 grammar。
    元数据实现 `compileTables/Views/Columns/Indexes/ForeignKeys`，按 SchemaBuilder 使用的
    字段别名返回行；需要时用 `normalizeColumnMetadata` 补齐原生信息。
    列修改实现 `compileChangeColumn`；`compileAlterTable` 新增可选的 `columns`、`objects`
@@ -408,7 +414,10 @@ SQLite 的类型亲和性不会强制 varchar 长度或 decimal 精度。JSON/UU
    索引操作传 false，必须保留外键检查并支持外层事务内的保存点。预览驱动仍只记录 SQL。
 3. 明确设置 `supportsSchemaTransactions`；默认值为 false。这个声明只适用于
    普通迁移 DDL，具体 migration 可以关闭自动事务。
-4. 复用 `packages/laconic/test/regressions/schema_regressions.dart` 的行为测试，并添加数据库特有用例。
+4. 按需实现可选的 `MigrationLockDriver` / `SchemaStateDriver`：前者提供跨进程、跨迁移事务的
+   非阻塞数据库锁，竞争抛出 `MigrationLockException`；后者通过原生客户端 dump/load。
+   原有 `DatabaseDriver` 无新增必需成员，不支持时核心入口会明确报错。
+5. 复用 `packages/laconic/test/regressions/schema_regressions.dart` 的行为测试，并添加数据库特有用例。
 
 公共类型从 `package:laconic/laconic.dart` 导出。第三方不需要导入 `src`，
 也不需要修改核心包或 Migration 包里的注册表。

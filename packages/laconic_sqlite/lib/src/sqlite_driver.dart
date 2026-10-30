@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:laconic/laconic.dart';
 import 'package:laconic_sqlite/src/sqlite_config.dart';
@@ -18,12 +19,124 @@ import 'package:sqlite3/sqlite3.dart';
 /// final driver = SqliteDriver(SqliteConfig('app.db'));
 /// final laconic = Laconic(driver);
 /// ```
-class SqliteDriver implements DatabaseDriver, SchemaTransactionDriver {
+class SqliteDriver
+    implements
+        DatabaseDriver,
+        SchemaTransactionDriver,
+        MigrationLockDriver,
+        SchemaStateDriver {
   final SqliteConfig config;
   Database? _database;
   static final _grammar = SqliteGrammar();
   final _transactionKey = Object();
   Future<void> _tail = Future.value();
+  bool _migrationLocked = false;
+
+  @override
+  String get schemaDialect => 'sqlite';
+
+  void _validateSchemaFile() {
+    if (config.path == ':memory:' ||
+        config.path.isEmpty ||
+        config.path.startsWith('file:')) {
+      throw LaconicException(
+        'Native SQLite schema clients require an ordinary database file',
+      );
+    }
+  }
+
+  @override
+  Future<void> dumpSchema(
+    String path, {
+    String? schema,
+    SchemaProcessRunner? runner,
+  }) async {
+    try {
+      _validateSchemaFile();
+      if (schema != null && schema != 'main') {
+        throw LaconicException(
+          'SQLite schema dumps only support the main database',
+        );
+      }
+      await _execute(() => _db);
+      await (runner ?? const SchemaProcessRunner()).run('sqlite3', [
+        '-batch',
+        '-bail',
+        config.path,
+        "select sql || ';' from sqlite_schema where sql is not null and substr(name, 1, 7) <> 'sqlite_' and tbl_name not in (select name from pragma_table_list where type = 'shadow') order by case type when 'table' then 0 when 'view' then 1 when 'index' then 2 else 3 end, name",
+      ], outputPath: path);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString(), driver: driverName);
+    }
+  }
+
+  @override
+  Future<void> loadSchema(
+    String path, {
+    String? schema,
+    SchemaProcessRunner? runner,
+  }) async {
+    try {
+      _validateSchemaFile();
+      if (schema != null && schema != 'main') {
+        throw LaconicException(
+          'SQLite schema loads only support the main database',
+        );
+      }
+      await (runner ?? const SchemaProcessRunner()).run('sqlite3', [
+        '-batch',
+        '-bail',
+        config.path,
+      ], inputPath: path);
+      await _execute(_invalidateCache);
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString(), driver: driverName);
+    }
+  }
+
+  @override
+  Future<T> withMigrationLock<T>(Future<T> Function() action) async {
+    Database? lock;
+    var acquired = false;
+    try {
+      if (Zone.current[_transactionKey] != null) {
+        throw LaconicException(
+          'Migration isolation must start outside a transaction',
+        );
+      }
+      if (_migrationLocked) throw MigrationLockException();
+      await _execute(() => _db);
+      // SQLite's own file locks coordinate connections across isolates/processes.
+      // Keep the sidecar inode stable: unlinking it would split competing owners.
+      if (config.path != ':memory:') {
+        final path = await File(config.path).resolveSymbolicLinks();
+        lock = sqlite3.open('$path.laconic-migrations.lock');
+        try {
+          lock.execute('begin exclusive');
+        } on SqliteException catch (error) {
+          if (error.resultCode == 5 || error.resultCode == 6) {
+            throw MigrationLockException();
+          }
+          rethrow;
+        }
+      }
+      if (_migrationLocked) throw MigrationLockException();
+      _migrationLocked = true;
+      acquired = true;
+      return await action();
+    } catch (e) {
+      if (e is LaconicException) rethrow;
+      throw LaconicException(e.toString(), driver: driverName);
+    } finally {
+      try {
+        lock?.close();
+      } finally {
+        if (acquired) _migrationLocked = false;
+      }
+    }
+  }
 
   Future<T> _execute<T>(FutureOr<T> Function() action) async {
     try {

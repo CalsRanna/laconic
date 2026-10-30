@@ -9,9 +9,17 @@ class MigrationStatus {
   /// Whether an executed migration is absent from the supplied registry.
   final bool missing;
 
+  /// Whether an absent source definition is recorded in the schema baseline.
+  final bool baseline;
+
   /// Whether this migration has an execution record.
   bool get hasRun => batch != null;
 
   /// Creates a migration status.
-  const MigrationStatus({required this.name, this.batch, this.missing = false});
+  const MigrationStatus({
+    required this.name,
+    this.batch,
+    this.missing = false,
+    this.baseline = false,
+  });
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:laconic/laconic.dart';
 import 'package:test/test.dart';
+import 'migration_deployment_regressions.dart';
 
 class TestMigration extends Migration {
   @override
@@ -10,13 +11,22 @@ class TestMigration extends Migration {
   final Future<void> Function(Laconic) revert;
   @override
   final bool withinTransaction;
+  @override
+  final String? connection;
+  final FutureOr<bool> Function(Laconic)? condition;
 
   TestMigration(
     this.name,
     this.apply,
     this.revert, {
     this.withinTransaction = true,
+    this.connection,
+    this.condition,
   });
+
+  @override
+  FutureOr<bool> shouldRun(Laconic database) =>
+      condition?.call(database) ?? true;
 
   @override
   Future<void> up(Laconic database) => apply(database);
@@ -30,6 +40,10 @@ abstract final class MigratorRegressions {
     Future<void> Function()? prepare,
     String? namespaceType,
   }) {
+    setUpAll(() async {
+      await prepare?.call();
+    });
+    MigrationDeploymentRegressions.register(createDatabase);
     group('Migrator', () {
       const history = 'laconic_migration_history';
       const users = 'laconic_migration_users';
@@ -44,9 +58,6 @@ abstract final class MigratorRegressions {
       Migrator runner(List<Migration> migrations) =>
           Migrator(db, migrations: migrations, table: history);
 
-      setUpAll(() async {
-        await prepare?.call();
-      });
       setUp(() async {
         db = createDatabase();
         for (final table in [posts, users, history]) {

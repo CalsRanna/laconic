@@ -289,6 +289,90 @@ abstract final class DatabaseConfiguration {
   );
 
   test(
+    'named configuration, isolated subprocess, dump prune and baseline restore work end to end',
+    () async {
+      final config = File(p.join(project.path, 'database', 'migrations.dart'));
+      await config.writeAsString("""import 'package:laconic/laconic.dart';
+import 'package:laconic_sqlite/laconic_sqlite.dart';
+abstract final class DatabaseConfiguration {
+  static Laconic createDatabase([String? name]) => Laconic(SqliteDriver(SqliteConfig((name ?? 'default') + '.db')));
+}
+""");
+      await run(['make', 'create_items', '--create=items']);
+      final sources = Directory(p.join(project.path, 'database', 'migrations'));
+      final appliedFile = sources.listSync().whereType<File>().single;
+      final name = p.basenameWithoutExtension(appliedFile.path);
+      final holding = Laconic(
+        SqliteDriver(SqliteConfig(p.join(project.path, 'reporting.db'))),
+      );
+      try {
+        await holding.withMigrationLock(() async {
+          final skipped = await run([
+            'migrate',
+            '--database=reporting',
+            '--isolated',
+          ]);
+          expect(skipped.output, contains('another migration'));
+          expect(await holding.schema.hasTable('migrations'), isFalse);
+        });
+      } finally {
+        await holding.close();
+      }
+      await run(['migrate', '--database=reporting', '--isolated']);
+      expect(File(p.join(project.path, 'default.db')).existsSync(), isFalse);
+      await run(['make', 'create_pending', '--create=pending']);
+      final dumped = await run([
+        'schema:dump',
+        '--database=reporting',
+        '--prune',
+      ]);
+      expect(dumped.output, contains('Pruned:'));
+      expect(appliedFile.existsSync(), isFalse);
+      expect(sources.listSync(), hasLength(1));
+      final baseline = File(
+        p.join(project.path, 'database', 'schema', 'reporting-schema.sql'),
+      );
+      expect(baseline.existsSync(), isTrue);
+      final states =
+          jsonDecode(
+                (await run([
+                  'status',
+                  '--json',
+                  '--database=reporting',
+                ])).output,
+              )
+              as List;
+      expect(states.first['name'], name);
+      expect(states.first['baseline'], isTrue);
+      final restored = await run([
+        'fresh',
+        '--database=reporting',
+        '--isolated',
+      ]);
+      expect(restored.output, contains('Loaded schema:'));
+      final finalStates =
+          jsonDecode(
+                (await run([
+                  'status',
+                  '--json',
+                  '--database=reporting',
+                ])).output,
+              )
+              as List;
+      expect(finalStates.map((s) => s['batch']), [1, 2]);
+      await run([
+        'schema:dump',
+        '--database=reporting',
+      ]); // Re-dump after pruning.
+      final rollback = await run([
+        'reset',
+        '--database=reporting',
+      ], expected: 70);
+      expect(rollback.error, contains('Missing migration definition'));
+    },
+  );
+
+  test(
     'native CLI discovers the SDK instead of recursively invoking itself',
     () async {
       final binary = p.join(

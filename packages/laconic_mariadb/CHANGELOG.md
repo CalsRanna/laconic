@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Add migration isolation through the shared pinned MySQL connection and native
+  mariadb-dump/mariadb schema baselines. Keep MariaDB-specific native flags and
+  exceptions. Requires matching unreleased core and MySQL driver sources.
+
 - Support full-text indexes, index renaming/drops, column modifiers and generated
   columns through the shared MySQL compiler. MariaDB generated columns require
   explicit `nullable()` because native NOT NULL is unsupported. Requires the

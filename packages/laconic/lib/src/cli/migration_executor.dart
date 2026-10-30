@@ -1,9 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:io/io.dart';
+import 'package:path/path.dart' as p;
 
 import '../laconic.dart';
+import '../exception.dart';
+import '../migration/migration_lock.dart';
+import '../migration/schema_state.dart';
 import '../database/query.dart';
 import '../migration/migration.dart';
 import '../migration/migrator.dart';
@@ -18,9 +23,14 @@ abstract final class MigrationExecutor {
     required String table,
     required StringSink output,
     String? environment,
+    FutureOr<Laconic> Function(String name)? resolveConnection,
+    String? schemaPath,
+    SchemaProcessRunner? schemaProcessRunner,
+    Map<String, String>? migrationFiles,
   }) async {
     if (environment?.trim().toLowerCase() == 'production' &&
         request.name != 'status' &&
+        (request.name != 'schema:dump' || request.prune) &&
         !request.pretend &&
         !request.force) {
       throw MigrationCliException(
@@ -28,10 +38,61 @@ abstract final class MigrationExecutor {
         ExitCode.config.code,
       );
     }
+    if (request.prune && migrationFiles == null) {
+      throw MigrationCliException(
+        '--prune requires a migration source file registry.',
+        ExitCode.config.code,
+      );
+    }
+    final baseline = request.schemaPath ?? schemaPath;
+    if (request.name == 'schema:dump' && baseline == null) {
+      throw MigrationCliException(
+        'schema:dump requires --schema-path or a configured schemaPath.',
+        ExitCode.usage.code,
+      );
+    }
     final registered = List<Migration>.of(migrations());
-    final db = await createDatabase();
+    final owned = <Laconic>{};
+    final connections = <String, Future<Laconic>>{};
+    Future<Laconic> resolve(String name) => connections.putIfAbsent(
+      name,
+      () async {
+        if (resolveConnection == null) {
+          throw LaconicException('No resolver for database connection: $name');
+        }
+        final connection = await resolveConnection(name);
+        owned.add(connection);
+        return connection;
+      },
+    );
     try {
-      final migrator = Migrator(db, migrations: registered, table: table);
+      final db =
+          request.database == null
+              ? await createDatabase()
+              : await resolve(request.database!);
+      owned.add(db);
+      final migrator = Migrator(
+        db,
+        migrations: registered,
+        table: table,
+        resolveConnection: resolve,
+        schemaPath: baseline,
+        schemaProcessRunner: schemaProcessRunner,
+      );
+      var skippedCount = 0;
+      void skipped(String name) {
+        skippedCount++;
+        output.writeln('Skipped: $name');
+      }
+
+      void nothingApplied() => output.writeln(
+        skippedCount == 0
+            ? 'No pending migrations.'
+            : 'No migrations applied; skipped migrations remain pending.',
+      );
+      void loaded(String path) => output.writeln(
+        '${request.pretend ? 'Would load schema' : 'Loaded schema'}: $path',
+      );
       void applied(String name) => output.writeln(
         '${request.pretend ? 'Would migrate' : 'Migrated'}: $name',
       );
@@ -51,14 +112,18 @@ abstract final class MigrationExecutor {
         case 'migrate':
           final names = await migrator.migrate(
             step: request.step,
+            isolated: request.isolated,
             pretend: request.pretend,
             onQuery: query,
             onApplied: applied,
+            onSkipped: skipped,
+            onSchemaLoaded: loaded,
           );
-          if (names.isEmpty) output.writeln('No pending migrations.');
+          if (names.isEmpty) nothingApplied();
         case 'rollback':
           final names = await migrator.rollback(
             steps: request.steps,
+            isolated: request.isolated,
             batch: request.batch,
             pretend: request.pretend,
             onQuery: query,
@@ -67,6 +132,7 @@ abstract final class MigrationExecutor {
           if (names.isEmpty) output.writeln('Nothing to roll back.');
         case 'reset':
           final names = await migrator.reset(
+            isolated: request.isolated,
             pretend: request.pretend,
             onQuery: query,
             onRolledBack: reversed,
@@ -75,17 +141,48 @@ abstract final class MigrationExecutor {
         case 'refresh':
           final names = await migrator.refresh(
             steps: request.steps,
+            isolated: request.isolated,
             onApplied: applied,
+            onSkipped: skipped,
+            onSchemaLoaded: loaded,
             onRolledBack: reversed,
           );
-          if (names.isEmpty) output.writeln('No pending migrations.');
+          if (names.isEmpty) nothingApplied();
         case 'fresh':
           final names = await migrator.fresh(
             step: request.step,
+            isolated: request.isolated,
             onDropped: () => output.writeln('Dropped all tables.'),
             onApplied: applied,
+            onSkipped: skipped,
+            onSchemaLoaded: loaded,
           );
-          if (names.isEmpty) output.writeln('No pending migrations.');
+          if (names.isEmpty) nothingApplied();
+        case 'schema:dump':
+          await migrator.dumpSchema(
+            baseline!,
+            onDumped: (names) async {
+              output.writeln('Schema dumped: $baseline');
+              if (!request.prune) return;
+              final files = <File>[];
+              for (final name in names) {
+                final path = migrationFiles![name];
+                if (path == null) continue; // Already-pruned baseline entries.
+                if (await FileSystemEntity.type(path, followLinks: false) !=
+                        FileSystemEntityType.file ||
+                    p.equals(p.absolute(path), p.absolute(baseline))) {
+                  throw LaconicException(
+                    'Cannot prune migration source: $path',
+                  );
+                }
+                files.add(File(path));
+              }
+              for (final file in files) {
+                await file.delete();
+                output.writeln('Pruned: ${p.basename(file.path)}');
+              }
+            },
+          );
         case 'status':
           final states = await migrator.status();
           if (request.json) {
@@ -97,6 +194,7 @@ abstract final class MigrationExecutor {
                     'status': state.hasRun ? 'applied' : 'pending',
                     'batch': state.batch,
                     'missing': state.missing,
+                    if (state.baseline) 'baseline': true,
                   },
               ]),
             );
@@ -104,7 +202,9 @@ abstract final class MigrationExecutor {
             if (states.isEmpty) output.writeln('No migrations.');
             for (final state in states) {
               output.writeln(
-                '${state.missing
+                '${state.baseline
+                    ? 'BASELINE'
+                    : state.missing
                     ? 'MISSING'
                     : state.hasRun
                     ? 'APPLIED'
@@ -114,8 +214,13 @@ abstract final class MigrationExecutor {
           }
       }
       return ExitCode.success.code;
+    } on MigrationLockException {
+      output.writeln(
+        'Skipped: another migration operation holds the database lock.',
+      );
+      return ExitCode.success.code;
     } finally {
-      await db.close();
+      await Future.wait(owned.map((connection) => connection.close()));
     }
   }
 }

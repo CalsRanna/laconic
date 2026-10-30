@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Add session-owned application migration locks, pinning transactions/streams
+  to the owning connection. Native schema dump/load remains explicitly unsupported.
+  Requires matching unreleased core migration interfaces.
+
 - Add index renaming and named primary/unique index deletion, column collations,
   current-time defaults, comments via MS_Description, and computed/persisted
   columns. Typed virtualAs/storedAs and fullText indexes fail explicitly.

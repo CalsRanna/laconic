@@ -5,6 +5,8 @@ import 'package:laconic/laconic.dart';
 import 'package:laconic_sqlite/laconic_sqlite.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
+import '../../laconic/test/regressions/migrator_regressions.dart';
+import '../../laconic/test/regressions/schema_state_regressions.dart';
 
 class _CreateItems extends Migration {
   @override
@@ -49,6 +51,108 @@ void main() {
     errors = StringBuffer();
   });
   tearDown(() => temporary.delete(recursive: true));
+
+  test(
+    'named CLI connections are cached and all opened connections close even on resolver failure',
+    () async {
+      var defaults = 0;
+      final opened = <String>[];
+      final closed = <String>[];
+      final first = TestMigration(
+        '001_named',
+        (_) async {},
+        (_) async {},
+        connection: 'reporting',
+      );
+      final second = TestMigration(
+        '002_other',
+        (_) async {},
+        (_) async {},
+        connection: 'missing',
+      );
+      final code = await MigrationCli.runCommand(
+        ['migrate', '--database=reporting', '--isolated'],
+        createDatabase: () {
+          defaults++;
+          throw StateError('unexpected default');
+        },
+        resolveConnection: (name) {
+          opened.add(name);
+          if (name == 'missing') throw StateError('missing config');
+          return Laconic(
+            _TrackedDriver(
+              SqliteConfig(p.join(temporary.path, '$name.db')),
+              () => closed.add(name),
+            ),
+          );
+        },
+        migrations: () => [first, second],
+        output: output,
+        errorOutput: errors,
+        environment: 'testing',
+      );
+      expect(code, 70);
+      expect(defaults, 0);
+      expect(opened, ['reporting', 'missing']);
+      expect(closed, ['reporting']);
+      expect(output.toString(), contains('Migrated: 001_named'));
+      expect(errors.toString(), contains('missing config'));
+    },
+  );
+
+  test(
+    'prune retains skipped sources and a failed dump never removes sources',
+    () async {
+      final applied = TestMigration(
+        '001_applied',
+        (db) => db.schema.create('items', (t) => t.id()),
+        (db) => db.schema.drop('items'),
+      );
+      final skipped = TestMigration(
+        '002_skipped',
+        (_) async {},
+        (_) async {},
+        condition: (_) => false,
+      );
+      final files = <String, String>{};
+      for (final migration in [applied, skipped]) {
+        final path = p.join(temporary.path, '${migration.name}.dart');
+        await File(path).writeAsString('source');
+        files[migration.name] = path;
+      }
+      Future<int> run(List<String> arguments, {SchemaProcessRunner? runner}) =>
+          MigrationCli.runCommand(
+            arguments,
+            createDatabase:
+                () => Laconic(
+                  SqliteDriver(
+                    SqliteConfig(p.join(temporary.path, 'database.db')),
+                  ),
+                ),
+            migrations: () => [applied, skipped],
+            schemaPath: p.join(temporary.path, 'baseline.sql'),
+            migrationFiles: files,
+            schemaProcessRunner: runner,
+            output: output,
+            errorOutput: errors,
+            environment: 'testing',
+          );
+      expect(await run(['migrate']), 0);
+      expect(
+        await run([
+          'schema:dump',
+          '--prune',
+        ], runner: FailingSchemaProcessRunner()),
+        70,
+      );
+      expect(files.values.every((path) => File(path).existsSync()), isTrue);
+      errors.clear();
+      expect(await run(['schema:dump', '--prune']), 0);
+      expect(File(files[applied.name]!).existsSync(), isFalse);
+      expect(File(files[skipped.name]!).existsSync(), isTrue);
+      expect(errors.toString(), isEmpty);
+    },
+  );
 
   test(
     'database commands run, print JSON status, roll back, and close each connection',

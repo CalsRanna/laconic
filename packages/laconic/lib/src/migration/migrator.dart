@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import '../database/result.dart';
 import '../database/query.dart';
 import '../exception.dart';
@@ -7,19 +10,31 @@ import '../query/query_builder.dart';
 import 'migration.dart';
 import 'migration_status.dart';
 import 'migration_preview.dart';
+import 'migration_schema_state.dart';
+import 'schema_state.dart';
 
 /// Runs explicitly registered migrations and records successful operations.
 ///
-/// Run one migrator at a time per database. This class prevents overlapping
-/// mutations on the same instance, but does not provide a distributed lock.
+/// Use `isolated: true` to serialize cooperating processes through the driver's
+/// database-wide migration lock. The instance also rejects overlapping mutations.
 /// On non-transactional DDL engines, a failed migration can leave partial
 /// changes that must be repaired before retrying.
 class Migrator {
-  /// The database connection used for both migrations and their history.
+  /// The default migration connection and the owner of migration history.
   final Laconic database;
 
   /// The table storing migration names and execution batches.
   final String table;
+
+  /// Resolves named migration connections. Callers retain ownership of them.
+  final FutureOr<Laconic> Function(String name)? resolveConnection;
+
+  /// Optional native baseline loaded before migrations on an empty history.
+  final String? schemaPath;
+
+  /// Optional native-client runner, for example for containerized clients.
+  final SchemaProcessRunner? schemaProcessRunner;
+  final Map<String, Future<Laconic>> _connections = {};
   final List<Migration> _migrations;
   bool _running = false;
 
@@ -30,6 +45,9 @@ class Migrator {
     this.database, {
     required Iterable<Migration> migrations,
     this.table = 'migrations',
+    this.resolveConnection,
+    this.schemaPath,
+    this.schemaProcessRunner,
   }) : _migrations = List.of(migrations) {
     database.grammar.quoteSchemaIdentifier(table, qualified: true);
     final names = <String>{};
@@ -39,6 +57,10 @@ class Migrator {
       }
       if (!names.add(migration.name.toLowerCase())) {
         throw LaconicException('Duplicate migration name: ${migration.name}');
+      }
+      if (migration.connection != null &&
+          migration.connection!.trim().isEmpty) {
+        throw LaconicException('Migration connection names cannot be empty');
       }
     }
     _migrations.sort((a, b) => a.name.compareTo(b.name));
@@ -56,12 +78,26 @@ class Migrator {
         row['migration'] as String: (row['batch'] as num).toInt(),
     };
     final known = _migrations.map((m) => m.name).toSet();
+    final path = schemaPath;
+    final baselineNames =
+        path != null && await File(path).exists()
+            ? (await MigrationSchemaState(
+              database,
+              table,
+              schemaProcessRunner,
+            ).read(path)).history.map((r) => r['migration']).toSet()
+            : <Object?>{};
     final result = [
       for (final migration in _migrations)
         MigrationStatus(name: migration.name, batch: batches[migration.name]),
       for (final entry in batches.entries)
         if (!known.contains(entry.key))
-          MigrationStatus(name: entry.key, batch: entry.value, missing: true),
+          MigrationStatus(
+            name: entry.key,
+            batch: entry.value,
+            missing: !baselineNames.contains(entry.key),
+            baseline: baselineNames.contains(entry.key),
+          ),
     ];
     result.sort((a, b) => a.name.compareTo(b.name));
     return result;
@@ -77,16 +113,22 @@ class Migrator {
   /// visible to later inspection. Application side effects are not sandboxed.
   Future<List<String>> migrate({
     bool step = false,
+    bool isolated = false,
     bool pretend = false,
     void Function(LaconicQuery query)? onQuery,
     void Function(String name)? onApplied,
+    void Function(String name)? onSkipped,
+    void Function(String path)? onSchemaLoaded,
   }) => _exclusive(
     () => _migrate(
       step: step,
       pretend: pretend,
       onQuery: onQuery,
       onApplied: onApplied,
+      onSkipped: onSkipped,
+      onSchemaLoaded: onSchemaLoaded,
     ),
+    isolated: isolated,
   );
 
   Future<List<String>> _migrate({
@@ -94,8 +136,34 @@ class Migrator {
     bool pretend = false,
     void Function(LaconicQuery query)? onQuery,
     void Function(String name)? onApplied,
+    void Function(String name)? onSkipped,
+    void Function(String path)? onSchemaLoaded,
   }) async {
-    final history = await _history();
+    var history = await _history();
+    final path = schemaPath;
+    if (history.isEmpty && path != null && await File(path).exists()) {
+      final state = MigrationSchemaState(database, table, schemaProcessRunner);
+      final baseline = await state.read(path);
+      if (pretend) {
+        onQuery?.call(LaconicQuery(sql: baseline.sql, bindings: []));
+        history = baseline.history;
+      } else {
+        await state.load(path);
+        history = await _history();
+        if (history.length != baseline.history.length ||
+            List.generate(
+              history.length,
+              (i) =>
+                  history[i]['migration'] != baseline.history[i]['migration'] ||
+                  history[i]['batch'] != baseline.history[i]['batch'],
+            ).any((v) => v)) {
+          throw LaconicException(
+            'Loaded schema history does not match the baseline manifest',
+          );
+        }
+      }
+      onSchemaLoaded?.call(path);
+    }
     final completed = history.map((row) => row['migration'] as String).toSet();
     final pending =
         _migrations.where((m) => !completed.contains(m.name)).toList();
@@ -115,20 +183,35 @@ class Migrator {
     }
     final executed = <String>[];
     for (final migration in pending) {
+      var skipped = false;
       await _execute(migration, 'up', () async {
+        final target = await _target(migration);
+        if (!pretend && !await migration.shouldRun(target)) {
+          skipped = true;
+          return;
+        }
         if (pretend) {
           await migration.up(
-            MigrationPreviewDatabase(database, onQuery ?? (_) {}),
+            MigrationPreviewDatabase(target, onQuery ?? (_) {}),
           );
         } else {
-          await _run(migration, () async {
-            await migration.up(database);
+          Future<void> record() async {
             await _historyTable.insert([
               {'migration': migration.name, 'batch': batch},
             ]);
+          }
+
+          await _run(migration, target, () async {
+            await migration.up(target);
+            if (identical(target, database)) await record();
           });
+          if (!identical(target, database)) await record();
         }
       });
+      if (skipped) {
+        onSkipped?.call(migration.name);
+        continue;
+      }
       executed.add(migration.name);
       onApplied?.call(migration.name);
       if (step) batch++;
@@ -147,6 +230,7 @@ class Migrator {
     int? steps,
     int? batch,
     bool pretend = false,
+    bool isolated = false,
     void Function(LaconicQuery query)? onQuery,
     void Function(String name)? onRolledBack,
   }) => _exclusive(
@@ -156,6 +240,7 @@ class Migrator {
       onQuery: onQuery,
       onRolledBack: onRolledBack,
     ),
+    isolated: isolated,
   );
 
   Future<List<LaconicResult>> _selectRollback({int? steps, int? batch}) async {
@@ -185,6 +270,7 @@ class Migrator {
   /// Rolls back all recorded migrations in reverse execution order.
   Future<List<String>> reset({
     bool pretend = false,
+    bool isolated = false,
     void Function(LaconicQuery query)? onQuery,
     void Function(String name)? onRolledBack,
   }) => _exclusive(
@@ -194,6 +280,7 @@ class Migrator {
       onQuery: onQuery,
       onRolledBack: onRolledBack,
     ),
+    isolated: isolated,
   );
 
   /// Rolls back all migrations, or the latest [steps], then runs pending ones.
@@ -202,16 +289,23 @@ class Migrator {
   /// migrations remain reverted if a later rollback or migration fails.
   Future<List<String>> refresh({
     int? steps,
+    bool isolated = false,
     void Function(String name)? onApplied,
     void Function(String name)? onRolledBack,
+    void Function(String name)? onSkipped,
+    void Function(String path)? onSchemaLoaded,
   }) => _exclusive(() async {
     final selected =
         steps == null
             ? (await _history()).reversed.toList()
             : await _selectRollback(steps: steps);
     await _rollback(selected, onRolledBack: onRolledBack);
-    return _migrate(onApplied: onApplied);
-  });
+    return _migrate(
+      onApplied: onApplied,
+      onSkipped: onSkipped,
+      onSchemaLoaded: onSchemaLoaded,
+    );
+  }, isolated: isolated);
 
   /// Drops all tables in the history table's schema, then runs migrations.
   ///
@@ -220,16 +314,71 @@ class Migrator {
   /// may prevent dropping tables. The wipe and migrations are separate operations.
   Future<List<String>> fresh({
     bool step = false,
+    bool isolated = false,
     void Function()? onDropped,
     void Function(String name)? onApplied,
+    void Function(String name)? onSkipped,
+    void Function(String path)? onSchemaLoaded,
   }) => _exclusive(() async {
     final parts = database.grammar.schemaTableParts(table);
     await database.schema.dropAllTables(
       schema: parts.length == 2 ? parts.first : null,
     );
     onDropped?.call();
-    return _migrate(step: step, onApplied: onApplied);
-  });
+    return _migrate(
+      step: step,
+      onApplied: onApplied,
+      onSkipped: onSkipped,
+      onSchemaLoaded: onSchemaLoaded,
+    );
+  }, isolated: isolated);
+
+  /// Atomically saves native schema and applied migration history to a SQL file.
+  ///
+  /// Table data is excluded. [onDumped] runs under the same lock after the file
+  /// is saved, and receives only applied names eligible for source pruning.
+  /// Cross-connection migrations cannot be represented by one schema dump.
+  Future<void> dumpSchema(
+    String path, {
+    bool isolated = true,
+    FutureOr<void> Function(List<String> applied)? onDumped,
+  }) => _exclusive(() async {
+    final history = await _history();
+    final definitions = {
+      for (final migration in _migrations) migration.name: migration,
+    };
+    final previous = schemaPath;
+    final baselineNames =
+        previous != null && await File(previous).exists()
+            ? (await MigrationSchemaState(
+              database,
+              table,
+              schemaProcessRunner,
+            ).read(previous)).history.map((r) => r['migration']).toSet()
+            : <Object?>{};
+    for (final row in history) {
+      final migration = definitions[row['migration']];
+      if (migration == null) {
+        if (!baselineNames.contains(row['migration'])) {
+          throw LaconicException(
+            'Missing migration definition for schema dump: ${row['migration']}',
+          );
+        }
+      } else if (!identical(await _target(migration), database)) {
+        throw LaconicException(
+          'A schema dump cannot include cross-connection migration ${migration.name}',
+        );
+      }
+    }
+    await MigrationSchemaState(
+      database,
+      table,
+      schemaProcessRunner,
+    ).dump(path, history);
+    await onDumped?.call(
+      List.unmodifiable(history.map((r) => r['migration'] as String)),
+    );
+  }, isolated: isolated);
 
   Future<List<String>> _rollback(
     List<LaconicResult> selected, {
@@ -249,17 +398,26 @@ class Migrator {
     }
     final rolledBack = <String>[];
     for (final row in selected) {
+      await _target(definitions[row['migration']]!);
+    }
+    for (final row in selected) {
       final migration = definitions[row['migration']]!;
       await _execute(migration, 'down', () async {
+        final target = await _target(migration);
         if (pretend) {
           await migration.down(
-            MigrationPreviewDatabase(database, onQuery ?? (_) {}),
+            MigrationPreviewDatabase(target, onQuery ?? (_) {}),
           );
         } else {
-          await _run(migration, () async {
-            await migration.down(database);
+          Future<void> forget() async {
             await _historyTable.where('id', row['id']).delete();
+          }
+
+          await _run(migration, target, () async {
+            await migration.down(target);
+            if (identical(target, database)) await forget();
           });
+          if (!identical(target, database)) await forget();
         }
       });
       rolledBack.add(migration.name);
@@ -273,10 +431,27 @@ class Migrator {
     return _historyTable.orderBy('id').get();
   }
 
-  Future<void> _run(Migration migration, Future<void> Function() action) async {
+  Future<Laconic> _target(Migration migration) async {
+    final name = migration.connection;
+    if (name == null) return database;
+    final resolver = resolveConnection;
+    if (resolver == null) {
+      throw LaconicException('No resolver for migration connection: $name');
+    }
+    return _connections.putIfAbsent(
+      name,
+      () => Future.sync(() => resolver(name)),
+    );
+  }
+
+  Future<void> _run(
+    Migration migration,
+    Laconic target,
+    Future<void> Function() action,
+  ) async {
     if (migration.withinTransaction &&
-        database.grammar.supportsSchemaTransactions) {
-      await database.transaction(action);
+        target.grammar.supportsSchemaTransactions) {
+      await target.transaction(action);
     } else {
       await action();
     }
@@ -296,15 +471,18 @@ class Migrator {
     }
   }
 
-  Future<List<String>> _exclusive(
-    Future<List<String>> Function() action,
-  ) async {
+  Future<T> _exclusive<T>(
+    Future<T> Function() action, {
+    bool isolated = false,
+  }) async {
     if (_running) {
       throw LaconicException('A migration operation is already running');
     }
     _running = true;
     try {
-      return await action();
+      return isolated
+          ? await database.withMigrationLock(action)
+          : await action();
     } finally {
       _running = false;
     }

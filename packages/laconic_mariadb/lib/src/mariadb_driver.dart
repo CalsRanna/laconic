@@ -5,13 +5,31 @@ import 'mariadb_config.dart';
 import 'mariadb_grammar.dart';
 
 /// MariaDB driver using the shared MySQL protocol and connection pool.
-class MariadbDriver implements DatabaseDriver {
+class MariadbDriver
+    implements DatabaseDriver, MigrationLockDriver, SchemaStateDriver {
   final MariadbConfig config;
   final MysqlDriver _delegate;
   static final _grammar = MariadbGrammar();
   static const driverName = 'mariadb';
 
-  MariadbDriver(this.config) : _delegate = MysqlDriver(config);
+  MariadbDriver(this.config) : _delegate = _MariadbClientDriver(config);
+
+  @override
+  String get schemaDialect => 'mariadb';
+
+  @override
+  Future<void> dumpSchema(
+    String path, {
+    String? schema,
+    SchemaProcessRunner? runner,
+  }) => _run(() => _delegate.dumpSchema(path, schema: schema, runner: runner));
+
+  @override
+  Future<void> loadSchema(
+    String path, {
+    String? schema,
+    SchemaProcessRunner? runner,
+  }) => _run(() => _delegate.loadSchema(path, schema: schema, runner: runner));
 
   @override
   SqlGrammar get grammar => _grammar;
@@ -75,5 +93,19 @@ class MariadbDriver implements DatabaseDriver {
       _run(() => _delegate.transaction(action));
 
   @override
+  Future<T> withMigrationLock<T>(Future<T> Function() action) =>
+      _run(() => _delegate.withMigrationLock(action));
+
+  @override
   Future<void> close() => _run(_delegate.close);
+}
+
+class _MariadbClientDriver extends MysqlDriver {
+  _MariadbClientDriver(super.config);
+  @override
+  String get schemaDialect => 'mariadb';
+  @override
+  String get schemaDumpExecutable => 'mariadb-dump';
+  @override
+  String get schemaLoadExecutable => 'mariadb';
 }

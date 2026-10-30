@@ -22,6 +22,8 @@
 - [ ] README（英文与中文）的版本号、安装片段和升级说明已更新
 - [ ] Docker 可运行（MySQL 3306、MariaDB 3307、PostgreSQL 5433、SQL Server 1433）
 
+- [ ] 第三阶段迁移能力需匹配核心与全部五个驱动：新增可选 `MigrationLockDriver` / `SchemaStateDriver`；原生 dump 客户端必须与服务器版本兼容，SQL Server 不提供 dump/load。验证 `--prune` 的文件删除和基线回滚限制，保留现有跨库差异约定。
+
 ## 2. 完整校验
 
 从 workspace 根目录执行：

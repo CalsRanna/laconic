@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../laconic.dart';
 
 /// A versioned database change with an explicitly authored reverse operation.
@@ -12,6 +14,18 @@ abstract class Migration {
   /// characters. Do not rename or edit migrations that have already run.
   /// Names differing only by letter case are considered duplicates.
   String get name;
+
+  /// The optional named target connection, resolved by the migrator.
+  ///
+  /// History remains on the migrator's default connection. Cross-connection
+  /// changes and history cannot share an atomic transaction.
+  String? get connection => null;
+
+  /// Whether to apply this pending migration on its resolved connection.
+  ///
+  /// False leaves it pending for a later run. Rollbacks always reverse recorded
+  /// migrations, regardless of the current condition. Previews skip this check.
+  FutureOr<bool> shouldRun(Laconic database) => true;
 
   /// Whether to wrap this migration and its history update in one transaction.
   ///

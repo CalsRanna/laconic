@@ -164,6 +164,9 @@ void main() {
       ['reset', '--step=1'],
       ['fresh', '--pretend'],
       ['status', '--force'],
+      ['migrate', '--database=../escape'],
+      ['schema:dump', '--schema-path='],
+      ['status', '--isolated'],
     ]) {
       output.clear();
       errors.clear();
@@ -171,6 +174,12 @@ void main() {
       expect(output.toString(), isEmpty);
       expect(errors.toString(), contains('Usage:'));
     }
+    expect(
+      await run(['schema:dump', '--prune'], environment: 'production'),
+      78,
+    );
+    expect(await run(['schema:dump']), 64);
+    expect(await run(['schema:dump', '--schema-path=base.sql', '--prune']), 78);
     expect(calls, 0);
   });
 

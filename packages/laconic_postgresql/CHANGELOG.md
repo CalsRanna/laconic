@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Add session-pinned advisory migration locks and native pg_dump/psql baselines.
+  Preserve schema-qualified history, support existing empty schemas on import,
+  and restore inside one native transaction. Requires matching unreleased core
+  and native clients compatible with the PostgreSQL server.
+
 - Add GIN full-text indexes with language selection matching `whereFullText`,
   index renaming/drops, comments, collations, current-time defaults and stored
   generated columns. Virtual columns remain unsupported on the PostgreSQL 15
