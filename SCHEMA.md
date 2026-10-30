@@ -71,6 +71,62 @@ SQLite 重建操作会在独占连接的事务中读取快照、完整编译并�
 所有标识符都由具体方言转义。`rename` 的目标名称必须不带 schema，保持原命名空间。
 `hasColumn` 按数据库返回的列名精确匹配。
 
+## 表级配置
+
+| Blueprint 方法 | 支持与语义 |
+|---|---|
+| `engine(name)` / `innoDb()` | MySQL/MariaDB 新建表的存储引擎 |
+| `charset(name)` / `collation(name)` | MySQL/MariaDB 新建表的默认字符集、排序规则；列上的显式设置优先 |
+| `comment(text)` | MySQL/MariaDB、PostgreSQL、SQL Server 支持创建、替换表注释；空字符串清除，SQLite 明确报错 |
+| `temporary()` | SQLite、MySQL、MariaDB、PostgreSQL 的会话临时表；SQL Server 明确报不支持 |
+
+除 `comment` 外，这些方法仅用于 `schema.create()`；放进 `schema.table()` 会在执行
+任何改表语句之前报错。不支持的方言不会静默忽略配置。选项名称按标识符转义，注释
+按方言编码；MySQL/MariaDB 注释与列注释一样不接受反斜杠和 NUL，SQL Server 表注释
+最多 3750 个 UTF-16 code unit（7500 字节）。原生数据库的其他长度与配置限制仍适用。
+
+```dart
+// MySQL / MariaDB
+await db.schema.create('articles', (table) {
+  table.innoDb().charset('utf8mb4').collation('utf8mb4_bin');
+  table.comment("Editor's articles");
+  table.id();
+  table.string('slug');
+});
+await db.schema.table('articles', (table) => table.comment('Published articles'));
+```
+
+临时表使用不带 schema 的名称。SQLite 将其限定在 `temp`，PostgreSQL 限定在
+当前会话的 `pg_temp`；这两个方言拒绝指定永久 schema。SQL Server 的 `#` 表命名和
+执行范围尚未接入 `temporary()`，不会代为创建永久表。
+
+连接池会复用多个会话，应在同一个 `db.transaction()` 回调中完成临时表的创建、使用和
+删除。事务结束不等于会话关闭；MySQL/MariaDB 回滚也不会自动删除临时表。
+`schema.drop(name, temporary: true)` / `dropIfExists(name, temporary: true)`
+只删除当前会话的临时表，保留同名永久表；SQL Server 明确报不支持。
+
+```dart
+await db.transaction(() async {
+  await db.schema.create('work_ids', (table) {
+    table.temporary();
+    table.integer('id');
+    table.unique(['id']);
+  });
+  try {
+    await db.table('work_ids').insert([{'id': 42}]);
+    final ids = await db.table('work_ids').pluck('id');
+    print(ids);
+  } finally {
+    await db.schema.dropIfExists('work_ids', temporary: true);
+  }
+});
+```
+
+MySQL/MariaDB 临时表的普通/唯一索引和表注释直接写入 CREATE，清理使用
+`DROP TEMPORARY TABLE`，避免这些创建、清理步骤隐式提交事务。临时表不支持外键和
+全文索引；后续 `schema.table()` 的索引或注释修改仍受原生 DDL 隐式提交规则约束。
+SQLite 临时表的结构检查使用 `temp.table`。临时表不会自动加入迁移历史或永久 schema 基线。
+
 ## 列、索引与外键
 
 | 类别 | API |
@@ -409,6 +465,11 @@ SQLite 的类型亲和性不会强制 varchar 长度或 decimal 精度。JSON/UU
    新增 `ColumnType.computed`、`IndexType.fullText` 和索引变更的 `SchemaChange` 枚举值，
    第三方穷尽 switch 必须同步；按需覆盖 `compileColumnCharset/Collation/Comment/Extras/Position/Default/OnUpdate/Generation/Nullability`
    和 `compileCurrentTimestamp`。新增修饰的默认实现会拒绝不支持的功能。
+   表级配置按需覆盖 `compileCreateTableOptions`、`compileTableComment`，以及
+   `supportsTemporaryTables`、`schemaTemporaryTableName`、`compileDropTemporaryTable`。
+   需要在 CREATE 内声明非主键索引时覆盖 `compileCreateTableIndex`；默认独立建索引。
+   自定义 `compileAlterTable` 分支必须调用 `compileAlterTableOptions` 并包含返回的语句，
+   以拒绝 create-only 配置并编译表注释；所有编译须在首条 DDL 执行前完成。
    仅需要索引快照时覆盖 `requiresSchemaSnapshot`；需要原子索引替换时覆盖 `requiresSchemaTransaction`。
    `SchemaTransactionDriver.schemaTransaction` 新增 `disableForeignKeys` 命名参数（默认 true）：
    索引操作传 false，必须保留外键检查并支持外层事务内的保存点。预览驱动仍只记录 SQL。

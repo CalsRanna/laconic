@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Support creating, replacing and clearing table comments, plus session temporary
+  tables resolved through pg_temp. Explicit temporary drops preserve same-named
+  permanent tables. Requires matching unreleased core schema hooks; use one
+  transaction connection for a temporary table's lifecycle. See SCHEMA.md and
+  RELEASE.md for capability and upgrade details.
+
 - Rebase bound scalar subqueries used in UPDATE assignments, including repeated
   and reordered numbered parameters. Requires the matching unreleased core.
 

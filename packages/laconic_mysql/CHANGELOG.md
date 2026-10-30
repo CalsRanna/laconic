@@ -1,5 +1,12 @@
 ## Unreleased
 
+- Support table engines, default charsets/collations, table comments and temporary
+  tables. Compile temporary-table indexes/comments inline and use DROP TEMPORARY
+  TABLE for explicit temporary cleanup to preserve active transactions. Reject
+  temporary foreign keys/full-text indexes. Requires matching unreleased core;
+  engine/charset/collation options apply only during create, and comment escaping
+  has the same restrictions as column comments. See SCHEMA.md and RELEASE.md.
+
 - Add session-pinned migration isolation with GET_LOCK and native schema
   dump/load through mysqldump/mysql. Include schema objects and exclude business
   rows; native client credentials use environment variables. Requires matching

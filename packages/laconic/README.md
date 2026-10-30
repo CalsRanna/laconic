@@ -698,6 +698,10 @@ MIT License
 
 ## Schema Builder (unreleased)
 
+Blueprint supports table engines, default charsets/collations, table comments and
+session temporary tables where supported. Temporary-only drops preserve
+same-named permanent tables; see the schema guide for connection-pool usage.
+
 Includes full-text indexes on MySQL/MariaDB and PostgreSQL, index renaming and
 deletion, column comments/collations, timestamp modifiers and generated columns.
 See the schema guide for dialect support and the third-party driver upgrade contract.

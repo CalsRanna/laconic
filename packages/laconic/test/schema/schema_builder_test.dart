@@ -88,6 +88,41 @@ void main() {
     },
   );
 
+  test(
+    'custom grammars reject unsupported table options before execution',
+    () async {
+      final driver = CustomDriver();
+      final db = Laconic(driver);
+      for (final option in <void Function(Blueprint)>[
+        (t) => t.engine('InnoDB'),
+        (t) => t.charset('utf8mb4'),
+        (t) => t.collation('utf8mb4_bin'),
+        (t) => t.comment('table comment'),
+        (t) => t.temporary(),
+      ]) {
+        await expectLater(
+          db.schema.create('users', (t) {
+            t.integer('id');
+            option(t);
+          }),
+          throwsA(isA<LaconicException>()),
+        );
+        await expectLater(
+          db.schema.table('users', (t) {
+            t.integer('added');
+            option(t);
+          }),
+          throwsA(isA<LaconicException>()),
+        );
+      }
+      expect(
+        () => db.schema.drop('users', temporary: true),
+        throwsA(isA<LaconicException>()),
+      );
+      expect(driver.executedSql, isEmpty);
+    },
+  );
+
   test('unimplemented schema capabilities report a clear exception', () async {
     final db = Laconic(MockDriver());
     await expectLater(

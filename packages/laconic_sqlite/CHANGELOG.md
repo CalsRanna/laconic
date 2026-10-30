@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Support Blueprint `temporary()` with table/index names resolved in the temp
+  schema, and temporary-only drops that preserve same-named permanent tables.
+  Reject unsupported table options/comments before executing alterations,
+  including rebuild and index-rename paths. Requires matching unreleased core
+  schema hooks; see SCHEMA.md and RELEASE.md.
+
 - Add migration isolation using a stable SQLite sidecar lock shared across
   connections, isolates and processes. Add native file schema dump/load through
   `sqlite3`; memory and attached-schema dumps explicitly fail. Native baseline

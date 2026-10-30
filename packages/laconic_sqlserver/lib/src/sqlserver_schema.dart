@@ -2,6 +2,36 @@ part of 'sqlserver_grammar.dart';
 
 mixin _SqlserverSchema on SqlGrammar {
   @override
+  List<CompiledQuery> compileTableComment(
+    String table,
+    String comment, {
+    bool creating = false,
+  }) {
+    if (comment.length > 3750) {
+      throw LaconicException(
+        'SQL Server table comments cannot exceed 7500 bytes',
+      );
+    }
+    final parts = schemaTableParts(table);
+    const arguments =
+        "@name=N'MS_Description', @level0type=N'SCHEMA', @level0name=@schema, @level1type=N'TABLE', @level1name=@table";
+    const exists =
+        "exists (select 1 from sys.extended_properties p join sys.tables t on t.object_id = p.major_id join sys.schemas s on s.schema_id = t.schema_id where p.class = 1 and p.minor_id = 0 and p.name = N'MS_Description' and s.name = @schema and t.name = @table)";
+    return [
+      CompiledQuery(
+        sql:
+            'declare @schema sysname = ${parts.length == 2 ? '?' : 'schema_name()'}; declare @table sysname = ?; '
+            '${comment.isEmpty ? 'if $exists exec sys.sp_dropextendedproperty $arguments' : 'declare @value nvarchar(3750) = ?; if $exists exec sys.sp_updateextendedproperty $arguments, @value=@value; else exec sys.sp_addextendedproperty $arguments, @value=@value'}',
+        bindings: [
+          if (parts.length == 2) parts.first,
+          parts.last,
+          if (comment.isNotEmpty) comment,
+        ],
+      ),
+    ];
+  }
+
+  @override
   bool get supportsSchemaTransactions => true;
 
   @override

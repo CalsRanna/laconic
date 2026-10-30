@@ -2,6 +2,66 @@ part of 'mysql_grammar.dart';
 
 mixin _MysqlSchema on SqlGrammar {
   @override
+  bool get supportsTemporaryTables => true;
+
+  @override
+  String? compileCreateTableIndex(Blueprint blueprint, IndexDefinition index) {
+    if (!blueprint.isTemporary) return null;
+    if (index.type == IndexType.fullText || index.fullTextLanguage != null) {
+      throw LaconicException(
+        'MySQL/MariaDB temporary tables do not support full-text indexes',
+      );
+    }
+    return '${index.type == IndexType.unique ? 'unique ' : ''}index ${quoteSchemaIdentifier(index.name)} (${compileSchemaColumns(index.columns)})';
+  }
+
+  @override
+  List<CompiledQuery> compileDropTemporaryTable(
+    String table, {
+    bool ifExists = false,
+  }) => [
+    CompiledQuery(
+      sql:
+          'drop temporary table ${ifExists ? 'if exists ' : ''}${quoteSchemaIdentifier(table, qualified: true)}',
+      bindings: [],
+    ),
+  ];
+
+  @override
+  String compileCreateTableOptions(Blueprint blueprint) {
+    if (blueprint.isTemporary &&
+        blueprint.commands.any((command) => command is ForeignKeyDefinition)) {
+      throw LaconicException(
+        'MySQL/MariaDB temporary tables do not support foreign keys',
+      );
+    }
+    return [
+      if (blueprint.engineName != null)
+        ' engine = ${quoteSchemaIdentifier(blueprint.engineName!)}',
+      if (blueprint.characterSet != null)
+        ' default character set ${quoteSchemaIdentifier(blueprint.characterSet!)}',
+      if (blueprint.collationName != null)
+        ' collate ${quoteSchemaIdentifier(blueprint.collationName!)}',
+      if (blueprint.commentText != null)
+        ' comment = ${_compileCommentLiteral(blueprint.commentText!)}',
+    ].join();
+  }
+
+  @override
+  List<CompiledQuery> compileTableComment(
+    String table,
+    String comment, {
+    bool creating = false,
+  }) => [
+    if (!creating)
+      CompiledQuery(
+        sql:
+            'alter table ${quoteSchemaIdentifier(table, qualified: true)} comment = ${_compileCommentLiteral(comment)}',
+        bindings: [],
+      ),
+  ];
+
+  @override
   String quoteSchemaIdentifier(String name, {bool qualified = false}) {
     super.quoteSchemaIdentifier(name, qualified: qualified);
     final parts = qualified ? schemaTableParts(name) : [name];
@@ -140,6 +200,10 @@ mixin _MysqlSchema on SqlGrammar {
   String compileColumnComment(ColumnDefinition column) {
     final comment = column.commentText;
     if (comment == null) return '';
+    return ' comment ${_compileCommentLiteral(comment)}';
+  }
+
+  String _compileCommentLiteral(String comment) {
     // COMMENT requires a string literal, not an expression. Backslash escaping
     // changes with SQL mode, so reject it instead of storing different text.
     if (comment.contains('\\') || comment.contains('\u0000')) {
@@ -147,7 +211,7 @@ mixin _MysqlSchema on SqlGrammar {
         'MySQL/MariaDB comments cannot contain backslashes or NUL',
       );
     }
-    return " comment '${comment.replaceAll("'", "''")}'";
+    return "'${comment.replaceAll("'", "''")}'";
   }
 
   @override

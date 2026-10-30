@@ -7,11 +7,64 @@ class Blueprint {
   final String table;
   final List<SchemaCommand> _commands = [];
 
+  /// The storage engine requested for a new MySQL or MariaDB table.
+  String? engineName;
+
+  /// The default character set requested for a new MySQL or MariaDB table.
+  String? characterSet;
+
+  /// The default collation requested for a new MySQL or MariaDB table.
+  String? collationName;
+
+  /// The table comment to create or replace, or null to leave it unchanged.
+  String? commentText;
+
+  /// Whether to create a table scoped to the current database session.
+  bool isTemporary = false;
+
   /// Creates a definition for [table].
   Blueprint(this.table);
 
   /// The commands in declaration order.
   List<SchemaCommand> get commands => List.unmodifiable(_commands);
+
+  /// Sets the storage engine for a new MySQL or MariaDB table.
+  Blueprint engine(String name) {
+    engineName = name;
+    return this;
+  }
+
+  /// Uses InnoDB for a new MySQL or MariaDB table.
+  Blueprint innoDb() => engine('InnoDB');
+
+  /// Sets the default character set for a new MySQL or MariaDB table.
+  Blueprint charset(String name) {
+    characterSet = name;
+    return this;
+  }
+
+  /// Sets the default collation for a new MySQL or MariaDB table.
+  Blueprint collation(String name) {
+    collationName = name;
+    return this;
+  }
+
+  /// Creates or replaces the table comment; an empty [text] clears it.
+  ///
+  /// SQLite does not support table comments.
+  Blueprint comment(String text) {
+    commentText = text;
+    return this;
+  }
+
+  /// Creates a temporary table on SQLite, MySQL, MariaDB, or PostgreSQL.
+  ///
+  /// Use a transaction to keep pooled operations on one connection, and drop
+  /// the table before returning that connection to the pool.
+  Blueprint temporary() {
+    isTemporary = true;
+    return this;
+  }
 
   /// Adds a generated integer primary key.
   ///

@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Inherit table engine, charset/collation, comment and temporary-table support
+  from the matching unreleased MySQL driver. Temporary indexes/comments compile
+  inline; explicit temporary drops preserve transactions and permanent tables.
+  Temporary foreign keys/full-text indexes are rejected. Requires matching
+  unreleased core and MySQL versions; see SCHEMA.md and RELEASE.md.
+
 - Add migration isolation through the shared pinned MySQL connection and native
   mariadb-dump/mariadb schema baselines. Keep MariaDB-specific native flags and
   exceptions. Requires matching unreleased core and MySQL driver sources.

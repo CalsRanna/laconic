@@ -555,6 +555,9 @@ MIT License
 
 ## Schema Builder（未发布）
 
+Blueprint 支持按方言配置表引擎、默认字符集/排序规则、表注释和会话临时表。
+临时表专用删除会保留同名永久表；连接池使用方式与支持矩阵见 Schema 指南。
+
 已支持 MySQL/MariaDB 与 PostgreSQL 全文索引、索引重命名和删除、列注释/排序规则、
 时间修饰及生成列；各数据库的支持范围和第三方驱动升级要求见 Schema 指南。
 

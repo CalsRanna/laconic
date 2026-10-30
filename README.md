@@ -823,6 +823,10 @@ Issues and Pull Requests are welcome!
 
 ## Schema and migrations (unreleased)
 
+Blueprint supports table engines, default charsets/collations, table comments and
+session temporary tables where supported. Temporary-only drops preserve
+same-named permanent tables; see the schema guide for connection-pool usage.
+
 Includes full-text indexes on MySQL/MariaDB and PostgreSQL, index renaming and
 deletion, column comments/collations, timestamp modifiers and generated columns.
 See SCHEMA.md for dialect support and the third-party driver upgrade contract.

@@ -1,5 +1,13 @@
 ## Unreleased
 
+- Add Blueprint table options: `engine`/`innoDb`, `charset`, `collation`,
+  `comment`, and `temporary`, with explicit dialect and create-only validation.
+  Add `temporary: true` to schema `drop`/`dropIfExists` to target session tables
+  without dropping a same-named permanent table. Cover all five databases,
+  comment round trips, compilation failures, session isolation and rollback.
+  Requires matching unreleased drivers and new SqlGrammar table-option,
+  comment, temporary-table and inline-index hooks; see SCHEMA.md and RELEASE.md.
+
 - Support scalar subqueries on the left of `where`/`orWhere`, in
   `orderBy`/`orderByDesc`, and as `update`/`updateFrom` values. Accept existing
   builders and synchronous callbacks, retaining correlated references and bound

@@ -71,12 +71,22 @@ class SchemaBuilder {
   }
 
   /// Drops a table.
-  Future<void> drop(String table) =>
-      _execute(_database.grammar.compileDropTable(table));
+  ///
+  /// Set [temporary] to target only the current session's temporary table.
+  Future<void> drop(String table, {bool temporary = false}) => _execute(
+    temporary
+        ? _database.grammar.compileDropTemporaryTable(table)
+        : _database.grammar.compileDropTable(table),
+  );
 
   /// Drops a table if it exists.
-  Future<void> dropIfExists(String table) =>
-      _execute(_database.grammar.compileDropTable(table, ifExists: true));
+  ///
+  /// Set [temporary] to leave any permanent table with the same name intact.
+  Future<void> dropIfExists(String table, {bool temporary = false}) => _execute(
+    temporary
+        ? _database.grammar.compileDropTemporaryTable(table, ifExists: true)
+        : _database.grammar.compileDropTable(table, ifExists: true),
+  );
 
   /// Drops every table in [schema], including tables outside migration history.
   ///

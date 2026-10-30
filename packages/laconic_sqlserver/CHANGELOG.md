@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Support creating, replacing and clearing table comments through MS_Description
+  extended properties, preserving column comments and binding Unicode values.
+  Reject table engines/default charsets/collations and Blueprint temporary tables
+  explicitly. Requires matching unreleased core schema hooks; see SCHEMA.md and
+  RELEASE.md for supported options and upgrade requirements.
+
 - Add session-owned application migration locks, pinning transactions/streams
   to the owning connection. Native schema dump/load remains explicitly unsupported.
   Requires matching unreleased core migration interfaces.

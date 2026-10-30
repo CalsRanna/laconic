@@ -15,6 +15,7 @@
 - [ ] 迁移 CLI 新增 reset/refresh/fresh、batch/pretend；生产环境脚本需加 `--force`。发布匹配的核心与 SQLite grammar wipe 实现，核对 MIGRATIONS.md 的清表范围和预览限制
 - [ ] 同步第三方 `compileAlterTable` 覆盖方法的列/对象快照参数，记录 `change()`、元数据接口及可选 `SchemaTransactionDriver` 的扩展契约
 - [ ] 记录 `implements SqlGrammar` 实现者必须补齐新增成员的兼容性变更
+- [ ] 表级配置需同步核心及五个驱动：engine/innoDb、charset/collation、comment、temporary，以及 drop/dropIfExists 的 temporary 参数。第三方同步表选项、注释、临时表命名/删除和 CREATE 内索引编译钩子；MariaDB 需匹配新版 MySQL 驱动。核对 SCHEMA.md 的创建限定、SQL Server 临时表限制及连接池使用方式。
 - [ ] 为核心新增的 `compileAggregateExpression` 确定发布版本，并同步新驱动的最低核心依赖版本；SQL Server 驱动不能使用缺少该钩子的旧核心
 - [ ] 工作区已提交且 `git status` 干净
 - [ ] 六个 `pubspec.yaml` 的 `version` 与驱动依赖约束一致

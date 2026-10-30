@@ -3,6 +3,7 @@ import 'package:test/test.dart';
 import 'schema_metadata_regressions.dart';
 import 'schema_type_regressions.dart';
 import 'schema_feature_regressions.dart';
+import 'schema_table_options_regressions.dart';
 
 abstract final class SchemaRegressions {
   static void register(
@@ -28,6 +29,11 @@ abstract final class SchemaRegressions {
         createDatabase,
         sqlite: sqlite,
         mariadb: mariadb,
+        namespace: namespace,
+      );
+      SchemaTableOptionsRegressions.register(
+        createDatabase,
+        sqlite: sqlite,
         namespace: namespace,
       );
       const users = 'laconic_schema_users';

@@ -2,6 +2,24 @@ part of 'sqlite_grammar.dart';
 
 mixin _SqliteSchema on SqlGrammar {
   @override
+  bool get supportsTemporaryTables => true;
+
+  @override
+  String schemaTemporaryTableName(String table) {
+    final parts = schemaTableParts(table);
+    if (parts.length == 2 && parts.first != 'temp') {
+      throw LaconicException('SQLite temporary tables use the temp schema');
+    }
+    return 'temp.${parts.last}';
+  }
+
+  @override
+  List<CompiledQuery> compileDropTemporaryTable(
+    String table, {
+    bool ifExists = false,
+  }) => compileDropTable(schemaTemporaryTableName(table), ifExists: ifExists);
+
+  @override
   bool get supportsSchemaTransactions => true;
 
   @override
@@ -139,8 +157,12 @@ mixin _SqliteSchema on SqlGrammar {
     List<SchemaColumn> columns = const [],
     List<Map<String, Object?>> objects = const [],
   }) {
+    final options = compileAlterTableOptions(blueprint);
     if (requiresTableRebuild(blueprint)) {
-      return _SqliteTableRebuild(this, blueprint, columns, objects).compile();
+      return [
+        ..._SqliteTableRebuild(this, blueprint, columns, objects).compile(),
+        ...options,
+      ];
     }
     if (requiresSchemaSnapshot(blueprint)) {
       final name = schemaTableParts(blueprint.table).last;
@@ -187,7 +209,7 @@ mixin _SqliteSchema on SqlGrammar {
           }
         }
       }
-      return statements;
+      return [...statements, ...options];
     }
     return super.compileAlterTable(
       blueprint,

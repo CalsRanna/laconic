@@ -234,9 +234,67 @@ abstract class SqlGrammar {
     return sql.toString();
   }
 
+  /// Whether CREATE TEMPORARY TABLE is supported by this grammar.
+  bool get supportsTemporaryTables => false;
+
+  /// Resolves a temporary table name to its session-local schema when needed.
+  String schemaTemporaryTableName(String table) => table;
+
+  /// Returns an inline non-primary index, or null to create it separately.
+  String? compileCreateTableIndex(Blueprint blueprint, IndexDefinition index) =>
+      null;
+
+  /// Compiles storage engine, default charset, and collation for a new table.
+  String compileCreateTableOptions(Blueprint blueprint) {
+    if (blueprint.engineName != null ||
+        blueprint.characterSet != null ||
+        blueprint.collationName != null) {
+      throw LaconicException(
+        'This grammar does not support table engines, default charsets, or default collations',
+      );
+    }
+    return '';
+  }
+
+  /// Compiles statements for a table comment outside the CREATE statement.
+  ///
+  /// Grammars that include the comment in [compileCreateTableOptions] return
+  /// an empty list when [creating] is true.
+  List<CompiledQuery> compileTableComment(
+    String table,
+    String comment, {
+    bool creating = false,
+  }) {
+    throw LaconicException('This grammar does not support table comments');
+  }
+
+  /// Compiles table options for an alteration, rejecting create-only options.
+  List<CompiledQuery> compileAlterTableOptions(Blueprint blueprint) {
+    if (blueprint.isTemporary ||
+        blueprint.engineName != null ||
+        blueprint.characterSet != null ||
+        blueprint.collationName != null) {
+      throw LaconicException(
+        'temporary(), engine(), charset(), and collation() require schema.create()',
+      );
+    }
+    return [
+      if (blueprint.commentText != null)
+        ...compileTableComment(blueprint.table, blueprint.commentText!),
+    ];
+  }
+
   /// Compiles an entire table definition before any statement is executed.
   List<CompiledQuery> compileCreateTable(Blueprint blueprint) {
-    final table = quoteSchemaIdentifier(blueprint.table, qualified: true);
+    if (blueprint.isTemporary && !supportsTemporaryTables) {
+      throw LaconicException('This grammar does not support temporary tables');
+    }
+    final tableName =
+        blueprint.isTemporary
+            ? schemaTemporaryTableName(blueprint.table)
+            : blueprint.table;
+    final table = quoteSchemaIdentifier(tableName, qualified: true);
+    final options = compileCreateTableOptions(blueprint);
     final columns = blueprint.commands.whereType<ColumnDefinition>().toList();
     if (columns.any((column) => column.isChange)) {
       throw LaconicException('change() requires an existing table');
@@ -272,7 +330,12 @@ abstract class SqlGrammar {
             'constraint ${quoteSchemaIdentifier(command.name)} primary key (${compileSchemaColumns(command.columns)})',
           );
         } else {
-          indexes.add(compileSchemaIndex(blueprint.table, command));
+          final inline = compileCreateTableIndex(blueprint, command);
+          if (inline != null) {
+            definitions.add(inline);
+          } else {
+            indexes.add(compileSchemaIndex(tableName, command));
+          }
         }
       } else if (command is ForeignKeyDefinition) {
         definitions.add(compileForeignKey(command));
@@ -284,12 +347,18 @@ abstract class SqlGrammar {
     }
     return [
       CompiledQuery(
-        sql: 'create table $table (${definitions.join(', ')})',
+        sql:
+            'create ${blueprint.isTemporary ? 'temporary ' : ''}table $table (${definitions.join(', ')})$options',
         bindings: [],
       ),
       ...indexes,
-      for (final column in columns)
-        ...compileColumnExtras(blueprint.table, column),
+      for (final column in columns) ...compileColumnExtras(tableName, column),
+      if (blueprint.commentText != null)
+        ...compileTableComment(
+          tableName,
+          blueprint.commentText!,
+          creating: true,
+        ),
     ];
   }
 
@@ -300,6 +369,7 @@ abstract class SqlGrammar {
     List<Map<String, Object?>> objects = const [],
   }) {
     final table = quoteSchemaIdentifier(blueprint.table, qualified: true);
+    final options = compileAlterTableOptions(blueprint);
     final statements = <CompiledQuery>[];
     for (final command in blueprint.commands) {
       if (command is ColumnDefinition) {
@@ -346,7 +416,7 @@ abstract class SqlGrammar {
         statements.add(compileSchemaChange(blueprint.table, command));
       }
     }
-    return statements;
+    return [...statements, ...options];
   }
 
   /// Validates modifiers supported when changing an existing column.
@@ -541,6 +611,14 @@ abstract class SqlGrammar {
       bindings: [],
     ),
   ];
+
+  /// Compiles dropping only a temporary table in the current session.
+  List<CompiledQuery> compileDropTemporaryTable(
+    String table, {
+    bool ifExists = false,
+  }) {
+    throw LaconicException('This grammar does not support temporary tables');
+  }
 
   /// Compiles renaming a table within its current schema.
   List<CompiledQuery> compileRenameTable(String from, String to) {

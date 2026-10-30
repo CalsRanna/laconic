@@ -2,6 +2,39 @@ part of 'postgresql_grammar.dart';
 
 mixin _PostgresqlSchema on SqlGrammar {
   @override
+  bool get supportsTemporaryTables => true;
+
+  @override
+  String schemaTemporaryTableName(String table) {
+    final parts = schemaTableParts(table);
+    if (parts.length == 2 && parts.first != 'pg_temp') {
+      throw LaconicException(
+        'PostgreSQL temporary tables use the pg_temp schema',
+      );
+    }
+    return 'pg_temp.${parts.last}';
+  }
+
+  @override
+  List<CompiledQuery> compileDropTemporaryTable(
+    String table, {
+    bool ifExists = false,
+  }) => compileDropTable(schemaTemporaryTableName(table), ifExists: ifExists);
+
+  @override
+  List<CompiledQuery> compileTableComment(
+    String table,
+    String comment, {
+    bool creating = false,
+  }) => [
+    CompiledQuery(
+      sql:
+          'comment on table ${quoteSchemaIdentifier(table, qualified: true)} is ${compileSchemaLiteral(comment)}',
+      bindings: [],
+    ),
+  ];
+
+  @override
   bool get supportsSchemaTransactions => true;
 
   @override
